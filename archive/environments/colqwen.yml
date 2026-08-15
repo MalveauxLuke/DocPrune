@@ -1,0 +1,19 @@
+name: colqwen25
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pandas
+  - pyarrow
+  - pillow
+  - tqdm
+  - pip:
+      - torch
+      - torchvision
+      - accelerate
+      - transformers>=4.45.0
+      - huggingface_hub
+      - datasets
+      - qwen-vl-utils
+      - colpali-engine==0.3.7

@@ -1,0 +1,17 @@
+name: deepseek-ocr2-sol
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.9
+  - pip
+  - pip:
+      - transformers==4.46.3
+      - tokenizers==0.20.3
+      - PyMuPDF
+      - img2pdf
+      - einops
+      - easydict
+      - addict
+      - Pillow
+      - numpy
+      - huggingface-hub

@@ -1,0 +1,20 @@
+name: segment-evidence
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pillow
+  - scipy
+  - scikit-learn
+  - pip:
+      - torch==2.8.0
+      - torchvision
+      - accelerate
+      - transformers>=4.57.0
+      - peft
+      - huggingface_hub
+      - datasets
+      - qwen-vl-utils>=0.0.14
+      - rank_bm25
+      - colpali-engine>0.3.4
