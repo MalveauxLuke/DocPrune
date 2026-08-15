@@ -671,7 +671,7 @@ Expected: the commit contains only generic scaffolding and reusable examples.
 - Modify: `docs/NAVIGATION.md`
 - Modify: `agent-context/INDEX.md`
 - Modify: `docs/SOURCE_INVENTORY.md`
-- Create: `archive/source-repo-governance/README.md`
+- Create: `archive/source-repo-governance/SKELETON_STATUS.md`
 - Create: `sol/archive/source-repo/README_SKELETON_STATUS.md`
 
 **Interfaces:**
@@ -728,7 +728,7 @@ Run:
 
 ```bash
 DEST_REPO='/Users/god/Documents/Query-Relevant Document Token Pruning'
-git -C "$DEST_REPO" add README.md agent-context/INDEX.md archive/source-repo-governance/README.md docs/NAVIGATION.md docs/SOURCE_INVENTORY.md sol/archive/source-repo/README_SKELETON_STATUS.md
+git -C "$DEST_REPO" add README.md agent-context/INDEX.md archive/source-repo-governance/SKELETON_STATUS.md docs/NAVIGATION.md docs/SOURCE_INVENTORY.md sol/archive/source-repo/README_SKELETON_STATUS.md
 git -C "$DEST_REPO" diff --cached --check
 git -C "$DEST_REPO" commit -m 'docs: finalize skeleton navigation and inventory'
 ```
