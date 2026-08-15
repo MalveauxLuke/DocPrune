@@ -7,6 +7,7 @@ from PIL import Image
 from docprune.processor_probe import (
     collect_processor_contract,
     require_immutable_revision,
+    validate_processor_contract,
     write_processor_contract,
 )
 
@@ -103,3 +104,17 @@ def test_writer_refuses_to_replace_existing_report(tmp_path) -> None:
 
     with pytest.raises(FileExistsError, match="already exists"):
         write_processor_contract(path, {"schema_version": 1})
+
+
+def test_structural_failure_is_rejected_after_report_can_be_serialized() -> None:
+    payload = {
+        "mapping_checks": {
+            "colpali_visual_grid_inferred": False,
+            "qwen_merge_groups_valid": True,
+            "raster_order_verified": False,
+        },
+        "unresolved": ["ColPali image token ID could not be detected."],
+    }
+
+    with pytest.raises(ValueError, match="ColPali image token ID"):
+        validate_processor_contract(payload)

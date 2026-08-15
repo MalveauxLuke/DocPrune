@@ -200,6 +200,19 @@ def write_processor_contract(path: Path, payload: Mapping[str, object]) -> None:
             temporary.unlink()
 
 
+def validate_processor_contract(payload: Mapping[str, object]) -> None:
+    checks = payload.get("mapping_checks")
+    if not isinstance(checks, Mapping):
+        raise ValueError("processor contract is missing mapping_checks")
+    required = ("colpali_visual_grid_inferred", "qwen_merge_groups_valid")
+    failed = [name for name in required if checks.get(name) is not True]
+    if failed:
+        unresolved = payload.get("unresolved")
+        details = "; ".join(str(value) for value in unresolved) if isinstance(unresolved, list) else ""
+        suffix = f": {details}" if details else ""
+        raise ValueError(f"processor contract structural checks failed ({', '.join(failed)}){suffix}")
+
+
 def run_processor_probe(
     *,
     page_image: Path,
@@ -238,4 +251,5 @@ def run_processor_probe(
         colpali_revision=colpali_revision,
     )
     write_processor_contract(output, payload)
+    validate_processor_contract(payload)
     return payload
