@@ -18,6 +18,7 @@
 | [`agent-context/research/`](../agent-context/research/architecture_registry/README.md) | Inherited research registry |
 | [`docs/specifications/`](specifications/README.md) | Inherited nonbinding specifications |
 | [`docs/SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md) | Retain/remove record and verification data |
+| [`docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md`](superpowers/specs/2026-08-15-docprune-reproduction-design.md) | Binding DocPrune reproduction design |
 | [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
 
 ## SOL and reusable examples

@@ -2,13 +2,19 @@
 
 ## Scope
 
-This repository concerns token compression for document QA.
+Implement a faithful, training-free reproduction of DocPrune for document QA,
+grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-The repository is a documentation-first skeleton. No implementation,
-experiment, model execution, or SOL job is active.
+Local implementation is active. This machine has no SOL access, so GPU model
+execution, benchmark runs, and performance claims remain inactive.
+
+## Binding design
+
+[`../docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md`](../docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md)
 
 ## Next action
 
-Create and approve a project-specific task before implementation or execution.
+Execute the approved local implementation plan with test-first development,
+then prepare a SOL handoff for GPU validation and paper-parity evaluation.
