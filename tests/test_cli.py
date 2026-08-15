@@ -1,5 +1,6 @@
 import json
 
+import docprune.processor_probe
 from docprune.cli import main
 
 
@@ -84,3 +85,73 @@ def test_evaluate_dry_run_emits_manifest_for_new_output(tmp_path, capsys) -> Non
     assert payload["factory"] == "bridge:build"
     assert payload["page_count"] == 2
     assert not output.exists()
+
+
+def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -> None:
+    page = tmp_path / "page.png"
+    page.write_bytes(b"fake")
+    output = tmp_path / "processor-contract.json"
+    calls = []
+
+    def fake_probe(**kwargs):
+        calls.append(kwargs)
+        output.write_text('{"schema_version": 1}\n')
+        return {"schema_version": 1}
+
+    monkeypatch.setattr(docprune.processor_probe, "run_processor_probe", fake_probe)
+    exit_code = main(
+        [
+            "probe-processors",
+            "--page-image",
+            str(page),
+            "--qwen-model",
+            "Qwen/Qwen2-VL-7B-Instruct",
+            "--qwen-revision",
+            "a" * 40,
+            "--colpali-model",
+            "vidore/colpali-v1",
+            "--colpali-revision",
+            "b" * 40,
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out) == {"schema_version": 1}
+    assert calls == [
+        {
+            "page_image": page,
+            "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
+            "qwen_revision": "a" * 40,
+            "colpali_model": "vidore/colpali-v1",
+            "colpali_revision": "b" * 40,
+            "output": output,
+        }
+    ]
+
+
+def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
+    page = tmp_path / "page.png"
+    page.write_bytes(b"fake")
+
+    exit_code = main(
+        [
+            "probe-processors",
+            "--page-image",
+            str(page),
+            "--qwen-model",
+            "qwen",
+            "--qwen-revision",
+            "main",
+            "--colpali-model",
+            "colpali",
+            "--colpali-revision",
+            "b" * 40,
+            "--output",
+            str(tmp_path / "report.json"),
+        ]
+    )
+
+    assert exit_code == 2
+    assert "40-character" in capsys.readouterr().err

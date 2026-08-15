@@ -33,6 +33,16 @@ def _parser() -> argparse.ArgumentParser:
     summarize = subparsers.add_parser("summarize", help="aggregate an immutable result JSONL")
     summarize.add_argument("--results", type=Path, required=True)
 
+    probe = subparsers.add_parser(
+        "probe-processors", help="record the pinned Qwen and ColPali processor contract"
+    )
+    probe.add_argument("--page-image", type=Path, required=True)
+    probe.add_argument("--qwen-model", required=True)
+    probe.add_argument("--qwen-revision", required=True)
+    probe.add_argument("--colpali-model", required=True)
+    probe.add_argument("--colpali-revision", required=True)
+    probe.add_argument("--output", type=Path, required=True)
+
     for name in ("embed", "evaluate"):
         run = subparsers.add_parser(name, help=f"run the external {name} boundary")
         run.add_argument("--config", type=Path, required=True)
@@ -135,6 +145,19 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "summarize":
             print(json.dumps(summarize_jsonl(args.results), indent=2, sort_keys=True))
+            return 0
+        if args.command == "probe-processors":
+            from docprune import processor_probe
+
+            payload = processor_probe.run_processor_probe(
+                page_image=args.page_image,
+                qwen_model=args.qwen_model,
+                qwen_revision=args.qwen_revision,
+                colpali_model=args.colpali_model,
+                colpali_revision=args.colpali_revision,
+                output=args.output,
+            )
+            print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
         return _run_external(args.command, args)
     except (FileExistsError, ImportError, OSError, TypeError, ValueError) as error:
