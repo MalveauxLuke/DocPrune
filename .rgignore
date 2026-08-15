@@ -1,0 +1,15 @@
+.git/
+archive/
+sol/archive/
+docs/superpowers/
+logs/
+outputs/
+tmp/
+work/
+.pytest_cache/
+__pycache__/
+checkpoints/
+viewer/
+pilot_data/
+sol_results/
+

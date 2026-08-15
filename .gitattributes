@@ -1,0 +1,11 @@
+* text=auto
+*.pdf binary
+
+# Preserve byte-exact historical text even when it contains source formatting.
+archive/** whitespace=-trailing-space
+agent-context/research/** whitespace=-trailing-space
+docs/specifications/** whitespace=-trailing-space
+docs/superpowers/** whitespace=-trailing-space
+references/research-notes/** whitespace=-trailing-space
+reports/** whitespace=-trailing-space
+sol/archive/** whitespace=-trailing-space
