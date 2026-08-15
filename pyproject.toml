@@ -20,6 +20,10 @@ dev = [
   "pytest>=8,<9",
   "ruff>=0.12,<0.13",
 ]
+model = [
+  "transformers==4.46.3",
+  "qwen-vl-utils==0.0.8",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
