@@ -51,4 +51,3 @@ external/*/
 
 slurm-*.out
 slurm-*.err
-

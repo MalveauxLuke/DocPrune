@@ -13,4 +13,3 @@ Reusable learning templates are under
 [`../examples/sbatch/`](../examples/sbatch/README.md). Historical handoffs,
 task specifications, and wrappers from the source repository are preserved
 under [`archive/source-repo/`](archive/source-repo/) and are not active.
-

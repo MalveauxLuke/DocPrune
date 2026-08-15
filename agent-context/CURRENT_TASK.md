@@ -12,4 +12,3 @@ experiment, model execution, or SOL job is active.
 ## Next action
 
 Create and approve a project-specific task before implementation or execution.
-

@@ -12,4 +12,3 @@ This repository concerns token compression for document QA.
 Historical source-repository governance is preserved under
 [`../archive/source-repo-governance/`](../archive/source-repo-governance/) and
 is not active authority.
-

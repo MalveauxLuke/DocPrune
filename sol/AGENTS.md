@@ -14,4 +14,3 @@ authority.
   `/scratch/$USER`.
 - Treat `archive/source-repo/` as historical reference, never as current
   submission authority.
-

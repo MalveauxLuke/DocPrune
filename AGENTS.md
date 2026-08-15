@@ -18,4 +18,3 @@ explicitly activates work.
   explicit handoff.
 - Keep navigation files current when adding durable research material.
 - Never add secrets, model weights, datasets, caches, or generated outputs.
-
