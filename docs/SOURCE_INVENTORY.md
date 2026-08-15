@@ -8,14 +8,19 @@
 - Working state before extraction: three untracked specification files and a
   pre-existing untracked `work/` tree; no source cleanup was performed
 - Source size before extraction: `46,243,592 KiB`
-- Retained-surface manifest: 259 files
+- Pre-copy audited source-surface manifest: 259 files
+- Final retained classification: 258 files
 - Manifest SHA-256:
   `2f0683d11255ae090522fedacc1e415e0195aeb97305802583e2c553b96cede1`
 - Ordered retained-file checksum record SHA-256:
   `2fbe37a04aa2c89350218feaabc29603d9e5bbc149962267523c097838f415f6`
 
-The retained-surface manifest and its per-file checksums were recorded before
-any source file was copied. They are checked again after extraction.
+The audited source-surface manifest and its per-file checksums were recorded
+before any source file was copied. They are checked again after extraction.
+One candidate, `archive/code/sciegqa/run_mineru_local_api.sh`, was classified
+as old-project implementation during extraction and intentionally omitted. The
+final retained set contains 253 byte-exact copies and five deliberately adapted
+root configuration files.
 
 ## Retain classification
 
@@ -36,6 +41,8 @@ The skeleton intentionally omits:
   editor metadata, and operating-system junk;
 - Python, JavaScript, HTML/CSS application code and tests coupled to the old
   project;
+- the archived implementation wrapper
+  `archive/code/sciegqa/run_mineru_local_api.sh`;
 - datasets, dataset PDFs, Parquet files, embeddings, checkpoints, model
   weights, retrieval payloads, viewers, rendered pages, images, logs, and
   experiment outputs;
@@ -104,7 +111,7 @@ Authored notes retained separately:
 ## Final skeleton measurements
 
 - Working-tree files, excluding `.git`: 445
-- Working-tree bytes, excluding `.git`: 54142015
+- Working-tree bytes, excluding `.git`: 54142430
 - Largest retained file: `references/papers/mmlongbench-doc.pdf`, 20,927,209
   bytes
 - Complete repository size including local Git history: approximately 99 MiB
