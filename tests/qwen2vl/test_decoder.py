@@ -1,6 +1,19 @@
 import torch
 
-from docprune.qwen2vl.decoder import prefill_with_ctp
+from docprune.qwen2vl.decoder import _prefill_attention_mask, prefill_with_ctp
+
+
+def test_flash_prefill_uses_unpadded_varlen_mask_contract(tiny_qwen2vl) -> None:
+    tiny_qwen2vl.model.config._attn_implementation = "flash_attention_2"
+
+    assert _prefill_attention_mask(tiny_qwen2vl.model, 6, torch.float32, torch.device("cpu")) is None
+
+
+def test_eager_prefill_uses_explicit_causal_mask(tiny_qwen2vl) -> None:
+    mask = _prefill_attention_mask(tiny_qwen2vl.model, 3, torch.float32, torch.device("cpu"))
+
+    assert mask.shape == (1, 1, 3, 3)
+    assert mask[0, 0, 2].tolist() == [0.0, 0.0, 0.0]
 
 
 def test_ctp_reduces_only_deeper_layer_cache_lengths(tiny_qwen2vl) -> None:

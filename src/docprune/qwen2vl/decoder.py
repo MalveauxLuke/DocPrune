@@ -33,6 +33,20 @@ def _causal_mask(sequence_length: int, *, dtype: torch.dtype, device: torch.devi
     return mask.masked_fill(future, minimum).view(1, 1, sequence_length, sequence_length)
 
 
+def _prefill_attention_mask(
+    decoder_model: object,
+    sequence_length: int,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> torch.Tensor | None:
+    """Use FlashAttention's causal varlen path for an unpadded batch-one prefill."""
+
+    implementation = getattr(decoder_model.config, "_attn_implementation", "eager")
+    if implementation == "flash_attention_2":
+        return None
+    return _causal_mask(sequence_length, dtype=dtype, device=device)
+
+
 def _last_query_attention(
     decoder_layer: object,
     layer_input: torch.Tensor,
@@ -100,9 +114,12 @@ def prefill_with_ctp(
         layer_input = hidden
         position_embeddings = decoder_model.rotary_emb(layer_input, positions)
         causal_mask = _causal_mask(hidden.shape[1], dtype=hidden.dtype, device=hidden.device)
+        layer_attention_mask = _prefill_attention_mask(
+            decoder_model, hidden.shape[1], hidden.dtype, hidden.device
+        )
         layer_outputs = decoder_layer(
             hidden,
-            attention_mask=causal_mask,
+            attention_mask=layer_attention_mask,
             position_ids=positions,
             past_key_value=cache,
             output_attentions=False,
