@@ -19,6 +19,8 @@
 | [`docs/specifications/`](specifications/README.md) | Inherited nonbinding specifications |
 | [`docs/SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md) | Retain/remove record and verification data |
 | [`docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md`](superpowers/specs/2026-08-15-docprune-reproduction-design.md) | Binding DocPrune reproduction design |
+| [`docs/reproduction/DOCPRUNE.md`](reproduction/DOCPRUNE.md) | Implementation, commands, trace schema, and validation state |
+| [`docs/reproduction/RECONSTRUCTION_GAPS.md`](reproduction/RECONSTRUCTION_GAPS.md) | Paper omissions and explicit reconstruction choices |
 | [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
 
 ## SOL and reusable examples
@@ -28,6 +30,7 @@
 | [`docs/SOL_INSTRUCTIONS.md`](SOL_INSTRUCTIONS.md) | General SOL operating rules |
 | [`sol/README.md`](../sol/README.md) | Active SOL entry point |
 | [`examples/sbatch/`](../examples/sbatch/README.md) | Project-neutral SBATCH examples |
+| [`environments/docprune-sol.yml`](../environments/docprune-sol.yml) | Candidate pinned SOL environment; GPU validation pending |
 | [`sol/archive/source-repo/`](../sol/archive/source-repo/) | Historical source handoffs and wrappers |
 
 Historical files are reference material. Only the active authority table can

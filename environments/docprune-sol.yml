@@ -1,0 +1,39 @@
+name: docprune-sol
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch=2.4.1
+  - torchvision=0.19.1
+  - pytorch-cuda=12.1
+  - numpy=1.26.4
+  - pillow>=11,<13
+  - ninja
+  - packaging
+  - pip:
+      - accelerate==1.1.0
+      - bitsandbytes==0.43.1
+      - colpali-engine==0.3.1
+      - datasets>=3.0.0
+      - editdistance
+      - einops
+      - faiss-cpu
+      - gpustat
+      - jsonlines
+      - loguru
+      - pdf2image
+      - peft
+      - pytest==8.4.2
+      - python-dotenv
+      - qwen-vl-utils==0.0.8
+      - requests
+      - ruff==0.12.12
+      - safetensors
+      - sentencepiece
+      - timm
+      - tokenizers
+      - transformers==4.46.3
+      - word2number

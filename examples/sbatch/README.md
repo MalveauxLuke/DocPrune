@@ -13,6 +13,8 @@ command, outputs, and recovery authority.
 | [`01_gpu_smoke.sbatch`](01_gpu_smoke.sbatch) | Short one-GPU hardware/runtime smoke test | Distilled from `run_mmlongbench_ocr2_deep_parse_smoke.sbatch` |
 | [`02_single_gpu_run.sbatch`](02_single_gpu_run.sbatch) | Normal single-A100 research job shell | Distilled from `run_segment_evidence_stage1_baselines.sbatch` |
 | [`03_job_array.sbatch`](03_job_array.sbatch) | Bounded four-shard array pattern | Extends the retained safety, provenance, and scratch conventions |
+| [`10_docprune_smoke.sbatch`](10_docprune_smoke.sbatch) | Pinned environment, GPU imports, tests, and config smoke | Active DocPrune reproduction |
+| [`11_docprune_m3docvqa.sbatch`](11_docprune_m3docvqa.sbatch) | Gated top-1/top-2/top-4 evaluation runner | Active DocPrune reproduction |
 
 The named source wrappers are preserved below
 `../../sol/archive/source-repo/archive/jobs/`.
