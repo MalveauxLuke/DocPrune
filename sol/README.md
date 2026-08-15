@@ -1,6 +1,7 @@
 # SOL Workspace
 
-There is no active SOL job for this token-compression document-QA repository.
+The active task is a bounded DocPrune environment, GPU smoke, and processor
+contract probe. Benchmark execution is still inactive.
 
 Read in this order:
 
@@ -13,3 +14,5 @@ Reusable learning templates are under
 [`../examples/sbatch/`](../examples/sbatch/README.md). Historical handoffs,
 task specifications, and wrappers from the source repository are preserved
 under [`archive/source-repo/`](archive/source-repo/) and are not active.
+
+Active handoff: [`handoffs/DOCPRUNE_SOL_HANDOFF.md`](handoffs/DOCPRUNE_SOL_HANDOFF.md).

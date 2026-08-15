@@ -7,8 +7,9 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-Local implementation is active. This machine has no SOL access, so GPU model
-execution, benchmark runs, and performance claims remain inactive.
+Local implementation and documentation are complete. This machine has no SOL
+access, so GPU model execution, benchmark runs, and performance claims remain
+unvalidated.
 
 ## Binding design
 
@@ -16,5 +17,6 @@ execution, benchmark runs, and performance claims remain inactive.
 
 ## Next action
 
-Execute the approved local implementation plan with test-first development,
-then prepare a SOL handoff for GPU validation and paper-parity evaluation.
+Run the bounded SOL handoff for environment validation, structural GPU smoke,
+and the processor-contract report. Do not submit the benchmark runner until
+that report is reviewed and a verified integration factory is approved.
