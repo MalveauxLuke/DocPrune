@@ -1,19 +1,25 @@
 # DocPrune SOL Handoff
 
-## Authority and boundary
+## Authority and stopping boundary
 
-This handoff authorizes environment construction and the structural GPU smoke
-only. It does **not** authorize M3DocVQA benchmark submission yet. Stop after
-the processor-contract report because the paper does not specify the ColPali
-visual-token slice or exact resize-to-Qwen-grid mapping.
+Execute this handoff in order. It authorizes:
 
-Runtime artifact commit:
+1. synchronizing the GitHub repository;
+2. constructing the pinned environment;
+3. running the structural GPU smoke;
+4. generating one processor-contract JSON report.
+
+It does **not** authorize `11_docprune_m3docvqa.sbatch`, dataset-wide
+embedding, generation, evaluation, or paper-parity claims. Stop after returning
+the processor-contract report.
+
+Pinned runtime implementation:
 
 ```text
-ee88169b50622ea940f72444a155674514476398
+99dbece9f7cd09abdfe35c1ba6b61020218e6f1e
 ```
 
-M3DocRAG contract commit:
+Pinned M3DocRAG contract:
 
 ```text
 29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -21,120 +27,243 @@ M3DocRAG contract commit:
 
 No SOL or GPU command has been run by the preparing agent.
 
-## Required locations
+## Phase 0: pull the repository first
+
+Run these light Git operations on the login node. Keep `main` as the control
+checkout containing this handoff and use a detached worktree for runtime.
 
 ```bash
-export PROJECT_DIR="$HOME/query-relevant-document-token-pruning"
+set -euo pipefail
+
+export REPOSITORY_URL="https://github.com/MalveauxLuke/DocPrune.git"
+export CONTROL_DIR="$HOME/DocPrune"
+export PROJECT_DIR="$HOME/DocPrune-runtime-99dbece"
 export M3DOCRAG_DIR="$HOME/src/m3docrag-docprune"
 export ENV_DIR="/home/$USER/mamba-envs/docprune-sol"
-export RUN_ROOT="/scratch/$USER/docprune/handoff-ee88169"
-export EXPECTED_COMMIT="ee88169b50622ea940f72444a155674514476398"
+export RUN_ROOT="/scratch/$USER/docprune/handoff-99dbece"
+export EXPECTED_COMMIT="99dbece9f7cd09abdfe35c1ba6b61020218e6f1e"
+export M3DOCRAG_COMMIT="29e6ac2294d6b87075a1d45b8a8df175b214248a"
+
+if [[ -d "$CONTROL_DIR/.git" ]]; then
+  test -z "$(git -C "$CONTROL_DIR" status --porcelain)"
+  test "$(git -C "$CONTROL_DIR" remote get-url origin)" = "$REPOSITORY_URL"
+  git -C "$CONTROL_DIR" switch main
+  git -C "$CONTROL_DIR" pull --ff-only origin main
+elif [[ -e "$CONTROL_DIR" ]]; then
+  echo "CONTROL_DIR exists but is not a Git checkout: $CONTROL_DIR" >&2
+  exit 2
+else
+  git clone "$REPOSITORY_URL" "$CONTROL_DIR"
+  git -C "$CONTROL_DIR" switch main
+fi
+
+git -C "$CONTROL_DIR" fetch --prune origin
+test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = \
+  "$(git -C "$CONTROL_DIR" rev-parse origin/main)"
+
+if [[ -d "$PROJECT_DIR/.git" || -f "$PROJECT_DIR/.git" ]]; then
+  test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
+  test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+elif [[ -e "$PROJECT_DIR" ]]; then
+  echo "PROJECT_DIR exists but is not the expected worktree: $PROJECT_DIR" >&2
+  exit 2
+else
+  git -C "$CONTROL_DIR" worktree add --detach "$PROJECT_DIR" "$EXPECTED_COMMIT"
+fi
+
+mkdir -p "$HOME/src"
+if [[ -d "$M3DOCRAG_DIR/.git" ]]; then
+  test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
+  git -C "$M3DOCRAG_DIR" fetch --prune origin
+else
+  git clone https://github.com/bloomberg/m3docrag.git "$M3DOCRAG_DIR"
+fi
+git -C "$M3DOCRAG_DIR" checkout --detach "$M3DOCRAG_COMMIT"
+test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 ```
 
-The repository has no Git remote. Transfer the prepared Git bundle to
-`$HOME/incoming/docprune-ee88169.bundle`; do not reconstruct files manually.
+If any cleanliness, remote, fast-forward, or commit check fails, stop and
+report it. Do not reset, delete, overwrite, or repair an existing checkout.
 
-## Phase 0: checkout and environment
+## Phase 1: environment construction
 
-Login node operations may create directories, clone, checkout, and submit. Run
-all environment builds and imports inside a compute allocation.
-
-```bash
-mkdir -p "$HOME/incoming" "$HOME/src"
-git clone "$HOME/incoming/docprune-ee88169.bundle" "$PROJECT_DIR"
-git -C "$PROJECT_DIR" checkout --detach "$EXPECTED_COMMIT"
-test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
-
-git clone https://github.com/bloomberg/m3docrag.git "$M3DOCRAG_DIR"
-git -C "$M3DOCRAG_DIR" checkout --detach 29e6ac2294d6b87075a1d45b8a8df175b214248a
-```
-
-Request setup compute:
+Request a setup allocation before installing or importing packages:
 
 ```bash
 salloc -p lightwork -q public -t 04:00:00 -c 4 --mem=32G
 module load mamba/latest
-mamba env create -p "$ENV_DIR" -f "$PROJECT_DIR/environments/docprune-sol.yml"
+mkdir -p "$RUN_ROOT"
+
+if [[ -x "$ENV_DIR/bin/python" ]]; then
+  mamba env update -p "$ENV_DIR" \
+    -f "$PROJECT_DIR/environments/docprune-sol.yml" --prune
+else
+  mamba env create -p "$ENV_DIR" \
+    -f "$PROJECT_DIR/environments/docprune-sol.yml"
+fi
+
 export PATH="$ENV_DIR/bin:$PATH"
 export MAX_JOBS=4
-mkdir -p "$RUN_ROOT"
 python -m pip install flash-attn==2.5.8 --no-build-isolation
 python -m pip install -e "$PROJECT_DIR" --no-deps
 python -m pip install -e "$M3DOCRAG_DIR" --no-deps
-python -m pip freeze | sort > "$RUN_ROOT/environment-freeze.txt"
+python -m pip freeze | LC_ALL=C sort > "$RUN_ROOT/environment-freeze.txt"
 ```
 
-If FlashAttention 2.5.8 fails to build against the pinned stack, save the full
-log and stop. Do not opportunistically upgrade Transformers, PyTorch,
-FlashAttention, or ColPali.
+If FlashAttention 2.5.8 fails to build against the pinned stack, preserve the
+full log and stop. Do not upgrade or substitute Transformers, PyTorch,
+FlashAttention, ColPali, or Python.
 
-## Phase 1: structural GPU smoke
+## Phase 2: structural GPU smoke
 
-Submit from the exact checkout:
+Exit the interactive setup allocation, then submit:
 
 ```bash
 cd "$PROJECT_DIR"
-sbatch --export=ALL,PROJECT_DIR="$PROJECT_DIR",ENV_DIR="$ENV_DIR",EXPECTED_COMMIT="$EXPECTED_COMMIT",RUN_ROOT="$RUN_ROOT/smoke" \
+sbatch \
+  --export=ALL,PROJECT_DIR="$PROJECT_DIR",ENV_DIR="$ENV_DIR",EXPECTED_COMMIT="$EXPECTED_COMMIT",RUN_ROOT="$RUN_ROOT/smoke" \
   examples/sbatch/10_docprune_smoke.sbatch
 ```
 
-Pass gate:
+Pass conditions:
 
-- exact Git commit matches;
+- exact runtime commit matches;
 - CUDA, Transformers 4.46.3, and FlashAttention 2.5.8 import;
-- all tests and Ruff pass;
-- top-4 inspection emits the supplement Table B values;
-- worktree remains clean.
+- the full test suite and Ruff pass;
+- top-4 inspection contains the supplement Table B values;
+- the runtime worktree remains clean.
 
-On failure, preserve Slurm logs and `$RUN_ROOT/smoke`, record the command and
-traceback, and stop. Retry only a transient scheduler/preemption failure with
-the same inputs.
+On failure, preserve the Slurm logs and `$RUN_ROOT/smoke`, report the exact
+command and traceback, and stop. Retry only scheduler/preemption failures with
+identical inputs.
 
-## Phase 2: resource and processor-contract report
+## Phase 3: exact processor-contract probe
 
-The supplement names these resources but publishes no immutable revisions:
+This probe loads processors and configuration only. It does not load model
+weights, generate answers, or run an evaluation.
 
-- `Qwen/Qwen2-VL-7B-Instruct`
-- `vidore/colpali-v1`
-- `m3docrag/m3docvqa`
+The supplement identifies `Qwen/Qwen2-VL-7B-Instruct`,
+`vidore/colpali-v1`, and `m3docrag/m3docvqa` but gives no immutable revisions.
+Qwen was resolved on 2026-08-15 to the reconstruction pin below. Resolve the
+ColPali revision using the authenticated Hugging Face session; do not
+substitute a differently named ColPali repository.
 
-As a reconstruction pin, Qwen was resolved on 2026-08-15 to
-`eed13092ef92e448dd6875b2a00151bd3f7db0ac`. The two other exact resource URLs
-returned HTTP 401 without credentials on the preparing machine; their identity
-and revisions must be resolved from the user's authenticated Hugging Face
-session. Do not substitute `vidore/colpali`, `colpali-v1.1`, or `colpali-v1.2`
-without explicit owner approval.
+Set `M3DOCVQA_PAGE_ROOT` to the existing derived page-image directory on SOL.
+The probe deterministically selects the lexicographically first PNG, JPEG, or
+JPG. It never copies the image into the repository or report.
 
-From a GPU compute allocation, use one fixed M3DocVQA page and record:
+Run from a lightwork allocation:
 
-1. exact resource IDs and 40-character revisions;
-2. raw page size and Qwen's resized size;
-3. Qwen `pixel_values` shape and `image_grid_thw`;
-4. Qwen patch size, temporal patch size, and spatial merge size;
-5. ColPali input IDs, attention mask, output embedding shape, image token ID,
-   exact image-token indices, and inferred 2-D image grid;
-6. whether the selected visual-only ColPali slice has exactly grid-height times
-   grid-width tokens and preserves raster order;
-7. the short-answer prompt and generation configuration used by the pinned
-   M3DocRAG baseline.
+```bash
+set -euo pipefail
+export PATH="$ENV_DIR/bin:$PATH"
+export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"
+export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
+export TOKENIZERS_PARALLELISM=false
+export QWEN_MODEL="Qwen/Qwen2-VL-7B-Instruct"
+export QWEN_REVISION="eed13092ef92e448dd6875b2a00151bd3f7db0ac"
+export COLPALI_MODEL="vidore/colpali-v1"
+: "${M3DOCVQA_PAGE_ROOT:?set M3DOCVQA_PAGE_ROOT to the existing page-image directory}"
 
-Write the report to:
+export COLPALI_REVISION="$(python - <<'PY'
+from huggingface_hub import HfApi
+info = HfApi().model_info("vidore/colpali-v1", revision="main")
+if not info.sha or len(info.sha) != 40:
+    raise SystemExit("ColPali did not resolve to a 40-character revision")
+print(info.sha)
+PY
+)"
 
-```text
-/scratch/$USER/docprune/handoff-ee88169/processor-contract.json
+export PROBE_IMAGE="$(python - <<'PY'
+import os
+from pathlib import Path
+
+root = Path(os.environ["M3DOCVQA_PAGE_ROOT"])
+candidates = sorted(
+    path for path in root.rglob("*")
+    if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg"}
+)
+if not candidates:
+    raise SystemExit(f"no page images found under {root}")
+print(candidates[0])
+PY
+)"
+test -n "$PROBE_IMAGE"
+test -f "$PROBE_IMAGE"
+
+docprune-m3docvqa probe-processors \
+  --page-image "$PROBE_IMAGE" \
+  --qwen-model "$QWEN_MODEL" \
+  --qwen-revision "$QWEN_REVISION" \
+  --colpali-model "$COLPALI_MODEL" \
+  --colpali-revision "$COLPALI_REVISION" \
+  --output "$RUN_ROOT/processor-contract.json" \
+  | tee "$RUN_ROOT/processor-contract.stdout.json"
+
+python -m json.tool "$RUN_ROOT/processor-contract.json" >/dev/null
+sha256sum "$PROBE_IMAGE" > "$RUN_ROOT/probe-image.sha256"
 ```
 
-The report must contain shapes, IDs, revisions, and hashes—not model weights,
-page images, tokens, or credentials. Stop and return the report for review.
+The SHA-256 file records identity only; do not copy or commit the page image.
+If Hugging Face returns 401/403 or the exact ColPali ID does not resolve, save
+the error and stop without substituting another model.
 
-## Benchmark hold
+### Output schema
 
-`examples/sbatch/11_docprune_m3docvqa.sbatch` is a prepared but inactive runner.
-It requires an approved `module:function` factory implementing the verified
-processor contract and immutable `QA_REVISION`, `RETRIEVER_REVISION`, and
-`DATASET_REVISION`. It must not be submitted under this handoff.
+`$RUN_ROOT/processor-contract.json` has schema version 1:
 
-After the factory is reviewed, the next handoff must first require all-kept
-baseline answer equivalence, then a single pruned sample with a monotonic trace
-and no empty page, before top-1/top-2/top-4 runs. Numerical paper parity remains
-unclaimed until those runs complete on frozen inputs.
+```json
+{
+  "schema_version": 1,
+  "resources": {
+    "qwen": {"model": "...", "revision": "40 hex characters"},
+    "colpali": {"model": "...", "revision": "40 hex characters"}
+  },
+  "page": {"raw_size_wh": [0, 0]},
+  "qwen": {
+    "grid_thw": [1, 0, 0],
+    "merged_visual_token_count": 0,
+    "patch_size": 0,
+    "pixel_values_shape": [],
+    "resized_size_hw": [0, 0],
+    "spatial_merge_size": 2,
+    "temporal_patch_size": 0
+  },
+  "colpali": {
+    "attention_token_count": 0,
+    "candidate_visual_token_count": 0,
+    "image_token_id": 0,
+    "image_token_positions": [],
+    "inferred_visual_grid_hw": [0, 0],
+    "pixel_values_shape": [],
+    "sequence_length": 0
+  },
+  "mapping_checks": {
+    "colpali_visual_grid_inferred": false,
+    "qwen_merge_groups_valid": false,
+    "raster_order_verified": false
+  },
+  "unresolved": [
+    "ColPali raster order requires review against the pinned processor implementation."
+  ]
+}
+```
+
+The report intentionally excludes raw token IDs, image pixels, credentials,
+weights, and dataset content. `raster_order_verified` remains false until the
+pinned ColPali implementation is reviewed; this is expected and is why the
+benchmark remains on hold.
+
+## Return and stop
+
+Return:
+
+- control and runtime commit hashes;
+- environment freeze path;
+- smoke Slurm job ID and pass/fail result;
+- `processor-contract.json` and `probe-image.sha256` paths;
+- all errors or unresolved fields.
+
+Then stop. `examples/sbatch/11_docprune_m3docvqa.sbatch` remains prepared but
+unauthorized. A later approved handoff must add the reviewed integration
+factory and require all-kept baseline equivalence before any benchmark.

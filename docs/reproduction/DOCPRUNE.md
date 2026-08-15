@@ -94,6 +94,12 @@ docprune-m3docvqa summarize \
   --results /scratch/$USER/docprune/top4/results.jsonl
 ```
 
+Before an integration factory is approved, SOL must run the processor-only
+contract probe exactly as specified in
+[`../../sol/handoffs/DOCPRUNE_SOL_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_SOL_HANDOFF.md).
+The probe records token/grid shapes and immutable revisions without loading
+model weights or generating an answer.
+
 The evaluation factory is an explicit integration boundary. It must return
 `docprune.cli.EvaluationWorkload` and must pin the official M3DocRAG checkout,
 model revisions, dataset revision, question order, prompt, and generation
