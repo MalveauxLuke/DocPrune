@@ -25,6 +25,9 @@ model = [
   "qwen-vl-utils==0.0.8",
 ]
 
+[project.scripts]
+docprune-m3docvqa = "docprune.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["docprune*"]
