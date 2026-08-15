@@ -123,7 +123,7 @@ format:         Parquet
 ```
 
 The binding acquisition and audit procedure is
-[`../../sol/task_spec/boundingdocs_document_qa_acquisition_handoff.md`](../../sol/task_spec/boundingdocs_document_qa_acquisition_handoff.md).
+[`../../sol/archive/source-repo/task_spec/boundingdocs_document_qa_acquisition_handoff.md`](../../sol/archive/source-repo/task_spec/boundingdocs_document_qa_acquisition_handoff.md).
 
 ## What must exist before training starts
 

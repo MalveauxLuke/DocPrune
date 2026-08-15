@@ -28,14 +28,22 @@ but not by itself an open-corpus retrieval benchmark.
 The Python implementation is authoritative. This document explains it but does
 not replace it.
 
-- [DeepSeek inference and provenance](../../scripts/document_parsing/deepseek_runner.py)
-- [Grounded-output parsing](../../scripts/document_parsing/grounding.py)
-- [Canonical semantic-section and labeling logic](../../scripts/document_parsing/semantic_sections.py)
-- [Active segmentation and linking tests](../../tests/test_semantic_sections.py)
-- [Active MMLongBench viewer builder](../../scripts/mmlongbench/viewer/viewer_bundle.py)
-- [Archived 4K evidence builder](../../archive/code/sciegqa/sciegqa_evidence_poc.py)
-- [Archived dataset integration tests](../../archive/tests/sciegqa/test_sciegqa_evidence_poc.py)
-- [Archived parser viewer](../../archive/apps/sciegqa/sciegqa_parser_compare/)
+- DeepSeek inference and provenance: `scripts/document_parsing/deepseek_runner.py`
+  (implementation omitted from this skeleton)
+- Grounded-output parsing: `scripts/document_parsing/grounding.py`
+  (implementation omitted from this skeleton)
+- Canonical semantic-section and labeling logic:
+  `scripts/document_parsing/semantic_sections.py` (implementation omitted)
+- Active segmentation and linking tests: `tests/test_semantic_sections.py`
+  (tests omitted)
+- Active MMLongBench viewer builder:
+  `scripts/mmlongbench/viewer/viewer_bundle.py` (implementation omitted)
+- Archived 4K evidence builder: `archive/code/sciegqa/sciegqa_evidence_poc.py`
+  (implementation omitted)
+- Archived dataset integration tests:
+  `archive/tests/sciegqa/test_sciegqa_evidence_poc.py` (tests omitted)
+- Archived parser viewer: `archive/apps/sciegqa/sciegqa_parser_compare/`
+  (application omitted)
 
 `build_deepseek_semantic_sections` in `semantic_sections.py` is the active
 shared builder. The archived dataset integration test records the former 4K

@@ -85,10 +85,31 @@ Authored notes retained separately:
 
 - Historical source wrappers: 29
 - Distilled, project-neutral examples: four
+- Syntax-checked wrappers and examples: 33; all passed `bash -n`
 - Historical scripts are non-active provenance; the examples are learning
   templates and do not authorize cluster execution.
 
+## Link audit
+
+- Active entry points checked: seven
+- Missing active relative-link targets: zero
+- Markdown files checked across the full skeleton: 383
+- Apparent missing historical-link occurrences: 15
+- Three of the 15 are mathematical notation parsed as links by the lightweight
+  checker.
+- The remaining 12 point only to intentionally omitted implementation or test
+  files from byte-preserved historical documents.
+- No link to a retained target is missing from the active navigation surface.
+
 ## Final skeleton measurements
 
-Final file count, byte size, maximum retained file size, link-audit result, and
-post-copy source checksum comparison are recorded after extraction.
+- Working-tree files, excluding `.git`: 445
+- Working-tree bytes, excluding `.git`: 54142015
+- Largest retained file: `references/papers/mmlongbench-doc.pdf`, 20,927,209
+  bytes
+- Complete repository size including local Git history: approximately 99 MiB
+- Retained PDFs: seven, all source-checksum matched
+- SBATCH files: 33 total, all syntax-checked
+- Post-copy source retained-surface checksum comparison: exact match
+- Post-copy source Git status comparison: exact match to the recorded
+  pre-extraction state

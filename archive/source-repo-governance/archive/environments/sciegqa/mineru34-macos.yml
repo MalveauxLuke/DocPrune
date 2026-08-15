@@ -1,0 +1,9 @@
+name: mineru34
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - mineru[all]==3.4.0
+      - pytest

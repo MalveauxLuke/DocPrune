@@ -28,7 +28,7 @@ part of this first corpus.
 This decision supersedes the broader all-source BoundingDocs starter proposed
 later in this note. The earlier discussion remains below as decision history
 and technical background. The prepared SOL acquisition handoff is
-[`../../../sol/task_spec/boundingdocs_document_qa_acquisition_handoff.md`](../../../sol/task_spec/boundingdocs_document_qa_acquisition_handoff.md).
+[`../../../sol/archive/source-repo/task_spec/boundingdocs_document_qa_acquisition_handoff.md`](../../../sol/archive/source-repo/task_spec/boundingdocs_document_qa_acquisition_handoff.md).
 
 ## Why this file exists
 
