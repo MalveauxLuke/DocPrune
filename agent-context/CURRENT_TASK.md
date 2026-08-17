@@ -14,9 +14,11 @@ smoke job `61567743` stopped during test collection on the older `99dbece`
 runtime because it imported Python 3.11-only `tomllib`; the corrected runtime
 subsequently passed 69 non-GPU tests and Ruff under Python 3.10.
 
-The corrected runtime has not yet passed the structural GPU smoke. M3DocVQA
-acquisition, the processor-contract probe, benchmark runs, and performance
-claims remain unvalidated.
+The corrected runtime passed structural GPU smoke job `61656249` with exit code
+`0:0`: pinned imports succeeded, all 69 tests passed, Ruff passed, and the
+configuration inspection completed. M3DocVQA acquisition and the
+processor-contract probe remain unvalidated. Benchmark runs and performance
+claims remain unauthorized.
 
 ## Binding design
 
@@ -24,8 +26,6 @@ claims remain unvalidated.
 
 ## Next action
 
-Execute only the active smoke-recovery handoff in
-[`../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
-Stop and review its report. The separate M3DocVQA acquisition/processor-probe
-handoff remains staged and inactive until that smoke passes. Do not submit the
-benchmark runner.
+Execute the active M3DocVQA acquisition/processor-probe handoff in
+[`../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md)
+through its return-and-stop boundary. Do not submit the benchmark runner.

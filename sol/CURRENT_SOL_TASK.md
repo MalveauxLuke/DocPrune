@@ -2,19 +2,18 @@
 
 ## State
 
-The original environment was constructed, but structural smoke job `61567743`
-stopped on the `99dbece` runtime's Python 3.10 `tomllib` incompatibility. The
-correction is committed and non-GPU verified at `64ea70c`.
+The corrected runtime at `64ea70c` passed structural GPU smoke job `61656249`
+with exit code `0:0`: pinned imports succeeded, all 69 tests passed, Ruff
+passed, the Table B inspection completed, and the clean-source checks passed.
+The validated gate is recorded at
+`/scratch/lmalveau/docprune/handoff-64ea70c/smoke-pass.json`.
 
-Only the bounded smoke recovery is active under
-[`handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
-The complete dev acquisition and processor probe are staged in
+The complete dev acquisition and processor probe are now active under
 [`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md)
-but are not active.
+and are bounded by that handoff. Indexing, generation, evaluation, training,
+and benchmarking remain unauthorized.
 
 ## Next action
 
-Execute the smoke-recovery handoff and stop with its report. Do not acquire the
-dataset or run the processor probe unless a reviewed passing smoke is recorded
-and this file is committed again to activate the staged handoff. The benchmark
-SBATCH file remains prepared but unauthorized.
+Execute the acquisition and processor-probe handoff through its return-and-stop
+boundary. The benchmark SBATCH file remains prepared but unauthorized.
