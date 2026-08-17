@@ -1,5 +1,10 @@
 # DocPrune SOL Handoff
 
+> **Superseded:** This handoff stopped at structural smoke job `61567743` on
+> the Python 3.10 `tomllib` incompatibility in runtime `99dbece`. It is retained
+> as historical execution evidence and must not be resumed. The active authority
+> is `DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`.
+
 ## Authority and stopping boundary
 
 Execute this handoff in order. It authorizes:
@@ -25,7 +30,9 @@ Pinned M3DocRAG contract:
 29e6ac2294d6b87075a1d45b8a8df175b214248a
 ```
 
-No SOL or GPU command has been run by the preparing agent.
+At the time this original handoff was prepared, no SOL or GPU command had been
+run. Its later execution stopped at the failure recorded in the superseding
+notice above.
 
 ## Phase 0: pull the repository first
 

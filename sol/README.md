@@ -1,7 +1,8 @@
 # SOL Workspace
 
-The active task is a bounded DocPrune environment, GPU smoke, and processor
-contract probe. Benchmark execution is still inactive.
+The active task is a bounded corrected-runtime GPU smoke recovery. M3DocVQA
+acquisition and the processor contract are staged behind a reviewed smoke pass.
+Benchmark execution is inactive.
 
 Read in this order:
 
@@ -15,4 +16,8 @@ Reusable learning templates are under
 task specifications, and wrappers from the source repository are preserved
 under [`archive/source-repo/`](archive/source-repo/) and are not active.
 
-Active handoff: [`handoffs/DOCPRUNE_SOL_HANDOFF.md`](handoffs/DOCPRUNE_SOL_HANDOFF.md).
+Active handoff:
+[`handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
+
+Staged, inactive follow-up:
+[`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md).

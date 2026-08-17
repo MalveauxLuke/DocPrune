@@ -7,9 +7,16 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-Local implementation and documentation are complete. This machine has no SOL
-access, so GPU model execution, benchmark runs, and performance claims remain
-unvalidated.
+Local implementation is complete through the Python 3.10 compatibility fix at
+`64ea70c66a8f9e3dbce804d1fde265a4a2b8b09d`. The pinned SOL environment and a
+checksum-recorded FlashAttention 2.5.8 wheel were built successfully. Structural
+smoke job `61567743` stopped during test collection on the older `99dbece`
+runtime because it imported Python 3.11-only `tomllib`; the corrected runtime
+subsequently passed 69 non-GPU tests and Ruff under Python 3.10.
+
+The corrected runtime has not yet passed the structural GPU smoke. M3DocVQA
+acquisition, the processor-contract probe, benchmark runs, and performance
+claims remain unvalidated.
 
 ## Binding design
 
@@ -17,6 +24,8 @@ unvalidated.
 
 ## Next action
 
-Run the bounded SOL handoff for environment validation, structural GPU smoke,
-and the processor-contract report. Do not submit the benchmark runner until
-that report is reviewed and a verified integration factory is approved.
+Execute only the active smoke-recovery handoff in
+[`../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
+Stop and review its report. The separate M3DocVQA acquisition/processor-probe
+handoff remains staged and inactive until that smoke passes. Do not submit the
+benchmark runner.

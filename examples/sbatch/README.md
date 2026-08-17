@@ -15,6 +15,7 @@ command, outputs, and recovery authority.
 | [`03_job_array.sbatch`](03_job_array.sbatch) | Bounded four-shard array pattern | Extends the retained safety, provenance, and scratch conventions |
 | [`10_docprune_smoke.sbatch`](10_docprune_smoke.sbatch) | Pinned environment, GPU imports, tests, and config smoke | Active DocPrune reproduction |
 | [`11_docprune_m3docvqa.sbatch`](11_docprune_m3docvqa.sbatch) | Gated top-1/top-2/top-4 evaluation runner | Active DocPrune reproduction |
+| [`20_m3docvqa_download_array.sbatch`](20_m3docvqa_download_array.sbatch) | Pinned M3DocVQA dev PDF acquisition shards | Staged acquisition/probe handoff |
 
 The named source wrappers are preserved below
 `../../sol/archive/source-repo/archive/jobs/`.

@@ -94,9 +94,13 @@ docprune-m3docvqa summarize \
   --results /scratch/$USER/docprune/top4/results.jsonl
 ```
 
-Before an integration factory is approved, SOL must run the processor-only
-contract probe exactly as specified in
-[`../../sol/handoffs/DOCPRUNE_SOL_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_SOL_HANDOFF.md).
+Before an integration factory is approved, SOL must first pass the corrected
+runtime smoke in
+[`../../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
+After that result is reviewed and the staged handoff is explicitly activated,
+SOL may acquire the complete dev corpus and run the processor-only contract
+probe in
+[`../../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md).
 The probe records token/grid shapes and immutable revisions without loading
 model weights or generating an answer.
 

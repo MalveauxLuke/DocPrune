@@ -19,6 +19,8 @@
 | [`docs/specifications/`](specifications/README.md) | Inherited nonbinding specifications |
 | [`docs/SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md) | Retain/remove record and verification data |
 | [`docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md`](superpowers/specs/2026-08-15-docprune-reproduction-design.md) | Binding DocPrune reproduction design |
+| [`docs/superpowers/specs/2026-08-17-docprune-sol-recovery-design.md`](superpowers/specs/2026-08-17-docprune-sol-recovery-design.md) | Approved staged SOL recovery design |
+| [`docs/superpowers/plans/2026-08-17-docprune-sol-recovery.md`](superpowers/plans/2026-08-17-docprune-sol-recovery.md) | SOL recovery implementation plan |
 | [`docs/reproduction/DOCPRUNE.md`](reproduction/DOCPRUNE.md) | Implementation, commands, trace schema, and validation state |
 | [`docs/reproduction/RECONSTRUCTION_GAPS.md`](reproduction/RECONSTRUCTION_GAPS.md) | Paper omissions and explicit reconstruction choices |
 | [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
@@ -29,6 +31,8 @@
 |---|---|
 | [`docs/SOL_INSTRUCTIONS.md`](SOL_INSTRUCTIONS.md) | General SOL operating rules |
 | [`sol/README.md`](../sol/README.md) | Active SOL entry point |
+| [`sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md) | Active corrected-runtime smoke recovery |
+| [`sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md) | Staged complete-dev acquisition and processor probe |
 | [`examples/sbatch/`](../examples/sbatch/README.md) | Project-neutral SBATCH examples |
 | [`environments/docprune-sol.yml`](../environments/docprune-sol.yml) | Candidate pinned SOL environment; GPU validation pending |
 | [`sol/archive/source-repo/`](../sol/archive/source-repo/) | Historical source handoffs and wrappers |
