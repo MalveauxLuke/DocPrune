@@ -71,7 +71,7 @@ export PIP_CACHE_DIR="$DATA_ROOT/cache/pip"
 export XDG_CACHE_HOME="$DATA_ROOT/cache/xdg"
 
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 01:00:00 -c 2 --mem=8G \
+srun --export=ALL -p lightwork -q public -t 01:00:00 -c 2 --mem=8G \
   /bin/bash -lc '
 set -euo pipefail
 module load mamba/latest
@@ -112,7 +112,7 @@ Run metadata download, mapping, and split construction in a compute step:
 
 ```bash
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 01:00:00 -c 2 --mem=8G \
+srun --export=ALL -p lightwork -q public -t 01:00:00 -c 2 --mem=8G \
   /bin/bash -lc '
 set -euo pipefail
 export PATH="$ACQ_ENV_DIR/bin:$PATH"
@@ -196,7 +196,7 @@ validator that checks the expected ID set and every PDF structure:
 ```bash
 export ATTEMPT="attempt-1"
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 02:00:00 -c 4 --mem=16G \
+srun --export=ALL -p lightwork -q public -t 02:00:00 -c 4 --mem=16G \
   /bin/bash -lc '
 set -euo pipefail
 export PATH="$ACQ_ENV_DIR/bin:$PATH"
@@ -329,7 +329,7 @@ export PROBE_ROOT="$DATA_ROOT/probe"
 mkdir -p "$PROBE_ROOT"
 
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 00:15:00 -c 2 --mem=8G \
+srun --export=ALL -p lightwork -q public -t 00:15:00 -c 2 --mem=8G \
   /bin/bash -lc '
 set -euo pipefail
 export PATH="$ACQ_ENV_DIR/bin:$PATH"
@@ -400,7 +400,7 @@ PY
 )"
 
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 01:00:00 -c 4 --mem=32G \
+srun --export=ALL -p lightwork -q public -t 01:00:00 -c 4 --mem=32G \
   /bin/bash -lc '
 set -euo pipefail
 export PATH="$ENV_DIR/bin:$PATH"

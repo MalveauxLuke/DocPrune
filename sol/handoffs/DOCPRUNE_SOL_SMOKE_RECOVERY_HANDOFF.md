@@ -121,7 +121,7 @@ export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
 mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME" "$TORCH_HOME" "$HUGGINGFACE_HUB_CACHE"
 
 env -u SLURM_JOB_ID -u SLURM_JOBID -u SLURM_STEP_ID -u SLURM_STEPID \
-srun -p lightwork -q public -t 01:00:00 -c 4 --mem=32G \
+srun --export=ALL -p lightwork -q public -t 01:00:00 -c 4 --mem=32G \
   /bin/bash -lc '
 set -euo pipefail
 module load mamba/latest
