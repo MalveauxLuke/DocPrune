@@ -124,9 +124,27 @@ export PYTHONNOUSERSITE=1
 export PYTHONPATH="$M3DOCRAG_DIR/m3docvqa/src"
 cd "$DATA_ROOT"
 
-python "$M3DOCRAG_DIR/m3docvqa/main.py" download_mmqa \
-  --output_dir="$DATA_ROOT/multimodalqa" \
-  2>&1 | tee "$DATA_ROOT/setup/download-mmqa.log"
+mkdir -p "$DATA_ROOT/multimodalqa"
+
+# Download the five official source archives resumably.  Keep the .gz files:
+# CorpusIdentity validates them against setup/mmqa-archives.sha256.
+{
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_dev.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_dev.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_images.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_images.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_tables.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_tables.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_texts.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_texts.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_train.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_train.jsonl.gz"
+} 2>&1 | tee "$DATA_ROOT/setup/download-mmqa.log"
 
 sha256sum \
   "$DATA_ROOT/multimodalqa/MMQA_dev.jsonl.gz" \
@@ -135,6 +153,28 @@ sha256sum \
   "$DATA_ROOT/multimodalqa/MMQA_texts.jsonl.gz" \
   "$DATA_ROOT/multimodalqa/MMQA_train.jsonl.gz" \
   > "$DATA_ROOT/setup/mmqa-archives.sha256"
+
+# Use the pinned M3DocRAG decompressor directly.  Unlike download_mmqa, this
+# leaves the checked .gz archives intact after materializing their JSONL files.
+python - <<'PY' 2>&1 | tee "$DATA_ROOT/setup/decompress-mmqa.log"
+import os
+from pathlib import Path
+
+from m3docvqa.mmqa_downloader import decompress_gz_file
+
+root = Path(os.environ["DATA_ROOT"]) / "multimodalqa"
+for archive_name in (
+    "MMQA_dev.jsonl.gz",
+    "MMQA_images.jsonl.gz",
+    "MMQA_tables.jsonl.gz",
+    "MMQA_texts.jsonl.gz",
+    "MMQA_train.jsonl.gz",
+):
+    archive_path = root / archive_name
+    if not archive_path.is_file():
+        raise FileNotFoundError(archive_path)
+    decompress_gz_file(archive_path, archive_path.with_suffix(""))
+PY
 
 python "$M3DOCRAG_DIR/m3docvqa/main.py" generate_wiki_mapping \
   --text="$DATA_ROOT/multimodalqa/MMQA_texts.jsonl" \

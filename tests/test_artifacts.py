@@ -49,6 +49,7 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
         processor_contract_path=contract,
         processor_contract_sha256=sha256_file(contract),
         pruning_config={"attention_threshold": 0.075},
+        artifact_root=root,
         embeddings_path=embeddings,
         embedding_metadata_path=metadata,
         embedding_shape=(12, 128),
@@ -59,9 +60,7 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
 
 
 def test_canonical_json_hash_is_order_independent() -> None:
-    assert canonical_json_sha256({"b": [2], "a": 1}) == canonical_json_sha256(
-        {"a": 1, "b": [2]}
-    )
+    assert canonical_json_sha256({"b": [2], "a": 1}) == canonical_json_sha256({"a": 1, "b": [2]})
 
 
 def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: Path) -> None:
@@ -69,6 +68,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
 
     payload = manifest.to_dict()
 
+    assert payload["schema_version"] == 2
     assert payload["mode"] == "docprune"
     assert payload["corpus_integrity_sha256"] == "a" * 64
     assert payload["source_order_sha256"] == "b" * 64
@@ -79,6 +79,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
     }
     assert payload["processor_contract_sha256"] == sha256_file(manifest.processor_contract_path)
     assert payload["pruning_config"] == {"attention_threshold": 0.075}
+    assert payload["artifact_root"] == str(manifest.artifact_root)
     assert payload["embeddings"] == {"shape": [12, 128], "dtype": "float32"}
     assert payload["index_sha256"] == sha256_file(manifest.index_path)
     assert payload["runtime_commit"] == "c" * 40
@@ -107,6 +108,19 @@ def test_manifest_validates_contract_and_embedding_metadata_sidecars(
         manifest.validate_files()
 
 
+def test_manifest_validation_rejects_artifact_symlink_escape(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path)
+    external_root = tmp_path / "shared"
+    external_root.mkdir()
+    external_embedding = external_root / manifest.embeddings_path.name
+    external_embedding.write_bytes(b"outside artifact root")
+    manifest.embeddings_path.unlink()
+    manifest.embeddings_path.symlink_to(external_embedding)
+
+    with pytest.raises(ValueError, match="artifact root"):
+        manifest.validate_files()
+
+
 def test_index_manifest_rejects_changed_index_or_invalid_embedding_contract(tmp_path: Path) -> None:
     manifest = make_manifest(tmp_path)
     manifest.index_path.write_bytes(b"changed")
@@ -115,7 +129,11 @@ def test_index_manifest_rejects_changed_index_or_invalid_embedding_contract(tmp_
 
     with pytest.raises(ValueError, match="width 128"):
         IndexManifest(
-            **{**manifest.__dict__, "embedding_shape": (12, 127), "index_sha256": hashlib.sha256(b"changed").hexdigest()}
+            **{
+                **manifest.__dict__,
+                "embedding_shape": (12, 127),
+                "index_sha256": hashlib.sha256(b"changed").hexdigest(),
+            }
         )
 
 
@@ -142,7 +160,7 @@ def test_manifest_pair_rejects_mode_path_mismatch(tmp_path: Path) -> None:
     docprune = make_manifest(tmp_path, mode="docprune")
     object.__setattr__(docprune, "index_path", tmp_path / "all-kept" / "other.faiss")
 
-    with pytest.raises(ValueError, match="mode/path mismatch"):
+    with pytest.raises(ValueError, match="artifact root"):
         validate_index_manifest_pair(all_kept, docprune)
 
 
@@ -154,5 +172,19 @@ def test_manifest_rejects_cross_mode_artifact_paths_at_construction(
     arguments = dict(manifest.__dict__)
     arguments[path_name] = tmp_path / "all-kept" / getattr(manifest, path_name).name
 
-    with pytest.raises(ValueError, match="mode/path mismatch"):
+    with pytest.raises(ValueError, match="artifact root"):
+        IndexManifest(**arguments)
+
+
+@pytest.mark.parametrize("path_name", ["embeddings_path", "embedding_metadata_path", "index_path"])
+def test_manifest_rejects_traversal_outside_mode_artifact_root(
+    tmp_path: Path, path_name: str
+) -> None:
+    manifest = make_manifest(tmp_path, mode="docprune")
+    arguments = dict(manifest.__dict__)
+    arguments[path_name] = (
+        tmp_path / "docprune" / ".." / "shared" / getattr(manifest, path_name).name
+    )
+
+    with pytest.raises(ValueError, match="artifact root"):
         IndexManifest(**arguments)
