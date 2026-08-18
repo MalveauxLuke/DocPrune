@@ -80,6 +80,10 @@ class IndexManifest:
         object.__setattr__(self, "processor_contract_path", Path(self.processor_contract_path))
         object.__setattr__(self, "index_path", Path(self.index_path))
         object.__setattr__(self, "pruning_config", MappingProxyType(dict(self.pruning_config)))
+        _require_mode_paths(
+            self.mode,
+            (self.embeddings_path, self.embedding_metadata_path, self.index_path),
+        )
         if len(self.embedding_shape) != 2 or self.embedding_shape[0] < 1:
             raise ValueError("embedding_shape must contain positive token and width dimensions")
         if self.embedding_shape[1] != 128:
@@ -161,6 +165,13 @@ def validate_index_manifest_pair(first: IndexManifest, second: IndexManifest) ->
     if first.index_path.resolve() == second.index_path.resolve():
         raise ValueError("manifest pair must use distinct index paths")
     for manifest in (first, second):
-        paths = (manifest.embeddings_path, manifest.embedding_metadata_path, manifest.index_path)
-        if any(manifest.mode not in path.parts for path in paths):
-            raise ValueError(f"manifest mode/path mismatch for {manifest.mode}")
+        _require_mode_paths(
+            manifest.mode,
+            (manifest.embeddings_path, manifest.embedding_metadata_path, manifest.index_path),
+        )
+
+
+def _require_mode_paths(mode: str, paths: tuple[Path, ...]) -> None:
+    other = "docprune" if mode == "all-kept" else "all-kept"
+    if any(mode not in path.parts or other in path.parts for path in paths):
+        raise ValueError(f"manifest mode/path mismatch for {mode}")

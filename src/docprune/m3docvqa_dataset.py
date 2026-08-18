@@ -21,6 +21,8 @@ class M3DocVQADevDataset:
     def __init__(self, corpus: CorpusIdentity, *, expected_question_count: int = 2441) -> None:
         if expected_question_count < 1:
             raise ValueError("expected_question_count must be positive")
+        if not corpus.is_fixture and expected_question_count != 2441:
+            raise ValueError("production M3DocVQA datasets must use expected_question_count=2441")
         self.corpus = corpus
         self.expected_question_count = expected_question_count
         self.corpus.validate()

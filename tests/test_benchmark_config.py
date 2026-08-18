@@ -28,6 +28,21 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def write_archive_fixture(directory: Path) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for name in (
+        "MMQA_dev.jsonl.gz",
+        "MMQA_images.jsonl.gz",
+        "MMQA_tables.jsonl.gz",
+        "MMQA_texts.jsonl.gz",
+        "MMQA_train.jsonl.gz",
+    ):
+        path = directory / name
+        path.write_bytes(name.encode("utf-8"))
+        hashes[name] = sha256(path)
+    return hashes
+
+
 def make_corpus(root: Path) -> CorpusIdentity:
     questions = root / "multimodalqa" / "MMQA_dev.jsonl"
     questions.parent.mkdir(parents=True)
@@ -56,7 +71,12 @@ def make_corpus(root: Path) -> CorpusIdentity:
     )
     archives = root / "setup" / "mmqa-archives.sha256"
     archives.parent.mkdir()
-    archives.write_text("fixture archive checksums\n")
+    archive_hashes = write_archive_fixture(questions.parent)
+    archives.write_text(
+        "".join(
+            f"{digest}  {questions.parent / name}\n" for name, digest in archive_hashes.items()
+        )
+    )
     return CorpusIdentity.fixture(
         root=root,
         questions_path=questions,
@@ -66,6 +86,7 @@ def make_corpus(root: Path) -> CorpusIdentity:
         archive_checksum_manifest_path=archives,
         integrity_sha256=sha256(integrity),
         archive_checksum_manifest_sha256=sha256(archives),
+        archive_hashes=archive_hashes,
         questions_sha256=sha256(questions),
         document_ids_sha256=sha256(doc_ids),
         expected_question_count=1,
@@ -120,6 +141,45 @@ def test_corpus_identity_binds_every_acquisition_identity(
     getattr(corpus, path_name).write_text("changed")
 
     with pytest.raises(ValueError, match=message):
+        corpus.validate()
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "renamed", "content"])
+def test_corpus_identity_requires_exact_archive_manifest_and_preserved_archives(
+    tmp_path: Path, mutation: str
+) -> None:
+    corpus = make_corpus(tmp_path / "corpus")
+    if mutation == "missing":
+        lines = corpus.archive_checksum_manifest_path.read_text().splitlines()
+        corpus.archive_checksum_manifest_path.write_text("\n".join(lines[:-1]) + "\n")
+        object.__setattr__(
+            corpus,
+            "archive_checksum_manifest_sha256",
+            sha256(corpus.archive_checksum_manifest_path),
+        )
+    elif mutation == "extra":
+        with corpus.archive_checksum_manifest_path.open("a") as stream:
+            stream.write("a" * 64 + "  " + str(corpus.questions_path.parent / "extra.jsonl.gz") + "\n")
+        object.__setattr__(
+            corpus,
+            "archive_checksum_manifest_sha256",
+            sha256(corpus.archive_checksum_manifest_path),
+        )
+    elif mutation == "renamed":
+        corpus.archive_checksum_manifest_path.write_text(
+            corpus.archive_checksum_manifest_path.read_text().replace(
+                "MMQA_dev.jsonl.gz", "renamed.jsonl.gz", 1
+            )
+        )
+        object.__setattr__(
+            corpus,
+            "archive_checksum_manifest_sha256",
+            sha256(corpus.archive_checksum_manifest_path),
+        )
+    else:
+        (corpus.questions_path.parent / "MMQA_dev.jsonl.gz").write_bytes(b"changed")
+
+    with pytest.raises(ValueError, match="archive"):
         corpus.validate()
 
 

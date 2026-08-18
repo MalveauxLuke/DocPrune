@@ -128,6 +128,14 @@ python "$M3DOCRAG_DIR/m3docvqa/main.py" download_mmqa \
   --output_dir="$DATA_ROOT/multimodalqa" \
   2>&1 | tee "$DATA_ROOT/setup/download-mmqa.log"
 
+sha256sum \
+  "$DATA_ROOT/multimodalqa/MMQA_dev.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_images.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_tables.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_texts.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_train.jsonl.gz" \
+  > "$DATA_ROOT/setup/mmqa-archives.sha256"
+
 python "$M3DOCRAG_DIR/m3docvqa/main.py" generate_wiki_mapping \
   --text="$DATA_ROOT/multimodalqa/MMQA_texts.jsonl" \
   --image="$DATA_ROOT/multimodalqa/MMQA_images.jsonl" \

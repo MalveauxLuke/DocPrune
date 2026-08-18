@@ -144,3 +144,15 @@ def test_manifest_pair_rejects_mode_path_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="mode/path mismatch"):
         validate_index_manifest_pair(all_kept, docprune)
+
+
+@pytest.mark.parametrize("path_name", ["embeddings_path", "embedding_metadata_path", "index_path"])
+def test_manifest_rejects_cross_mode_artifact_paths_at_construction(
+    tmp_path: Path, path_name: str
+) -> None:
+    manifest = make_manifest(tmp_path, mode="docprune")
+    arguments = dict(manifest.__dict__)
+    arguments[path_name] = tmp_path / "all-kept" / getattr(manifest, path_name).name
+
+    with pytest.raises(ValueError, match="mode/path mismatch"):
+        IndexManifest(**arguments)

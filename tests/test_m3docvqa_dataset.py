@@ -129,3 +129,11 @@ def test_source_order_digest_binds_document_order_and_pdf_contents(tmp_path: Pat
 def test_dataset_requires_full_dev_question_count_without_fixture_override(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="2441"):
         M3DocVQADevDataset(make_dataset_root(tmp_path))
+
+
+def test_production_dataset_rejects_nonstandard_expected_question_count(tmp_path: Path) -> None:
+    corpus = make_dataset_root(tmp_path)
+    object.__setattr__(corpus, "is_fixture", False)
+
+    with pytest.raises(ValueError, match="production"):
+        M3DocVQADevDataset(corpus, expected_question_count=1)

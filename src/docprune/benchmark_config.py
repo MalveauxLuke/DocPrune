@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from string import Template
+from types import MappingProxyType
 
 from docprune.processor_probe import (
     COLPALI_BACKBONE_MODEL,
@@ -29,6 +31,13 @@ FINAL_INTEGRITY_SHA256 = "e2581c9766157e800ba195d37905c0c25611cf4057d03e2fa32fc2
 MMQA_ARCHIVES_SHA256 = "8ff8f1dca284a16d9a0a726ea5f0dac58f7e05a2aafaa7c2d88a56dfecd46f6d"
 MMQA_DEV_SHA256 = "31192a64bfc4ffc23123c1e6657a5b57dbb9515e9a37ecbbc8578cf894dd0e3b"
 DEV_DOC_IDS_SHA256 = "2d9e09689b2d1e867c566e0e893e9b53955487202921bdd8664aaa6e4037e429"
+MMQA_ARCHIVE_HASHES = {
+    "MMQA_dev.jsonl.gz": "2e348ca574b2dc368e84671709689070f943a59f2e08e6b6e374705deb712d31",
+    "MMQA_images.jsonl.gz": "691227e1758140c51a5617a904b5e363cd44b2582a0c0e9f9fe9153d4e62d5e7",
+    "MMQA_tables.jsonl.gz": "8d082d254fd0bfa19bca7e2da20369c15ccb25867db3edfe46b33d59e8dbf7b1",
+    "MMQA_texts.jsonl.gz": "cae3808ccc6c258e91131a3ca3dce43e629936e1496c97a288c4abb04a6ef905",
+    "MMQA_train.jsonl.gz": "2d7c8f6f1659df69f8dcdb79e4701c48e53e8674ab8573244b3ffe2e4b1da565",
+}
 
 __all__ = [
     "COLPALI_BACKBONE_MODEL",
@@ -42,6 +51,7 @@ __all__ = [
     "DEV_DOC_IDS_SHA256",
     "FINAL_INTEGRITY_SHA256",
     "MMQA_ARCHIVES_SHA256",
+    "MMQA_ARCHIVE_HASHES",
     "MMQA_DEV_SHA256",
     "QWEN_MODEL",
     "QWEN_REVISION",
@@ -91,6 +101,7 @@ class CorpusIdentity:
     expected_pdf_count: int = 3366
     expected_page_count: int = 44638
     is_fixture: bool = False
+    archive_hashes: Mapping[str, str] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", Path(self.root))
@@ -106,6 +117,11 @@ class CorpusIdentity:
             "document_ids_sha256",
         ):
             object.__setattr__(self, name, _require_sha256(getattr(self, name), name=name))
+        archive_hashes = {
+            str(name): _require_sha256(digest, name=f"archive hash for {name}")
+            for name, digest in self.archive_hashes.items()
+        }
+        object.__setattr__(self, "archive_hashes", MappingProxyType(archive_hashes))
         if self.expected_question_count < 1 or self.expected_pdf_count < 1 or self.expected_page_count < 1:
             raise ValueError("expected corpus counts must be positive")
         if not self.is_fixture and (
@@ -116,6 +132,7 @@ class CorpusIdentity:
             or self.expected_question_count != 2441
             or self.expected_pdf_count != 3366
             or self.expected_page_count != 44638
+            or dict(self.archive_hashes) != MMQA_ARCHIVE_HASHES
         ):
             raise ValueError("production corpus identity must use the pinned M3DocVQA dev values")
 
@@ -133,6 +150,7 @@ class CorpusIdentity:
             archive_checksum_manifest_sha256=MMQA_ARCHIVES_SHA256,
             questions_sha256=MMQA_DEV_SHA256,
             document_ids_sha256=DEV_DOC_IDS_SHA256,
+            archive_hashes=MMQA_ARCHIVE_HASHES,
         )
 
     @classmethod
@@ -162,6 +180,7 @@ class CorpusIdentity:
             actual = sha256_file(path)
             if actual != expected:
                 raise ValueError(f"corpus {label} SHA-256 mismatch: expected {expected}, got {actual}")
+        self._validate_archives()
         try:
             report = json.loads(self.integrity_report_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
@@ -184,6 +203,36 @@ class CorpusIdentity:
         for name, value in expected.items():
             if report.get(name) != value:
                 raise ValueError(f"corpus integrity report has invalid {name!r}")
+
+    def _validate_archives(self) -> None:
+        if not self.archive_hashes:
+            return
+        archive_root = self.questions_path.parent
+        observed: dict[str, tuple[str, Path]] = {}
+        for raw_line in self.archive_checksum_manifest_path.read_text(encoding="utf-8").splitlines():
+            if not raw_line.strip():
+                continue
+            parts = raw_line.split(maxsplit=1)
+            if len(parts) != 2:
+                raise ValueError("archive checksum manifest has an invalid entry")
+            digest, raw_path = parts
+            path = Path(raw_path)
+            if path.name in observed:
+                raise ValueError("archive checksum manifest has duplicate entries")
+            observed[path.name] = (digest.lower(), path)
+        if set(observed) != set(self.archive_hashes):
+            raise ValueError("archive checksum manifest entries do not match the pinned archive set")
+        actual_paths = {path.name for path in archive_root.glob("*.jsonl.gz")}
+        if actual_paths != set(self.archive_hashes):
+            raise ValueError("preserved MMQA archive files do not match the pinned archive set")
+        for name, expected_digest in self.archive_hashes.items():
+            manifest_digest, manifest_path = observed[name]
+            expected_path = archive_root / name
+            if manifest_path != expected_path or manifest_digest != expected_digest:
+                raise ValueError(f"archive checksum manifest entry is invalid for {name}")
+            actual_digest = sha256_file(expected_path)
+            if actual_digest != expected_digest:
+                raise ValueError(f"archive SHA-256 mismatch for {name}")
 
 
 @dataclass(frozen=True)
