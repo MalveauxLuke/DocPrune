@@ -42,9 +42,11 @@ class IndexManifest:
     colpali_revision: str
     colpali_backbone_model: str
     colpali_backbone_revision: str
+    processor_contract_path: Path
     processor_contract_sha256: str
     pruning_config: Mapping[str, object]
     embeddings_path: Path
+    embedding_metadata_path: Path
     embedding_shape: tuple[int, int]
     embedding_dtype: str
     index_path: Path
@@ -74,6 +76,8 @@ class IndexManifest:
             colpali_backbone_revision=self.colpali_backbone_revision,
         )
         object.__setattr__(self, "embeddings_path", Path(self.embeddings_path))
+        object.__setattr__(self, "embedding_metadata_path", Path(self.embedding_metadata_path))
+        object.__setattr__(self, "processor_contract_path", Path(self.processor_contract_path))
         object.__setattr__(self, "index_path", Path(self.index_path))
         object.__setattr__(self, "pruning_config", MappingProxyType(dict(self.pruning_config)))
         if len(self.embedding_shape) != 2 or self.embedding_shape[0] < 1:
@@ -100,9 +104,11 @@ class IndexManifest:
                     "revision": self.colpali_backbone_revision,
                 },
             },
+            "processor_contract_path": str(self.processor_contract_path),
             "processor_contract_sha256": self.processor_contract_sha256,
             "pruning_config": dict(self.pruning_config),
             "embeddings_path": str(self.embeddings_path),
+            "embedding_metadata_path": str(self.embedding_metadata_path),
             "embeddings": {
                 "shape": list(self.embedding_shape),
                 "dtype": self.embedding_dtype,
@@ -116,10 +122,45 @@ class IndexManifest:
     def validate_files(self) -> None:
         if not self.embeddings_path.is_file():
             raise FileNotFoundError(f"embedding artifact is missing: {self.embeddings_path}")
+        if not self.embedding_metadata_path.is_file():
+            raise FileNotFoundError(f"embedding metadata is missing: {self.embedding_metadata_path}")
+        if not self.processor_contract_path.is_file():
+            raise FileNotFoundError(f"processor contract is missing: {self.processor_contract_path}")
         if not self.index_path.is_file():
             raise FileNotFoundError(f"index artifact is missing: {self.index_path}")
+        actual_contract = sha256_file(self.processor_contract_path)
+        if actual_contract != self.processor_contract_sha256:
+            raise ValueError(
+                "processor contract SHA-256 mismatch: "
+                f"expected {self.processor_contract_sha256}, got {actual_contract}"
+            )
+        try:
+            metadata = json.loads(self.embedding_metadata_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError(f"embedding metadata is not JSON: {self.embedding_metadata_path}") from error
+        if not isinstance(metadata, dict):
+            raise ValueError("embedding metadata must be a JSON object")
+        if metadata.get("shape") != list(self.embedding_shape):
+            raise ValueError("embedding metadata shape mismatch")
+        if metadata.get("dtype") != self.embedding_dtype:
+            raise ValueError("embedding metadata dtype mismatch")
         actual = sha256_file(self.index_path)
         if actual != self.index_sha256:
             raise ValueError(
                 f"index SHA-256 mismatch: expected {self.index_sha256}, got {actual}"
             )
+
+
+def validate_index_manifest_pair(first: IndexManifest, second: IndexManifest) -> None:
+    """Reject artifact reuse between the baseline and pruning comparison modes."""
+
+    if first.mode == second.mode:
+        raise ValueError("manifest pair must contain one all-kept and one docprune manifest")
+    if first.embeddings_path.parent.resolve() == second.embeddings_path.parent.resolve():
+        raise ValueError("manifest pair must use distinct embedding roots")
+    if first.index_path.resolve() == second.index_path.resolve():
+        raise ValueError("manifest pair must use distinct index paths")
+    for manifest in (first, second):
+        paths = (manifest.embeddings_path, manifest.embedding_metadata_path, manifest.index_path)
+        if any(manifest.mode not in path.parts for path in paths):
+            raise ValueError(f"manifest mode/path mismatch for {manifest.mode}")

@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from docprune.artifacts import IndexManifest, canonical_json_sha256, sha256_file
+from docprune.artifacts import (
+    IndexManifest,
+    canonical_json_sha256,
+    sha256_file,
+    validate_index_manifest_pair,
+)
 from docprune.benchmark_config import (
     COLPALI_BACKBONE_MODEL,
     COLPALI_BACKBONE_REVISION,
@@ -17,13 +22,19 @@ from docprune.benchmark_config import (
 )
 
 
-def make_manifest(tmp_path: Path) -> IndexManifest:
-    embeddings = tmp_path / "embeddings.safetensors"
+def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
+    root = tmp_path / mode
+    root.mkdir()
+    embeddings = root / "embeddings.safetensors"
     embeddings.write_bytes(b"embeddings")
-    index = tmp_path / "index.faiss"
+    metadata = root / "embeddings.json"
+    metadata.write_text('{"shape": [12, 128], "dtype": "float32"}')
+    contract = root / "processor-contract.json"
+    contract.write_text("{}")
+    index = root / "index.faiss"
     index.write_bytes(b"index")
     return IndexManifest(
-        mode="docprune",
+        mode=mode,
         page_count=4,
         corpus_integrity_sha256="a" * 64,
         source_order_sha256="b" * 64,
@@ -35,9 +46,11 @@ def make_manifest(tmp_path: Path) -> IndexManifest:
         colpali_revision=COLPALI_REVISION,
         colpali_backbone_model=COLPALI_BACKBONE_MODEL,
         colpali_backbone_revision=COLPALI_BACKBONE_REVISION,
-        processor_contract_sha256="d" * 64,
+        processor_contract_path=contract,
+        processor_contract_sha256=sha256_file(contract),
         pruning_config={"attention_threshold": 0.075},
         embeddings_path=embeddings,
+        embedding_metadata_path=metadata,
         embedding_shape=(12, 128),
         embedding_dtype="float32",
         index_path=index,
@@ -64,7 +77,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
         "model": COLPALI_MODEL,
         "revision": COLPALI_REVISION,
     }
-    assert payload["processor_contract_sha256"] == "d" * 64
+    assert payload["processor_contract_sha256"] == sha256_file(manifest.processor_contract_path)
     assert payload["pruning_config"] == {"attention_threshold": 0.075}
     assert payload["embeddings"] == {"shape": [12, 128], "dtype": "float32"}
     assert payload["index_sha256"] == sha256_file(manifest.index_path)
@@ -74,6 +87,24 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
         {key: value for key, value in payload.items() if key != "manifest_sha256"}
     )
     manifest.validate_files()
+
+
+@pytest.mark.parametrize(
+    ("path_name", "contents", "message"),
+    [
+        ("processor_contract_path", "changed", "processor contract SHA-256 mismatch"),
+        ("embedding_metadata_path", '{"shape": [12, 127], "dtype": "float32"}', "shape mismatch"),
+        ("embedding_metadata_path", '{"shape": [12, 128], "dtype": "float16"}', "dtype mismatch"),
+    ],
+)
+def test_manifest_validates_contract_and_embedding_metadata_sidecars(
+    tmp_path: Path, path_name: str, contents: str, message: str
+) -> None:
+    manifest = make_manifest(tmp_path)
+    getattr(manifest, path_name).write_text(contents)
+
+    with pytest.raises(ValueError, match=message):
+        manifest.validate_files()
 
 
 def test_index_manifest_rejects_changed_index_or_invalid_embedding_contract(tmp_path: Path) -> None:
@@ -93,3 +124,23 @@ def test_manifest_pruning_configuration_is_immutable(tmp_path: Path) -> None:
 
     with pytest.raises(TypeError):
         manifest.pruning_config["attention_threshold"] = 0.5  # type: ignore[index]
+
+
+def test_manifest_pair_requires_distinct_mode_bound_artifacts(tmp_path: Path) -> None:
+    all_kept = make_manifest(tmp_path, mode="all-kept")
+    docprune = make_manifest(tmp_path, mode="docprune")
+
+    validate_index_manifest_pair(all_kept, docprune)
+
+    object.__setattr__(docprune, "embeddings_path", all_kept.embeddings_path)
+    with pytest.raises(ValueError, match="embedding roots"):
+        validate_index_manifest_pair(all_kept, docprune)
+
+
+def test_manifest_pair_rejects_mode_path_mismatch(tmp_path: Path) -> None:
+    all_kept = make_manifest(tmp_path, mode="all-kept")
+    docprune = make_manifest(tmp_path, mode="docprune")
+    object.__setattr__(docprune, "index_path", tmp_path / "all-kept" / "other.faiss")
+
+    with pytest.raises(ValueError, match="mode/path mismatch"):
+        validate_index_manifest_pair(all_kept, docprune)

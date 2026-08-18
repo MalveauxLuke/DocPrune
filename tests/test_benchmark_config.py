@@ -11,9 +11,14 @@ from docprune.benchmark_config import (
     COLPALI_BACKBONE_REVISION,
     COLPALI_MODEL,
     COLPALI_REVISION,
+    DEV_DOC_IDS_SHA256,
+    FINAL_INTEGRITY_SHA256,
     M3DOCRAG_COMMIT,
+    MMQA_ARCHIVES_SHA256,
+    MMQA_DEV_SHA256,
     QWEN_MODEL,
     QWEN_REVISION,
+    SHORT_ANSWER_TEMPLATE,
     BenchmarkRunConfig,
     CorpusIdentity,
 )
@@ -42,16 +47,30 @@ def make_corpus(root: Path) -> CorpusIdentity:
                 "missing_pdf_ids": [],
                 "extra_pdf_ids": [],
                 "corrupt_pdfs": [],
+                "observed_page_count": 1,
+                "within_ten_percent_of_published_page_count": True,
+                "schema_version": 1,
+                "attempt": "fixture",
             }
         )
     )
-    return CorpusIdentity(
+    archives = root / "setup" / "mmqa-archives.sha256"
+    archives.parent.mkdir()
+    archives.write_text("fixture archive checksums\n")
+    return CorpusIdentity.fixture(
         root=root,
         questions_path=questions,
         document_ids_path=doc_ids,
         pdf_dir=pdfs,
         integrity_report_path=integrity,
+        archive_checksum_manifest_path=archives,
         integrity_sha256=sha256(integrity),
+        archive_checksum_manifest_sha256=sha256(archives),
+        questions_sha256=sha256(questions),
+        document_ids_sha256=sha256(doc_ids),
+        expected_question_count=1,
+        expected_pdf_count=1,
+        expected_page_count=1,
     )
 
 
@@ -62,6 +81,45 @@ def test_corpus_identity_requires_verified_files_and_integrity_hash(tmp_path: Pa
 
     corpus.integrity_report_path.write_text("changed")
     with pytest.raises(ValueError, match="integrity SHA-256 mismatch"):
+        corpus.validate()
+
+
+def test_production_corpus_identity_uses_fixed_acquisition_identities(tmp_path: Path) -> None:
+    corpus = CorpusIdentity.from_root(tmp_path / "m3docvqa")
+
+    assert corpus.integrity_sha256 == FINAL_INTEGRITY_SHA256
+    assert corpus.archive_checksum_manifest_sha256 == MMQA_ARCHIVES_SHA256
+    assert corpus.questions_sha256 == MMQA_DEV_SHA256
+    assert corpus.document_ids_sha256 == DEV_DOC_IDS_SHA256
+    assert corpus.expected_question_count == 2441
+    assert corpus.expected_pdf_count == 3366
+    assert corpus.expected_page_count == 44638
+
+
+def test_corpus_identity_rejects_incomplete_or_wrong_integrity_report(tmp_path: Path) -> None:
+    corpus = make_corpus(tmp_path / "corpus")
+    corpus.integrity_report_path.write_text(json.dumps({"schema_version": 1}))
+    object.__setattr__(corpus, "integrity_sha256", sha256(corpus.integrity_report_path))
+
+    with pytest.raises(ValueError, match="integrity report"):
+        corpus.validate()
+
+
+@pytest.mark.parametrize(
+    ("path_name", "message"),
+    [
+        ("archive_checksum_manifest_path", "archive manifest SHA-256 mismatch"),
+        ("questions_path", "MMQA_dev.jsonl SHA-256 mismatch"),
+        ("document_ids_path", "dev_doc_ids.json SHA-256 mismatch"),
+    ],
+)
+def test_corpus_identity_binds_every_acquisition_identity(
+    tmp_path: Path, path_name: str, message: str
+) -> None:
+    corpus = make_corpus(tmp_path / "corpus")
+    getattr(corpus, path_name).write_text("changed")
+
+    with pytest.raises(ValueError, match=message):
         corpus.validate()
 
 
@@ -80,28 +138,17 @@ def test_corpus_identity_rejects_missing_required_source(attribute: str, tmp_pat
         corpus.validate()
 
 
-def test_run_config_from_env_binds_exact_resources_and_generation(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_run_config_binds_exact_resources_and_renders_upstream_prompt(tmp_path: Path) -> None:
     corpus = make_corpus(tmp_path / "corpus")
-    values = {
-        "DOCPRUNE_CORPUS_ROOT": str(corpus.root),
-        "DOCPRUNE_CORPUS_INTEGRITY_SHA256": corpus.integrity_sha256,
-        "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
-        "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT,
-        "QWEN_MODEL": QWEN_MODEL,
-        "QWEN_REVISION": QWEN_REVISION,
-        "COLPALI_MODEL": COLPALI_MODEL,
-        "COLPALI_REVISION": COLPALI_REVISION,
-        "COLPALI_BACKBONE_MODEL": COLPALI_BACKBONE_MODEL,
-        "COLPALI_BACKBONE_REVISION": COLPALI_BACKBONE_REVISION,
-        "DOCPRUNE_PROCESSOR_CONTRACT": str(tmp_path / "processor-contract.json"),
-    }
-    (tmp_path / "processor-contract.json").write_text("{}")
-    for name, value in values.items():
-        monkeypatch.setenv(name, value)
-
-    config = BenchmarkRunConfig.from_env(mode="docprune", page_count=4)
+    contract = tmp_path / "processor-contract.json"
+    contract.write_text("{}")
+    config = BenchmarkRunConfig(
+        mode="docprune", page_count=4, corpus=corpus, runtime_commit="a" * 40,
+        m3docrag_commit=M3DOCRAG_COMMIT, qwen_model=QWEN_MODEL, qwen_revision=QWEN_REVISION,
+        colpali_model=COLPALI_MODEL, colpali_revision=COLPALI_REVISION,
+        colpali_backbone_model=COLPALI_BACKBONE_MODEL,
+        colpali_backbone_revision=COLPALI_BACKBONE_REVISION, processor_contract_path=contract,
+    )
 
     assert config.mode == "docprune"
     assert config.page_count == 4
@@ -109,7 +156,8 @@ def test_run_config_from_env_binds_exact_resources_and_generation(
     assert config.max_new_tokens == 128
     assert config.do_sample is False
     assert config.num_beams == 1
-    assert config.prompt == "Answer the question using the image. Answer concisely."
+    assert config.prompt == SHORT_ANSWER_TEMPLATE
+    assert config.render_prompt("What is shown?") == "question: What is shown?\noutput only answer."
     assert config.m3docrag_commit == M3DOCRAG_COMMIT
     assert config.qwen_model == QWEN_MODEL
     assert config.qwen_revision == QWEN_REVISION
@@ -130,17 +178,11 @@ def test_run_config_rejects_unknown_mode_or_page_count(
     contract = tmp_path / "contract.json"
     contract.write_text("{}")
     for name, value in {
-        "DOCPRUNE_CORPUS_ROOT": str(corpus.root),
-        "DOCPRUNE_CORPUS_INTEGRITY_SHA256": corpus.integrity_sha256,
-        "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
-        "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT,
-        "QWEN_MODEL": QWEN_MODEL,
-        "QWEN_REVISION": QWEN_REVISION,
-        "COLPALI_MODEL": COLPALI_MODEL,
-        "COLPALI_REVISION": COLPALI_REVISION,
-        "COLPALI_BACKBONE_MODEL": COLPALI_BACKBONE_MODEL,
-        "COLPALI_BACKBONE_REVISION": COLPALI_BACKBONE_REVISION,
-        "DOCPRUNE_PROCESSOR_CONTRACT": str(contract),
+        "DOCPRUNE_CORPUS_ROOT": str(corpus.root), "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
+        "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT, "QWEN_MODEL": QWEN_MODEL,
+        "QWEN_REVISION": QWEN_REVISION, "COLPALI_MODEL": COLPALI_MODEL,
+        "COLPALI_REVISION": COLPALI_REVISION, "COLPALI_BACKBONE_MODEL": COLPALI_BACKBONE_MODEL,
+        "COLPALI_BACKBONE_REVISION": COLPALI_BACKBONE_REVISION, "DOCPRUNE_PROCESSOR_CONTRACT": str(contract),
     }.items():
         monkeypatch.setenv(name, value)
 
@@ -166,7 +208,6 @@ def test_run_config_rejects_unpinned_or_nonimmutable_resources(
     contract.write_text("{}")
     values = {
         "DOCPRUNE_CORPUS_ROOT": str(corpus.root),
-        "DOCPRUNE_CORPUS_INTEGRITY_SHA256": corpus.integrity_sha256,
         "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
         "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT,
         "QWEN_MODEL": QWEN_MODEL,

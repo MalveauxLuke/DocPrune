@@ -18,8 +18,11 @@ from docprune.m3docrag import SampleInput
 class M3DocVQADevDataset:
     """Preserve MMQA JSONL ordering while exposing M3DocRAG's sample boundary."""
 
-    def __init__(self, corpus: CorpusIdentity) -> None:
+    def __init__(self, corpus: CorpusIdentity, *, expected_question_count: int = 2441) -> None:
+        if expected_question_count < 1:
+            raise ValueError("expected_question_count must be positive")
         self.corpus = corpus
+        self.expected_question_count = expected_question_count
         self.corpus.validate()
         self._document_ids = self._load_document_ids()
         self._samples = self._load_samples()
@@ -69,6 +72,11 @@ class M3DocVQADevDataset:
                     extracted.append(answer["answer"])
                 qids.add(qid)
                 samples.append(SampleInput(qid, row["question"], tuple(extracted)))
+        if len(samples) != self.expected_question_count:
+            raise ValueError(
+                "M3DocVQA dev corpus must contain exactly "
+                f"{self.expected_question_count} unique rows; found {len(samples)}"
+            )
         return tuple(samples)
 
     def __iter__(self) -> Iterator[SampleInput]:

@@ -13,7 +13,8 @@ colpali_backbone_revision = "30ab955d073de4a91dc5a288e8c97226647e3e5a"
 max_new_tokens = 128
 do_sample = false
 num_beams = 1
-short_answer_prompt = "Answer the question using the image. Answer concisely."
+short_answer_template = "question: $question\noutput only answer."
+short_answer_template_provenance_commit = "29e6ac2294d6b87075a1d45b8a8df175b214248a"
 
 [paper.top1]
 retrieval_background_threshold = 0.9

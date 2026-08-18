@@ -7,6 +7,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from string import Template
 
 from docprune.processor_probe import (
     COLPALI_BACKBONE_MODEL,
@@ -23,7 +24,11 @@ M3DOCRAG_COMMIT = "29e6ac2294d6b87075a1d45b8a8df175b214248a"
 MODES = ("all-kept", "docprune")
 PAGE_COUNTS = (1, 2, 4)
 MAX_NEW_TOKENS = 128
-SHORT_ANSWER_PROMPT = "Answer the question using the image. Answer concisely."
+SHORT_ANSWER_TEMPLATE = "question: $question\noutput only answer."
+FINAL_INTEGRITY_SHA256 = "e2581c9766157e800ba195d37905c0c25611cf4057d03e2fa32fc23e79280e39"
+MMQA_ARCHIVES_SHA256 = "8ff8f1dca284a16d9a0a726ea5f0dac58f7e05a2aafaa7c2d88a56dfecd46f6d"
+MMQA_DEV_SHA256 = "31192a64bfc4ffc23123c1e6657a5b57dbb9515e9a37ecbbc8578cf894dd0e3b"
+DEV_DOC_IDS_SHA256 = "2d9e09689b2d1e867c566e0e893e9b53955487202921bdd8664aaa6e4037e429"
 
 __all__ = [
     "COLPALI_BACKBONE_MODEL",
@@ -34,9 +39,13 @@ __all__ = [
     "MAX_NEW_TOKENS",
     "BenchmarkRunConfig",
     "CorpusIdentity",
+    "DEV_DOC_IDS_SHA256",
+    "FINAL_INTEGRITY_SHA256",
+    "MMQA_ARCHIVES_SHA256",
+    "MMQA_DEV_SHA256",
     "QWEN_MODEL",
     "QWEN_REVISION",
-    "SHORT_ANSWER_PROMPT",
+    "SHORT_ANSWER_TEMPLATE",
     "sha256_file",
 ]
 
@@ -74,6 +83,14 @@ class CorpusIdentity:
     pdf_dir: Path
     integrity_report_path: Path
     integrity_sha256: str
+    archive_checksum_manifest_path: Path
+    archive_checksum_manifest_sha256: str
+    questions_sha256: str
+    document_ids_sha256: str
+    expected_question_count: int = 2441
+    expected_pdf_count: int = 3366
+    expected_page_count: int = 44638
+    is_fixture: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "root", Path(self.root))
@@ -81,14 +98,29 @@ class CorpusIdentity:
         object.__setattr__(self, "document_ids_path", Path(self.document_ids_path))
         object.__setattr__(self, "pdf_dir", Path(self.pdf_dir))
         object.__setattr__(self, "integrity_report_path", Path(self.integrity_report_path))
-        object.__setattr__(
-            self,
+        object.__setattr__(self, "archive_checksum_manifest_path", Path(self.archive_checksum_manifest_path))
+        for name in (
             "integrity_sha256",
-            _require_sha256(self.integrity_sha256, name="integrity_sha256"),
-        )
+            "archive_checksum_manifest_sha256",
+            "questions_sha256",
+            "document_ids_sha256",
+        ):
+            object.__setattr__(self, name, _require_sha256(getattr(self, name), name=name))
+        if self.expected_question_count < 1 or self.expected_pdf_count < 1 or self.expected_page_count < 1:
+            raise ValueError("expected corpus counts must be positive")
+        if not self.is_fixture and (
+            self.integrity_sha256 != FINAL_INTEGRITY_SHA256
+            or self.archive_checksum_manifest_sha256 != MMQA_ARCHIVES_SHA256
+            or self.questions_sha256 != MMQA_DEV_SHA256
+            or self.document_ids_sha256 != DEV_DOC_IDS_SHA256
+            or self.expected_question_count != 2441
+            or self.expected_pdf_count != 3366
+            or self.expected_page_count != 44638
+        ):
+            raise ValueError("production corpus identity must use the pinned M3DocVQA dev values")
 
     @classmethod
-    def from_root(cls, root: Path, *, integrity_sha256: str) -> CorpusIdentity:
+    def from_root(cls, root: Path) -> CorpusIdentity:
         root = Path(root)
         return cls(
             root=root,
@@ -96,8 +128,18 @@ class CorpusIdentity:
             document_ids_path=root / "dev_doc_ids.json",
             pdf_dir=root / "pdfs_dev",
             integrity_report_path=root / "attempt-3-integrity.json",
-            integrity_sha256=integrity_sha256,
+            integrity_sha256=FINAL_INTEGRITY_SHA256,
+            archive_checksum_manifest_path=root / "setup" / "mmqa-archives.sha256",
+            archive_checksum_manifest_sha256=MMQA_ARCHIVES_SHA256,
+            questions_sha256=MMQA_DEV_SHA256,
+            document_ids_sha256=DEV_DOC_IDS_SHA256,
         )
+
+    @classmethod
+    def fixture(cls, **values: object) -> CorpusIdentity:
+        """Create an explicitly non-production identity for small test fixtures."""
+
+        return cls(**{**values, "is_fixture": True})  # type: ignore[arg-type]
 
     def validate(self) -> None:
         required = (
@@ -106,25 +148,42 @@ class CorpusIdentity:
             (self.document_ids_path, "document IDs", False),
             (self.pdf_dir, "PDF directory", True),
             (self.integrity_report_path, "integrity report", False),
+            (self.archive_checksum_manifest_path, "archive checksum manifest", False),
         )
         for path, label, directory in required:
             if not path.exists() or (path.is_dir() != directory):
                 raise FileNotFoundError(f"required corpus {label} is missing: {path}")
-        actual = sha256_file(self.integrity_report_path)
-        if actual != self.integrity_sha256:
-            raise ValueError(
-                "corpus integrity SHA-256 mismatch: "
-                f"expected {self.integrity_sha256}, got {actual}"
-            )
+        for path, expected, label in (
+            (self.integrity_report_path, self.integrity_sha256, "integrity"),
+            (self.archive_checksum_manifest_path, self.archive_checksum_manifest_sha256, "archive manifest"),
+            (self.questions_path, self.questions_sha256, "MMQA_dev.jsonl"),
+            (self.document_ids_path, self.document_ids_sha256, "dev_doc_ids.json"),
+        ):
+            actual = sha256_file(path)
+            if actual != expected:
+                raise ValueError(f"corpus {label} SHA-256 mismatch: expected {expected}, got {actual}")
         try:
             report = json.loads(self.integrity_report_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
             raise ValueError(f"corpus integrity report is not JSON: {self.integrity_report_path}") from error
         if not isinstance(report, dict):
             raise ValueError("corpus integrity report must be a JSON object")
-        for name in ("missing_pdf_ids", "extra_pdf_ids", "corrupt_pdfs"):
-            if name in report and report[name]:
-                raise ValueError(f"corpus integrity report records {name}")
+        expected = {
+            "schema_version": 1,
+            "dev_questions": self.expected_question_count,
+            "expected_pdf_count": self.expected_pdf_count,
+            "actual_pdf_count": self.expected_pdf_count,
+            "missing_pdf_ids": [],
+            "extra_pdf_ids": [],
+            "corrupt_pdfs": [],
+            "observed_page_count": self.expected_page_count,
+            "within_ten_percent_of_published_page_count": True,
+        }
+        if not self.is_fixture:
+            expected["attempt"] = "attempt-3"
+        for name, value in expected.items():
+            if report.get(name) != value:
+                raise ValueError(f"corpus integrity report has invalid {name!r}")
 
 
 @dataclass(frozen=True)
@@ -146,7 +205,7 @@ class BenchmarkRunConfig:
     max_new_tokens: int = MAX_NEW_TOKENS
     do_sample: bool = False
     num_beams: int = 1
-    prompt: str = SHORT_ANSWER_PROMPT
+    prompt: str = SHORT_ANSWER_TEMPLATE
 
     def __post_init__(self) -> None:
         if self.mode not in MODES:
@@ -173,16 +232,13 @@ class BenchmarkRunConfig:
             raise ValueError(f"max_new_tokens must equal {MAX_NEW_TOKENS}")
         if self.do_sample or self.num_beams != 1:
             raise ValueError("generation must use greedy decoding (do_sample=False, num_beams=1)")
-        if self.prompt != SHORT_ANSWER_PROMPT:
+        if self.prompt != SHORT_ANSWER_TEMPLATE:
             raise ValueError("prompt must equal the official short-answer prompt")
         self.corpus.validate()
 
     @classmethod
     def from_env(cls, mode: str, page_count: int) -> BenchmarkRunConfig:
-        corpus = CorpusIdentity.from_root(
-            Path(_required_env("DOCPRUNE_CORPUS_ROOT")),
-            integrity_sha256=_required_env("DOCPRUNE_CORPUS_INTEGRITY_SHA256"),
-        )
+        corpus = CorpusIdentity.from_root(Path(_required_env("DOCPRUNE_CORPUS_ROOT")))
         return cls(
             mode=mode,
             page_count=page_count,
@@ -197,3 +253,13 @@ class BenchmarkRunConfig:
             colpali_backbone_revision=_required_env("COLPALI_BACKBONE_REVISION"),
             processor_contract_path=Path(_required_env("DOCPRUNE_PROCESSOR_CONTRACT")),
         )
+
+    def render_prompt(self, question: str) -> str:
+        return Template(self.prompt).substitute(question=question)
+
+    def make_dataset(self):
+        """Construct the production corpus adapter with its fixed 2,441-row contract."""
+
+        from docprune.m3docvqa_dataset import M3DocVQADevDataset
+
+        return M3DocVQADevDataset(self.corpus, expected_question_count=2441)
