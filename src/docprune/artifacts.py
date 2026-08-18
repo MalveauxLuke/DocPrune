@@ -223,8 +223,17 @@ class IndexManifest:
             raise ValueError("embedding metadata shape mismatch")
         if metadata.get("dtype") != self.embedding_dtype:
             raise ValueError("embedding metadata dtype mismatch")
+        document_ids = metadata.get("document_ids")
+        if (
+            not isinstance(document_ids, list)
+            or not document_ids
+            or any(not isinstance(doc_id, str) or not doc_id for doc_id in document_ids)
+            or len(document_ids) != len(set(document_ids))
+        ):
+            raise ValueError("embedding metadata document_ids must be unique nonempty strings")
+        build_manifest_sha256 = self._validate_build_manifest(document_ids)
         embeddings, raster_indices = self._validate_safetensors()
-        self._validate_token2pageuid(raster_indices)
+        token_rows = self._validate_token2pageuid(raster_indices)
         for path, expected, label in (
             (self.token2pageuid_path, self.token2pageuid_sha256, "token2pageuid"),
             (self.completion_ledger_path, self.completion_ledger_sha256, "completion ledger"),
@@ -232,6 +241,7 @@ class IndexManifest:
             actual = sha256_file(path)
             if actual != expected:
                 raise ValueError(f"{label} SHA-256 mismatch: expected {expected}, got {actual}")
+        self._validate_completion_ledger(token_rows, document_ids, build_manifest_sha256)
         actual = sha256_file(self.index_path)
         if actual != self.index_sha256:
             raise ValueError(f"index SHA-256 mismatch: expected {self.index_sha256}, got {actual}")
@@ -265,7 +275,7 @@ class IndexManifest:
             raise ValueError("safetensors raster indices must be in [0, 1024)")
         return embeddings, raster_indices
 
-    def _validate_token2pageuid(self, raster_indices: torch.Tensor) -> None:
+    def _validate_token2pageuid(self, raster_indices: torch.Tensor) -> list[dict[str, object]]:
         try:
             rows = json.loads(self.token2pageuid_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
@@ -304,6 +314,131 @@ class IndexManifest:
                     "token2pageuid page segment raster indices must be strictly increasing"
                 )
             start = stop
+        return rows
+
+    def _validate_completion_ledger(
+        self,
+        token_rows: list[dict[str, object]],
+        document_ids: list[object],
+        expected_build_manifest_sha256: str,
+    ) -> None:
+        try:
+            ledger = json.loads(self.completion_ledger_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("completion ledger must be JSON") from error
+        if not isinstance(ledger, list) or not ledger:
+            raise ValueError("completion ledger must contain one entry per document")
+        required = {
+            "schema_version",
+            "ordinal",
+            "doc_id",
+            "build_manifest_sha256",
+            "document_path",
+            "sha256",
+            "shape",
+            "dtype",
+            "pages",
+            "page_offsets",
+        }
+        if len(ledger) != len(document_ids):
+            raise ValueError("completion ledger document count does not match source order")
+        ordinals: list[int] = []
+        seen_doc_ids: set[str] = set()
+        expected_rows: list[dict[str, object]] = []
+        build_manifest_sha256: str | None = None
+        document_paths: set[str] = set()
+        for entry in ledger:
+            if not isinstance(entry, dict) or set(entry) != required:
+                raise ValueError("completion ledger entry schema is invalid")
+            if entry["schema_version"] != 1:
+                raise ValueError("completion ledger schema version is unsupported")
+            ordinal = entry["ordinal"]
+            doc_id = entry["doc_id"]
+            if not isinstance(ordinal, int) or isinstance(ordinal, bool):
+                raise ValueError("completion ledger ordinal is invalid")
+            if not isinstance(doc_id, str) or not doc_id or doc_id in seen_doc_ids:
+                raise ValueError("completion ledger document IDs must be unique nonempty strings")
+            seen_doc_ids.add(doc_id)
+            ordinals.append(ordinal)
+            if not isinstance(entry["document_path"], str) or not entry["document_path"]:
+                raise ValueError("completion ledger document path is invalid")
+            if entry["document_path"] in document_paths:
+                raise ValueError("completion ledger document paths must be unique")
+            document_paths.add(entry["document_path"])
+            try:
+                entry_build_sha = _require_sha256(
+                    entry["build_manifest_sha256"], name="build_manifest_sha256"
+                )
+                _require_sha256(entry["sha256"], name="document_sha256")
+            except (TypeError, ValueError) as error:
+                raise ValueError("completion ledger checksums are invalid") from error
+            if build_manifest_sha256 is None:
+                build_manifest_sha256 = entry_build_sha
+            elif build_manifest_sha256 != entry_build_sha:
+                raise ValueError("completion ledger entries use different build manifests")
+            shape = entry["shape"]
+            if (
+                not isinstance(shape, list)
+                or len(shape) != 2
+                or any(not isinstance(value, int) or isinstance(value, bool) for value in shape)
+                or shape[0] <= 0
+                or shape[1] != self.embedding_shape[1]
+                or entry["dtype"] != self.embedding_dtype
+            ):
+                raise ValueError("completion ledger embedding shape or dtype is invalid")
+            pages = entry["pages"]
+            offsets = entry["page_offsets"]
+            if (
+                not isinstance(pages, list)
+                or not pages
+                or not isinstance(offsets, list)
+                or len(offsets) != len(pages) + 1
+                or any(not isinstance(value, int) or isinstance(value, bool) for value in offsets)
+                or offsets[0] != 0
+                or offsets[-1] != shape[0]
+                or not all(right > left for left, right in zip(offsets, offsets[1:]))
+            ):
+                raise ValueError("completion ledger page offsets are invalid")
+            if shape[0] != offsets[-1]:
+                raise ValueError("completion ledger shape does not match page offsets")
+            for page_index, page in enumerate(pages):
+                identity = {"doc_id": doc_id, "page_index": page_index}
+                if page != identity:
+                    raise ValueError("completion ledger page source order is invalid")
+                expected_rows.extend([identity] * (offsets[page_index + 1] - offsets[page_index]))
+        if ordinals != list(range(len(ledger))):
+            raise ValueError("completion ledger ordinals must be contiguous and ordered")
+        if [entry["doc_id"] for entry in ledger] != document_ids:
+            raise ValueError("completion ledger source order does not match metadata")
+        if expected_rows != token_rows:
+            raise ValueError("token2pageuid does not match completion ledger page rows")
+        if len(expected_rows) != self.embedding_shape[0]:
+            raise ValueError("completion ledger rows do not match embeddings")
+        if build_manifest_sha256 != expected_build_manifest_sha256:
+            raise ValueError("completion ledger is not bound to the build manifest")
+
+    def _validate_build_manifest(self, document_ids: list[object]) -> str:
+        path = self.artifact_root / "build-manifest.json"
+        if not path.is_file():
+            raise FileNotFoundError(f"build manifest is missing: {path}")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError("build manifest must be JSON") from error
+        if not isinstance(payload, dict):
+            raise ValueError("build manifest must be a JSON object")
+        supplied = payload.get("build_manifest_sha256")
+        if not isinstance(supplied, str):
+            raise ValueError("build manifest checksum is missing")
+        unsigned = {key: value for key, value in payload.items() if key != "build_manifest_sha256"}
+        actual = canonical_json_sha256(unsigned)
+        if supplied != actual:
+            raise ValueError("build manifest checksum mismatch")
+        if payload.get("source_order_sha256") != self.source_order_sha256:
+            raise ValueError("build manifest source order does not match index manifest")
+        if payload.get("document_ids") != document_ids:
+            raise ValueError("build manifest document order does not match metadata")
+        return _require_sha256(supplied, name="build_manifest_sha256")
 
     def _validate_faiss(self, embeddings: torch.Tensor) -> None:
         try:
@@ -312,8 +447,13 @@ class IndexManifest:
             index = faiss.read_index(str(self.index_path))
         except Exception as error:
             raise ValueError(f"index artifact is not valid FAISS: {self.index_path}") from error
-        if index.d != 128 or index.ntotal != self.embedding_shape[0]:
-            raise ValueError("FAISS dimensions or row count do not match embeddings")
+        if (
+            type(index) is not faiss.IndexFlatIP
+            or index.metric_type != faiss.METRIC_INNER_PRODUCT
+            or index.d != 128
+            or index.ntotal != self.embedding_shape[0]
+        ):
+            raise ValueError("FAISS index must be IndexFlatIP(128) with METRIC_INNER_PRODUCT")
         reconstructed = np.asarray(index.reconstruct_n(0, index.ntotal), dtype=np.float32)
         expected = embeddings.detach().cpu().numpy().astype(np.float32, copy=False)
         if not np.array_equal(reconstructed, expected):

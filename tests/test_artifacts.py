@@ -39,7 +39,22 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
         embeddings,
     )
     metadata = root / "embeddings.json"
-    metadata.write_text('{"shape": [12, 128], "dtype": "float32"}')
+    metadata.write_text(
+        json.dumps(
+            {
+                "shape": [12, 128],
+                "dtype": "float32",
+                "document_ids": ["doc"],
+            }
+        )
+    )
+    build_manifest = {
+        "schema_version": 1,
+        "source_order_sha256": "b" * 64,
+        "document_ids": ["doc"],
+    }
+    build_manifest["build_manifest_sha256"] = canonical_json_sha256(build_manifest)
+    (root / "build-manifest.json").write_text(json.dumps(build_manifest), encoding="utf-8")
     contract = root / "processor-contract.json"
     contract.write_text("{}")
     token2pageuid = root / "token2pageuid.json"
@@ -47,7 +62,25 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
         json.dumps([{"doc_id": "doc", "page_index": 0}] * 12), encoding="utf-8"
     )
     ledger = root / "completion-ledger.json"
-    ledger.write_text("[]", encoding="utf-8")
+    ledger.write_text(
+        json.dumps(
+            [
+                {
+                    "schema_version": 1,
+                    "ordinal": 0,
+                    "doc_id": "doc",
+                    "build_manifest_sha256": build_manifest["build_manifest_sha256"],
+                    "document_path": str(root / "documents" / "000000.safetensors"),
+                    "sha256": "d" * 64,
+                    "shape": [12, 128],
+                    "dtype": "float32",
+                    "pages": [{"doc_id": "doc", "page_index": 0}],
+                    "page_offsets": [0, 12],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
     index = root / "index.faiss"
     faiss_index = faiss.IndexFlatIP(128)
     faiss_index.add(np.zeros((12, 128), dtype=np.float32))
@@ -213,6 +246,42 @@ def test_manifest_checks_faiss_rows_against_embedding_payload(tmp_path: Path) ->
     object.__setattr__(manifest, "index_sha256", sha256_file(manifest.index_path))
 
     with pytest.raises(ValueError, match="FAISS rows do not match"):
+        manifest.validate_files()
+
+
+def test_manifest_rejects_same_width_l2_index(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path)
+    changed = faiss.IndexFlatL2(128)
+    changed.add(np.zeros((12, 128), dtype=np.float32))
+    faiss.write_index(changed, str(manifest.index_path))
+    object.__setattr__(manifest, "index_sha256", sha256_file(manifest.index_path))
+
+    with pytest.raises(ValueError, match="IndexFlatIP"):
+        manifest.validate_files()
+
+
+def test_manifest_rejects_token_map_that_disagrees_with_completion_ledger(
+    tmp_path: Path,
+) -> None:
+    manifest = make_manifest(tmp_path)
+    rows = json.loads(manifest.token2pageuid_path.read_text(encoding="utf-8"))
+    rows[0] = {"doc_id": "wrong", "page_index": 0}
+    manifest.token2pageuid_path.write_text(json.dumps(rows), encoding="utf-8")
+    object.__setattr__(manifest, "token2pageuid_sha256", sha256_file(manifest.token2pageuid_path))
+
+    with pytest.raises(ValueError, match="completion ledger"):
+        manifest.validate_files()
+
+
+def test_manifest_rejects_duplicate_completion_ledger_ordinal(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path)
+    entry = json.loads(manifest.completion_ledger_path.read_text(encoding="utf-8"))[0]
+    manifest.completion_ledger_path.write_text(json.dumps([entry, entry]), encoding="utf-8")
+    object.__setattr__(
+        manifest, "completion_ledger_sha256", sha256_file(manifest.completion_ledger_path)
+    )
+
+    with pytest.raises(ValueError, match="completion ledger"):
         manifest.validate_files()
 
 
