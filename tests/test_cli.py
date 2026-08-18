@@ -107,11 +107,15 @@ def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -
             "--qwen-model",
             "Qwen/Qwen2-VL-7B-Instruct",
             "--qwen-revision",
-            "a" * 40,
+            "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
             "--colpali-model",
             "vidore/colpali-v1.2",
             "--colpali-revision",
-            "b" * 40,
+            "961b51745de3e9adb3468ac5c9ccca0ac626c217",
+            "--colpali-backbone-model",
+            "vidore/colpaligemma-3b-pt-448-base",
+            "--colpali-backbone-revision",
+            "30ab955d073de4a91dc5a288e8c97226647e3e5a",
             "--output",
             str(output),
         ]
@@ -123,9 +127,11 @@ def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -
         {
             "page_image": page,
             "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
-            "qwen_revision": "a" * 40,
+            "qwen_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
             "colpali_model": "vidore/colpali-v1.2",
-            "colpali_revision": "b" * 40,
+            "colpali_revision": "961b51745de3e9adb3468ac5c9ccca0ac626c217",
+            "colpali_backbone_model": "vidore/colpaligemma-3b-pt-448-base",
+            "colpali_backbone_revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a",
             "output": output,
         }
     ]
@@ -141,17 +147,21 @@ def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
             "--page-image",
             str(page),
             "--qwen-model",
-            "qwen",
+            "Qwen/Qwen2-VL-7B-Instruct",
             "--qwen-revision",
             "main",
             "--colpali-model",
-            "colpali",
+            "vidore/colpali-v1.2",
             "--colpali-revision",
-            "b" * 40,
+            "961b51745de3e9adb3468ac5c9ccca0ac626c217",
+            "--colpali-backbone-model",
+            "vidore/colpaligemma-3b-pt-448-base",
+            "--colpali-backbone-revision",
+            "30ab955d073de4a91dc5a288e8c97226647e3e5a",
             "--output",
             str(tmp_path / "report.json"),
         ]
     )
 
     assert exit_code == 2
-    assert "40-character" in capsys.readouterr().err
+    assert "must equal the pinned" in capsys.readouterr().err

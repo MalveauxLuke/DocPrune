@@ -5,15 +5,18 @@ import torch
 from PIL import Image
 
 from docprune.processor_probe import (
+    COLPALI_BACKBONE_MODEL,
+    COLPALI_BACKBONE_REVISION,
+    COLPALI_MODEL,
+    COLPALI_REVISION,
+    QWEN_MODEL,
+    QWEN_REVISION,
     collect_processor_contract,
     require_immutable_revision,
     resolve_colpali_visual_mapping,
     validate_processor_contract,
     write_processor_contract,
 )
-
-REVISION_A = "a" * 40
-REVISION_B = "b" * 40
 
 
 class FakeQwenProcessor:
@@ -62,22 +65,24 @@ def test_contract_contains_shapes_and_layout_but_no_raw_content() -> None:
         image=image,
         qwen_processor=FakeQwenProcessor(),
         qwen_config=qwen_config,
-        qwen_model="Qwen/Qwen2-VL-7B-Instruct",
-        qwen_revision=REVISION_A,
+        qwen_model=QWEN_MODEL,
+        qwen_revision=QWEN_REVISION,
         colpali_processor=FakeColPaliProcessor(),
-        colpali_model="vidore/colpali-v1.2",
-        colpali_revision=REVISION_B,
+        colpali_model=COLPALI_MODEL,
+        colpali_revision=COLPALI_REVISION,
+        colpali_backbone_model=COLPALI_BACKBONE_MODEL,
+        colpali_backbone_revision=COLPALI_BACKBONE_REVISION,
     )
 
     assert got["schema_version"] == 2
-    assert got["resources"]["qwen"]["revision"] == REVISION_A
+    assert got["resources"]["qwen"]["revision"] == QWEN_REVISION
     assert got["resources"]["colpali"] == {
-        "model": "vidore/colpali-v1.2",
-        "revision": REVISION_B,
+        "model": COLPALI_MODEL,
+        "revision": COLPALI_REVISION,
     }
     assert got["resources"]["colpali_backbone"] == {
-        "model": "vidore/colpaligemma-3b-pt-448-base",
-        "revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a",
+        "model": COLPALI_BACKBONE_MODEL,
+        "revision": COLPALI_BACKBONE_REVISION,
     }
     assert got["page"]["raw_size_wh"] == [100, 80]
     assert got["qwen"] == {
@@ -99,11 +104,49 @@ def test_contract_contains_shapes_and_layout_but_no_raw_content() -> None:
     assert got["mapping_checks"] == {
         "colpali_visual_grid_inferred": True,
         "qwen_merge_groups_valid": True,
-        "raster_order_verified": True,
+        "raster_order_verified": False,
     }
+    assert got["colpali_processor_evidence"]["supported"] is False
+    assert "supported ColPaliProcessor" in got["unresolved"][-1]
     serialized = str(got)
     assert "17, 23, 41" not in serialized
     assert "input_ids" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("qwen_model", "Qwen/Qwen2-VL-2B-Instruct"),
+        ("qwen_revision", "a" * 40),
+        ("colpali_model", "vidore/colpali-v1"),
+        ("colpali_revision", "b" * 40),
+        ("colpali_backbone_model", "google/paligemma-3b-pt-224"),
+        ("colpali_backbone_revision", "c" * 40),
+    ],
+)
+def test_contract_rejects_unpinned_processor_resources(field: str, value: str) -> None:
+    arguments = {
+        "image": Image.new("RGB", (100, 80)),
+        "qwen_processor": FakeQwenProcessor(),
+        "qwen_config": SimpleNamespace(
+            vision_config=SimpleNamespace(
+                patch_size=14,
+                temporal_patch_size=2,
+                spatial_merge_size=2,
+            )
+        ),
+        "qwen_model": QWEN_MODEL,
+        "qwen_revision": QWEN_REVISION,
+        "colpali_processor": FakeColPaliProcessor(),
+        "colpali_model": COLPALI_MODEL,
+        "colpali_revision": COLPALI_REVISION,
+        "colpali_backbone_model": COLPALI_BACKBONE_MODEL,
+        "colpali_backbone_revision": COLPALI_BACKBONE_REVISION,
+    }
+    arguments[field] = value
+
+    with pytest.raises(ValueError, match="must equal the pinned"):
+        collect_processor_contract(**arguments)
 
 
 def test_colpali_mapping_proves_contiguous_row_major_visual_span() -> None:

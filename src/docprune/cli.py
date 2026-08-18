@@ -41,6 +41,8 @@ def _parser() -> argparse.ArgumentParser:
     probe.add_argument("--qwen-revision", required=True)
     probe.add_argument("--colpali-model", required=True)
     probe.add_argument("--colpali-revision", required=True)
+    probe.add_argument("--colpali-backbone-model", required=True)
+    probe.add_argument("--colpali-backbone-revision", required=True)
     probe.add_argument("--output", type=Path, required=True)
 
     for name in ("embed", "evaluate"):
@@ -155,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
                 qwen_revision=args.qwen_revision,
                 colpali_model=args.colpali_model,
                 colpali_revision=args.colpali_revision,
+                colpali_backbone_model=args.colpali_backbone_model,
+                colpali_backbone_revision=args.colpali_backbone_revision,
                 output=args.output,
             )
             print(json.dumps(payload, indent=2, sort_keys=True))
