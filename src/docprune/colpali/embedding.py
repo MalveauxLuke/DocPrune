@@ -26,6 +26,24 @@ def _batch_tensor(batch: Mapping[str, object], name: str) -> torch.Tensor:
     return torch.as_tensor(batch[name])
 
 
+def _model_pixel_values(model: object, pixel_values: torch.Tensor) -> torch.Tensor:
+    """Match processor pixels to the model's vision parameter device and dtype."""
+
+    vision_tower = getattr(getattr(model, "model", model), "vision_tower", None)
+    parameters = getattr(vision_tower, "parameters", None)
+    if parameters is None:
+        parameters = getattr(model, "parameters", None)
+    if parameters is None:
+        return pixel_values
+    try:
+        parameter = next(parameters())
+    except StopIteration:
+        return pixel_values
+    if not parameter.dtype.is_floating_point:
+        raise ValueError("ColPali parameters must use a floating dtype")
+    return pixel_values.to(device=parameter.device, dtype=parameter.dtype)
+
+
 def encode_colpali_page(
     model: object,
     batch: Mapping[str, object],
@@ -55,8 +73,11 @@ def encode_colpali_page(
         raise ValueError("patch_keep_mask must retain at least one visual token")
 
     raster_indices = torch.arange(visual_count, device=input_ids.device, dtype=torch.long)[keep]
+    model_pixel_values = _model_pixel_values(model, pixel_values)
     if bool(keep.all()):
-        embeddings = model(**batch)
+        model_batch = dict(batch)
+        model_batch["pixel_values"] = model_pixel_values
+        embeddings = model(**model_batch)
         visual_embeddings = embeddings[:, mapping.visual_start : mapping.visual_stop]
         return ColPaliPageEmbedding(
             embeddings=embeddings,
@@ -73,7 +94,11 @@ def encode_colpali_page(
     compact_visual_start = mapping.visual_start
     compact_visual_stop = compact_visual_start + int(keep.sum().item())
 
-    vision_features = sparse_siglip_features(model.model.vision_tower, pixel_values, keep)
+    vision_features = sparse_siglip_features(
+        model.model.vision_tower,
+        model_pixel_values,
+        keep,
+    )
     image_features = model.model.multi_modal_projector(vision_features)
     image_features = image_features / (model.model.config.hidden_size**0.5)
     inputs_embeds = model.model.get_input_embeddings()(compact_ids)

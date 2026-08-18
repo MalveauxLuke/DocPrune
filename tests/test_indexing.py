@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 from PIL import Image
-from safetensors.torch import load_file
+from safetensors.torch import load_file, save_file
 from transformers.image_utils import ChannelDimension
 
 from docprune.benchmark_config import (
@@ -315,3 +315,90 @@ def test_build_rejects_mode_root_symlink_before_writing_artifacts(
         build_index(config, "all-kept", output)
 
     assert not (external / "documents").exists()
+
+
+@pytest.mark.parametrize(
+    "target_name", ["documents/000000.safetensors", "completion-ledger/000000.json"]
+)
+def test_build_rejects_per_document_external_symlink_targets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, target_name: str
+) -> None:
+    monkeypatch.setattr("docprune.indexing.assert_supported_colpali", lambda model, processor: None)
+    dataset = FakeDataset({"doc": (Image.new("RGB", (28, 28), color=(10, 0, 0)),)})
+    config = make_build_config(tmp_path, mode="all-kept", page_count=4, dataset=dataset)
+    mode_root = tmp_path / "indexes" / "all-kept"
+    target = mode_root / target_name
+    target.parent.mkdir(parents=True)
+    external = tmp_path / "external-target"
+    external.write_text("external", encoding="utf-8")
+    target.symlink_to(external)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        build_index(config, "all-kept", tmp_path / "indexes")
+
+    assert external.read_text(encoding="utf-8") == "external"
+
+
+def test_resume_rejects_empty_page_and_bad_raster_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("docprune.indexing.assert_supported_colpali", lambda model, processor: None)
+    monkeypatch.setattr("docprune.indexing.encode_colpali_page", fake_page_encoder)
+    pages = {
+        "doc": (
+            Image.new("RGB", (28, 28), color=(10, 0, 0)),
+            Image.new("RGB", (28, 28), color=(20, 0, 0)),
+        )
+    }
+    config = make_build_config(tmp_path, mode="all-kept", page_count=4, dataset=FakeDataset(pages))
+    result = build_index(config, "all-kept", tmp_path / "indexes")
+    document_path = result.mode_root / "documents" / "000000.safetensors"
+    ledger_path = result.mode_root / "completion-ledger" / "000000.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+    tensors = load_file(document_path)
+
+    for offsets, rasters, message in (
+        (
+            torch.tensor([0, 0, 8], dtype=torch.int64),
+            tensors["raster_indices"],
+            "strictly increasing",
+        ),
+        (
+            tensors["page_offsets"],
+            torch.tensor([0, 0, 2, 3, 0, 1, 2, 3], dtype=torch.int64),
+            "raster indices",
+        ),
+        (
+            tensors["page_offsets"],
+            torch.tensor([0, 1, 2, 3, 0, 1, 2, 1024], dtype=torch.int64),
+            "raster indices",
+        ),
+    ):
+        save_file(
+            {
+                "embeddings": tensors["embeddings"],
+                "raster_indices": rasters,
+                "page_offsets": offsets,
+            },
+            document_path,
+        )
+        mutated = dict(ledger)
+        mutated["sha256"] = hashlib.sha256(document_path.read_bytes()).hexdigest()
+        mutated["page_offsets"] = offsets.tolist()
+        ledger_path.write_text(json.dumps(mutated, sort_keys=True), encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            build_index(config, "all-kept", tmp_path / "indexes")
+
+        save_file(
+            {
+                "embeddings": tensors["embeddings"],
+                "raster_indices": tensors["raster_indices"],
+                "page_offsets": tensors["page_offsets"],
+            },
+            document_path,
+        )
+        ledger_path.write_text(
+            json.dumps(ledger, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )

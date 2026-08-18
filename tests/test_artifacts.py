@@ -73,6 +73,7 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
         embedding_metadata_path=metadata,
         embedding_shape=(12, 128),
         embedding_dtype="float32",
+        embeddings_sha256=sha256_file(embeddings),
         token2pageuid_path=token2pageuid,
         token2pageuid_sha256=sha256_file(token2pageuid),
         completion_ledger_path=ledger,
@@ -91,7 +92,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
 
     payload = manifest.to_dict()
 
-    assert payload["schema_version"] == 3
+    assert payload["schema_version"] == 4
     assert payload["mode"] == "docprune"
     assert payload["corpus_integrity_sha256"] == "a" * 64
     assert payload["source_order_sha256"] == "b" * 64
@@ -104,6 +105,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
     assert payload["pruning_config"] == {"attention_threshold": 0.075}
     assert payload["artifact_root"] == str(manifest.artifact_root)
     assert payload["embeddings"] == {"shape": [12, 128], "dtype": "float32"}
+    assert payload["embeddings_sha256"] == sha256_file(manifest.embeddings_path)
     assert payload["index_sha256"] == sha256_file(manifest.index_path)
     assert payload["runtime_commit"] == "c" * 40
     assert payload["m3docrag_commit"] == M3DOCRAG_COMMIT
@@ -154,7 +156,7 @@ def test_manifest_validates_physical_safetensors_shape_dtype_and_raster_rows(
     manifest = make_manifest(tmp_path)
     save_file(tensors, manifest.embeddings_path)
 
-    with pytest.raises(ValueError, match="safetensors"):
+    with pytest.raises(ValueError, match="(safetensors|embeddings SHA-256)"):
         manifest.validate_files()
 
 
@@ -185,6 +187,58 @@ def test_index_manifest_rejects_changed_index_or_invalid_embedding_contract(tmp_
                 "index_sha256": hashlib.sha256(b"changed").hexdigest(),
             }
         )
+
+
+def test_manifest_rejects_tampered_embedding_values_even_when_shape_and_dtype_match(
+    tmp_path: Path,
+) -> None:
+    manifest = make_manifest(tmp_path)
+    save_file(
+        {
+            "embeddings": torch.ones(12, 128, dtype=torch.float32),
+            "raster_indices": torch.arange(12, dtype=torch.int64),
+        },
+        manifest.embeddings_path,
+    )
+
+    with pytest.raises(ValueError, match="embeddings SHA-256 mismatch"):
+        manifest.validate_files()
+
+
+def test_manifest_checks_faiss_rows_against_embedding_payload(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path)
+    changed = faiss.IndexFlatIP(128)
+    changed.add(np.ones((12, 128), dtype=np.float32))
+    faiss.write_index(changed, str(manifest.index_path))
+    object.__setattr__(manifest, "index_sha256", sha256_file(manifest.index_path))
+
+    with pytest.raises(ValueError, match="FAISS rows do not match"):
+        manifest.validate_files()
+
+
+@pytest.mark.parametrize(
+    "raster_indices",
+    [
+        torch.tensor([0, 0, *range(2, 12)], dtype=torch.int64),
+        torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 1024], dtype=torch.int64),
+        torch.tensor([1, 0, *range(2, 12)], dtype=torch.int64),
+    ],
+)
+def test_manifest_rejects_invalid_raster_identity_or_order(
+    tmp_path: Path, raster_indices: torch.Tensor
+) -> None:
+    manifest = make_manifest(tmp_path)
+    save_file(
+        {
+            "embeddings": torch.zeros(12, 128, dtype=torch.float32),
+            "raster_indices": raster_indices,
+        },
+        manifest.embeddings_path,
+    )
+    object.__setattr__(manifest, "embeddings_sha256", sha256_file(manifest.embeddings_path))
+
+    with pytest.raises(ValueError, match="raster indices"):
+        manifest.validate_files()
 
 
 def test_manifest_pruning_configuration_is_immutable(tmp_path: Path) -> None:

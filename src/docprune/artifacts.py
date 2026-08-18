@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
+import numpy as np
+import torch
+
 from docprune.benchmark_config import M3DOCRAG_COMMIT, MODES, PAGE_COUNTS, sha256_file
 from docprune.processor_probe import require_immutable_revision, require_pinned_processor_resources
 
@@ -66,6 +69,7 @@ class IndexManifest:
     embedding_metadata_path: Path
     embedding_shape: tuple[int, int]
     embedding_dtype: str
+    embeddings_sha256: str
     token2pageuid_path: Path
     token2pageuid_sha256: str
     completion_ledger_path: Path
@@ -82,6 +86,7 @@ class IndexManifest:
             "corpus_integrity_sha256",
             "source_order_sha256",
             "processor_contract_sha256",
+            "embeddings_sha256",
             "token2pageuid_sha256",
             "completion_ledger_sha256",
             "index_sha256",
@@ -130,7 +135,7 @@ class IndexManifest:
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
-            "schema_version": 3,
+            "schema_version": 4,
             "mode": self.mode,
             "page_count": self.page_count,
             "corpus_integrity_sha256": self.corpus_integrity_sha256,
@@ -155,6 +160,7 @@ class IndexManifest:
                 "shape": list(self.embedding_shape),
                 "dtype": self.embedding_dtype,
             },
+            "embeddings_sha256": self.embeddings_sha256,
             "token2pageuid_path": str(self.token2pageuid_path),
             "token2pageuid_sha256": self.token2pageuid_sha256,
             "completion_ledger_path": str(self.completion_ledger_path),
@@ -199,6 +205,12 @@ class IndexManifest:
                 "processor contract SHA-256 mismatch: "
                 f"expected {self.processor_contract_sha256}, got {actual_contract}"
             )
+        actual_embeddings = sha256_file(self.embeddings_path)
+        if actual_embeddings != self.embeddings_sha256:
+            raise ValueError(
+                "embeddings SHA-256 mismatch: "
+                f"expected {self.embeddings_sha256}, got {actual_embeddings}"
+            )
         try:
             metadata = json.loads(self.embedding_metadata_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
@@ -211,8 +223,8 @@ class IndexManifest:
             raise ValueError("embedding metadata shape mismatch")
         if metadata.get("dtype") != self.embedding_dtype:
             raise ValueError("embedding metadata dtype mismatch")
-        self._validate_safetensors()
-        self._validate_token2pageuid()
+        embeddings, raster_indices = self._validate_safetensors()
+        self._validate_token2pageuid(raster_indices)
         for path, expected, label in (
             (self.token2pageuid_path, self.token2pageuid_sha256, "token2pageuid"),
             (self.completion_ledger_path, self.completion_ledger_sha256, "completion ledger"),
@@ -223,9 +235,9 @@ class IndexManifest:
         actual = sha256_file(self.index_path)
         if actual != self.index_sha256:
             raise ValueError(f"index SHA-256 mismatch: expected {self.index_sha256}, got {actual}")
-        self._validate_faiss()
+        self._validate_faiss(embeddings)
 
-    def _validate_safetensors(self) -> None:
+    def _validate_safetensors(self) -> tuple[torch.Tensor, torch.Tensor]:
         try:
             from safetensors.torch import load_file
 
@@ -249,8 +261,11 @@ class IndexManifest:
             raise ValueError("safetensors raster indices must use int64")
         if not bool(embeddings.isfinite().all()):
             raise ValueError("safetensors embeddings must be finite")
+        if not bool(((raster_indices >= 0) & (raster_indices < 1024)).all()):
+            raise ValueError("safetensors raster indices must be in [0, 1024)")
+        return embeddings, raster_indices
 
-    def _validate_token2pageuid(self) -> None:
+    def _validate_token2pageuid(self, raster_indices: torch.Tensor) -> None:
         try:
             rows = json.loads(self.token2pageuid_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
@@ -264,13 +279,33 @@ class IndexManifest:
                 or not isinstance(row["doc_id"], str)
                 or not row["doc_id"]
                 or not isinstance(row["page_index"], int)
+                or isinstance(row["page_index"], bool)
                 or row["page_index"] < 0
             ):
                 raise ValueError(
                     "token2pageuid rows must contain structured document/page identities"
                 )
 
-    def _validate_faiss(self) -> None:
+        start = 0
+        seen_pages: set[tuple[str, int]] = set()
+        while start < len(rows):
+            identity = (rows[start]["doc_id"], rows[start]["page_index"])
+            if identity in seen_pages:
+                raise ValueError("token2pageuid page segments must remain contiguous")
+            seen_pages.add(identity)
+            stop = start + 1
+            while stop < len(rows) and (rows[stop]["doc_id"], rows[stop]["page_index"]) == identity:
+                stop += 1
+            segment = raster_indices[start:stop]
+            if segment.numel() == 0 or (
+                segment.numel() > 1 and not bool((segment[1:] > segment[:-1]).all())
+            ):
+                raise ValueError(
+                    "token2pageuid page segment raster indices must be strictly increasing"
+                )
+            start = stop
+
+    def _validate_faiss(self, embeddings: torch.Tensor) -> None:
         try:
             import faiss
 
@@ -279,6 +314,10 @@ class IndexManifest:
             raise ValueError(f"index artifact is not valid FAISS: {self.index_path}") from error
         if index.d != 128 or index.ntotal != self.embedding_shape[0]:
             raise ValueError("FAISS dimensions or row count do not match embeddings")
+        reconstructed = np.asarray(index.reconstruct_n(0, index.ntotal), dtype=np.float32)
+        expected = embeddings.detach().cpu().numpy().astype(np.float32, copy=False)
+        if not np.array_equal(reconstructed, expected):
+            raise ValueError("FAISS rows do not match embeddings in stored order")
 
 
 def validate_index_manifest_pair(first: IndexManifest, second: IndexManifest) -> None:

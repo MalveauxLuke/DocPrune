@@ -5,6 +5,17 @@ from __future__ import annotations
 import torch
 
 
+def _module_tensor_spec(module: object) -> tuple[torch.device, torch.dtype] | None:
+    parameters = getattr(module, "parameters", None)
+    if parameters is None:
+        return None
+    try:
+        parameter = next(parameters())
+    except StopIteration:
+        return None
+    return parameter.device, parameter.dtype
+
+
 def sparse_siglip_features(
     vision_tower: object,
     pixel_values: torch.Tensor,
@@ -18,6 +29,12 @@ def sparse_siglip_features(
     vision_model = getattr(vision_tower, "vision_model", None)
     if vision_model is None:
         raise ValueError("vision_tower must expose vision_model")
+    tensor_spec = _module_tensor_spec(vision_tower)
+    if tensor_spec is not None:
+        device, dtype = tensor_spec
+        if not dtype.is_floating_point:
+            raise ValueError("SigLIP vision tower parameters must use a floating dtype")
+        pixels = pixels.to(device=device, dtype=dtype)
 
     embeddings = vision_model.embeddings(pixels)
     batch_size, patch_count, hidden_size = embeddings.shape

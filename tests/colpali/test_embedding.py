@@ -42,6 +42,41 @@ def test_all_kept_page_embedding_numerically_matches_stock_colpali(tiny_colpali)
     assert encoded.input_ids.tolist() == batch["input_ids"].tolist()
 
 
+def test_all_kept_casts_processor_pixels_to_half_precision_model(tiny_colpali) -> None:
+    model = tiny_colpali.half()
+    batch, mapping = make_page_batch()
+    stock_batch = {**batch, "pixel_values": batch["pixel_values"].half()}
+
+    with torch.no_grad():
+        stock = model(**stock_batch)
+        encoded = encode_colpali_page(
+            model,
+            batch,
+            mapping,
+            torch.ones(4, dtype=torch.bool),
+        )
+
+    assert encoded.embeddings.dtype == torch.float16
+    assert encoded.embeddings.shape == (1, 7, 128)
+    torch.testing.assert_close(encoded.embeddings, stock, rtol=0, atol=0)
+
+
+def test_sparse_path_casts_processor_pixels_to_half_precision_vision_tower(tiny_colpali) -> None:
+    model = tiny_colpali.half()
+    batch, mapping = make_page_batch()
+
+    with torch.no_grad():
+        encoded = encode_colpali_page(
+            model,
+            batch,
+            mapping,
+            torch.tensor([True, False, True, False]),
+        )
+
+    assert encoded.embeddings.dtype == torch.float16
+    assert encoded.visual_embeddings.shape == (1, 2, 128)
+
+
 def test_sparse_page_removes_only_rejected_image_placeholders_and_keeps_raster_identity(
     tiny_colpali,
 ) -> None:

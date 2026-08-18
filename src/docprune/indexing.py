@@ -75,7 +75,11 @@ def _fsync_directory(path: Path) -> None:
 
 def _publish_temp(temp_path: Path, target: Path) -> None:
     try:
+        if target.is_symlink():
+            raise ValueError(f"immutable artifact target must not be a symbolic link: {target}")
         if target.exists():
+            if not target.is_file():
+                raise ValueError(f"immutable artifact target must be a regular file: {target}")
             if sha256_file(temp_path) != sha256_file(target):
                 raise ValueError(
                     f"immutable artifact already exists with different content: {target}"
@@ -84,6 +88,10 @@ def _publish_temp(temp_path: Path, target: Path) -> None:
         try:
             os.link(temp_path, target)
         except FileExistsError:
+            if target.is_symlink():
+                raise ValueError(f"immutable artifact target must not be a symbolic link: {target}")
+            if not target.is_file():
+                raise ValueError(f"immutable artifact target must be a regular file: {target}")
             if sha256_file(temp_path) != sha256_file(target):
                 raise ValueError(f"immutable artifact was concurrently changed: {target}")
         _fsync_directory(target.parent)
@@ -292,7 +300,11 @@ def _load_completed_document(
     ordinal: int,
     doc_id: str,
     build_manifest_sha256: str,
+    documents_root: Path,
+    ledger_root: Path,
 ) -> tuple[torch.Tensor, torch.Tensor, list[dict[str, object]], dict[str, object]] | None:
+    _require_document_target(document_path, documents_root, "document")
+    _require_document_target(ledger_path, ledger_root, "completion ledger")
     if not ledger_path.exists():
         if document_path.exists():
             raise ValueError(
@@ -327,7 +339,7 @@ def _load_completed_document(
         raise ValueError(f"completion ledger entry shape mismatch: {doc_id}")
     if entry.get("dtype") != "float32":
         raise ValueError(f"completion ledger entry dtype mismatch: {doc_id}")
-    if embeddings.dtype != torch.float32 or rasters.dtype != torch.int64:
+    if embeddings.dtype != torch.float32 or rasters.dtype != torch.int64 or rasters.ndim != 1:
         raise ValueError(f"completed document has invalid tensor dtype: {doc_id}")
     if offsets.dtype != torch.int64 or offsets.ndim != 1 or offsets.numel() < 2:
         raise ValueError(f"completed document has invalid page offsets: {doc_id}")
@@ -335,8 +347,12 @@ def _load_completed_document(
         raise ValueError(f"completed document offsets do not cover embeddings: {doc_id}")
     if entry.get("page_offsets") != offsets.tolist():
         raise ValueError(f"completion ledger entry offsets mismatch: {doc_id}")
-    if not bool((offsets[1:] >= offsets[:-1]).all()) or len(rasters) != len(embeddings):
+    if not bool((offsets[1:] > offsets[:-1]).all()):
+        raise ValueError(f"completed document page offsets must be strictly increasing: {doc_id}")
+    if len(rasters) != len(embeddings):
         raise ValueError(f"completed document rows are inconsistent: {doc_id}")
+    if not bool(((rasters >= 0) & (rasters < 1024)).all()):
+        raise ValueError(f"completed document raster indices are out of range: {doc_id}")
     pages = entry.get("pages")
     if not isinstance(pages, list) or len(pages) != offsets.numel() - 1:
         raise ValueError(f"completed document page ledger is invalid: {doc_id}")
@@ -346,8 +362,31 @@ def _load_completed_document(
         if page != identity:
             raise ValueError(f"completed document page order drift: {doc_id}")
         count = int(offsets[page_index + 1] - offsets[page_index])
+        page_rasters = rasters[int(offsets[page_index]) : int(offsets[page_index + 1])]
+        if page_rasters.numel() == 0 or (
+            page_rasters.numel() > 1 and not bool((page_rasters[1:] > page_rasters[:-1]).all())
+        ):
+            raise ValueError(
+                f"completed document raster indices are not strictly increasing: {doc_id}"
+            )
         mapping.extend([identity] * count)
     return embeddings, rasters, mapping, entry
+
+
+def _require_document_target(target: Path, root: Path, label: str) -> None:
+    """Reject symlink/nonregular targets and path escapes before I/O."""
+
+    root = root.resolve()
+    if target.parent.resolve() != root:
+        raise ValueError(f"{label} target is outside its artifact root: {target}")
+    if target.is_symlink():
+        raise ValueError(f"{label} target must not be a symbolic link: {target}")
+    try:
+        target.resolve(strict=False).relative_to(root)
+    except ValueError as error:
+        raise ValueError(f"{label} target is outside its artifact root: {target}") from error
+    if target.exists() and not target.is_file():
+        raise ValueError(f"{label} target must be a regular file: {target}")
 
 
 def _encode_document(
@@ -472,6 +511,8 @@ def build_index(config: IndexBuildConfig, mode: str, output: Path) -> IndexBuild
             ordinal=ordinal,
             doc_id=doc_id,
             build_manifest_sha256=build_sha,
+            documents_root=documents_root,
+            ledger_root=ledger_root,
         )
         if completed is None:
             embeddings, rasters, offsets, pages = _encode_document(
@@ -563,6 +604,7 @@ def build_index(config: IndexBuildConfig, mode: str, output: Path) -> IndexBuild
         embedding_metadata_path=metadata_path,
         embedding_shape=(len(embeddings), EMBEDDING_WIDTH),
         embedding_dtype="float32",
+        embeddings_sha256=sha256_file(embeddings_path),
         token2pageuid_path=token2pageuid_path,
         token2pageuid_sha256=sha256_file(token2pageuid_path),
         completion_ledger_path=completion_ledger_path,
