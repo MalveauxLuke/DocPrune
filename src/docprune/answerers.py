@@ -10,6 +10,7 @@ import torch
 
 from docprune.benchmark_config import MAX_NEW_TOKENS, SHORT_ANSWER_TEMPLATE
 from docprune.btp import background_scores, threshold_keep_mask
+from docprune.colpali.compat import assert_supported_colpali
 from docprune.config import DocPruneConfig, PagePruningConfig, ReconstructionDefaults
 from docprune.indexing import colpali_uint8_raster
 from docprune.m3docrag import AnswerOutput
@@ -141,11 +142,68 @@ def _all_kept_trace(grid: torch.Tensor) -> PruningTrace:
     return PruningTrace(count, count, count, count, None)
 
 
-def _validate_placeholder_count(model: object, processor: object, input_ids: torch.Tensor, grid: torch.Tensor) -> None:
+def _validate_placeholder_count(
+    model: object, processor: object, input_ids: torch.Tensor, grid: torch.Tensor
+) -> None:
     expected = _merged_count(grid)
     observed = int((input_ids == _image_token_id(model, processor)).sum().item())
     if observed != expected:
-        raise ValueError(f"Qwen image placeholders ({observed}) do not match merge groups ({expected})")
+        raise ValueError(
+            f"Qwen image placeholders ({observed}) do not match merge groups ({expected})"
+        )
+
+
+def _validate_prepared_batch(
+    prepared: Sequence[PreparedQwenPage],
+    batch: Mapping[str, object],
+    model: object,
+    processor: object,
+) -> None:
+    """Ensure final chat batching did not alter page order or vision values."""
+
+    if not prepared:
+        raise ValueError("at least one prepared Qwen page is required")
+    final_grid = _grid(batch)
+    expected_grid = torch.cat([page.image_grid_thw for page in prepared], dim=0)
+    if not torch.equal(final_grid.cpu(), expected_grid.cpu()):
+        raise ValueError("batched Qwen image_grid_thw does not match page order")
+    final_pixels = torch.as_tensor(_value(batch, "pixel_values"))
+    expected_pixels = torch.cat([page.pixel_values for page in prepared], dim=0)
+    if final_pixels.shape != expected_pixels.shape or not torch.equal(
+        final_pixels.cpu(), expected_pixels.cpu()
+    ):
+        raise ValueError("batched Qwen pixel_values do not match page order or values")
+    if (
+        len({(page.patch_size, page.temporal_patch_size, page.merge_size) for page in prepared})
+        != 1
+    ):
+        raise ValueError("Qwen pages use inconsistent patch or merge geometry")
+    image_ids = torch.as_tensor(_value(batch, "input_ids"), dtype=torch.long)
+    if image_ids.ndim != 2 or image_ids.shape[0] != 1:
+        raise ValueError("Qwen input_ids must have shape [1, sequence]")
+    image_positions = (
+        (image_ids[0] == _image_token_id(model, processor)).nonzero(as_tuple=False).flatten()
+    )
+    expected_counts = [page.placeholder_count for page in prepared]
+    if image_positions.numel() != sum(expected_counts):
+        raise ValueError("batched Qwen image placeholder count does not match page groups")
+    runs: list[torch.Tensor] = []
+    if image_positions.numel():
+        breaks = torch.where(image_positions[1:] != image_positions[:-1] + 1)[0] + 1
+        boundaries = torch.cat(
+            [
+                image_positions.new_tensor([0]),
+                breaks,
+                image_positions.new_tensor([image_positions.numel()]),
+            ]
+        )
+        runs = [
+            image_positions[int(start) : int(end)] for start, end in zip(boundaries, boundaries[1:])
+        ]
+    if len(runs) != len(expected_counts) or any(
+        run.numel() != count for run, count in zip(runs, expected_counts)
+    ):
+        raise ValueError("batched Qwen page placeholders do not match page order or counts")
 
 
 @dataclass
@@ -191,44 +249,54 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         max_new_tokens: int = MAX_NEW_TOKENS,
     ) -> None:
         super().__init__(model=model, processor=processor, max_new_tokens=max_new_tokens)
+        if colpali_model is None or colpali_processor is None:
+            raise ValueError(
+                "DocPrune Qwen answerer requires a ColPali model and processor; "
+                "use AllKeptQwenAnswerer for an explicit unpruned baseline"
+            )
         self.colpali_model = colpali_model
         self.colpali_processor = colpali_processor
+        self.colpali_compatibility = assert_supported_colpali(colpali_model, colpali_processor)
         self.page_config = page_config
         self.reconstruction = reconstruction or ReconstructionDefaults()
         self.comprehension_threshold = comprehension_threshold
         self.attention_threshold = attention_threshold
 
-    def _effective_page_config(self, page_count: int) -> PagePruningConfig | None:
+    def _effective_page_config(self, page_count: int) -> PagePruningConfig:
         if self.page_config is not None:
             return self.page_config
-        if self.colpali_model is not None and self.colpali_processor is not None:
-            return DocPruneConfig.paper_defaults().for_pages(page_count)
-        return None
+        return DocPruneConfig.paper_defaults().for_pages(page_count)
 
     def _colpali_page_embeddings(
         self,
         images: Sequence[object],
         question: str,
         page_config: PagePruningConfig | None = None,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], torch.Tensor] | None:
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[tuple[int, int]], torch.Tensor] | None:
         if self.colpali_model is None or self.colpali_processor is None:
             return None
         process_images = getattr(self.colpali_processor, "process_images", None)
         process_queries = getattr(self.colpali_processor, "process_queries", None)
         if not callable(process_images) or not callable(process_queries):
-            raise ValueError("pinned ColPali processor must expose process_images and process_queries")
+            raise ValueError(
+                "pinned ColPali processor must expose process_images and process_queries"
+            )
         query_batch = process_queries([question])
         if not isinstance(query_batch, Mapping):
             raise ValueError("ColPali processor outputs must be mappings")
         with torch.no_grad():
             query = self.colpali_model(**_move_colpali_batch(query_batch, self.colpali_model))
         query = torch.as_tensor(query if isinstance(query, torch.Tensor) else query[0])
-        query_attention = torch.as_tensor(_value(query_batch, "attention_mask"), device=query.device)
+        query_attention = torch.as_tensor(
+            _value(query_batch, "attention_mask"), device=query.device
+        )
         if query.ndim != 3 or query.shape[0] != 1:
             raise ValueError("ColPali query embeddings have unsupported shape")
         image_token_id = getattr(self.colpali_processor, "image_token_id", None)
         if image_token_id is None:
-            image_token_id = getattr(getattr(self.colpali_processor, "tokenizer", None), "image_token_id", None)
+            image_token_id = getattr(
+                getattr(self.colpali_processor, "tokenizer", None), "image_token_id", None
+            )
         tokenizer = getattr(self.colpali_processor, "tokenizer", None)
         if image_token_id is None and callable(getattr(tokenizer, "convert_tokens_to_ids", None)):
             candidate = tokenizer.convert_tokens_to_ids("<image>")
@@ -239,6 +307,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             raise ValueError("ColPali image token ID could not be resolved")
         docs: list[torch.Tensor] = []
         rasters: list[torch.Tensor] = []
+        source_hws: list[tuple[int, int]] = []
         for image in images:
             image_batch = self.colpali_processor.process_images([image])
             if not isinstance(image_batch, Mapping):
@@ -251,13 +320,22 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 image_token_id=int(image_token_id),
                 image_seq_length=int(getattr(self.colpali_processor, "image_seq_length", 1024)),
             )
+            compatibility_grid = tuple(self.colpali_compatibility.grid_hw)
+            if mapping.grid_hw != compatibility_grid:
+                raise ValueError(
+                    "ColPali page mapping grid does not match its validated compatibility grid"
+                )
+            if mapping.image_token_id != int(self.colpali_compatibility.image_token_id):
+                raise ValueError(
+                    "ColPali page image token ID does not match validated compatibility"
+                )
             if page_config is None:
                 retrieval_keep = torch.ones(len(mapping.raster_indices), dtype=torch.bool)
             else:
                 raster = colpali_uint8_raster(self.colpali_processor, image)
                 scores = background_scores(
                     raster,
-                    patch_size=14,
+                    patch_size=int(self.colpali_compatibility.patch_size),
                     error_tolerance=page_config.background_error_tolerance,
                 )
                 retrieval_keep = threshold_keep_mask(
@@ -276,8 +354,9 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             )
             docs.append(encoded.visual_embeddings[0])
             rasters.append(encoded.raster_indices)
+            source_hws.append(mapping.grid_hw)
         query_mask = query_attention[0].bool()
-        return docs, rasters, query[0, query_mask]
+        return docs, rasters, source_hws, query[0, query_mask]
 
     def _masks(
         self,
@@ -288,18 +367,15 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
     ) -> VisionPruningMasks:
         grid = _grid(batch)
         page_config = self._effective_page_config(len(images))
-        if page_config is None:
-            groups = _merged_count(grid)
-            return VisionPruningMasks(torch.ones(groups, dtype=torch.bool), torch.ones(groups, dtype=torch.bool))
         embeddings = self._colpali_page_embeddings(images, question, page_config)
         if embeddings is None:
             raise ValueError("DocPrune answerer requires a ColPali model and processor")
-        documents, rasters, query = embeddings
+        documents, rasters, source_hws, query = embeddings
         masks = prepare_qa_pruning_masks(
             resized_images=[page.raster for page in prepared],
             image_grid_thw=grid,
             document_tokens=documents,
-            document_source_hw=[(32, 32)] * len(images),
+            document_source_hw=source_hws,
             document_raster_indices=rasters,
             question_tokens=query,
             patch_size=prepared[0].patch_size,
@@ -314,6 +390,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         qwen_images = [prepared_raster_image(page) for page in prepared]
         batch = _prepare_batch(self.processor, qwen_images, question)
         grid = _grid(batch)
+        _validate_prepared_batch(prepared, batch, self.model, self.processor)
         model_device = _model_device(self.model)
         moved = _move_batch(batch, model_device)
         input_ids = torch.as_tensor(_value(moved, "input_ids"), dtype=torch.long)
@@ -329,9 +406,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         )
         eos = tuple(
             value
-            for value in (
-                getattr(getattr(self.model, "config", None), "eos_token_id", None),
-            )
+            for value in (getattr(getattr(self.model, "config", None), "eos_token_id", None),)
             if isinstance(value, int)
         )
         with torch.no_grad():

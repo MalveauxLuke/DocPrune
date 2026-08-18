@@ -54,3 +54,30 @@ With the implementation in place:
 - The all-kept parity oracle supplies the exact M-ROPE positions. A high-level
   Transformers forward without `position_ids` uses linear fallback positions
   in 4.46.3 and is therefore not a valid stock generation oracle.
+
+## Review-round RED/GREEN and cache ruling
+
+The review-round behavioral tests were added before the corresponding fixes.
+The initial RED run showed that a missing ColPali resource did not fail closed,
+compatibility was not validated at construction, batched page drift reached
+generation, and the suffix test could not construct a pruning answerer. The
+cache characterization also established the expected heterogeneous lengths
+after a trigger. The focused GREEN run then passed **12 tests**, including the
+new missing-resource, compatibility, multi-page drift, separated-placeholder,
+and cache-length behaviors.
+
+The multi-page validator now splits image-token positions into consecutive
+per-page runs. It checks run count and each run's expected merge-group count,
+while allowing the required vision separator tokens between runs. It still
+compares final batched `image_grid_thw` and `pixel_values` exactly against the
+prepared page concatenation before generation.
+
+The cache finding was not implemented as a blanket compaction. With CTP after
+the selected layer, the triggering layer intentionally retains the full prefix
+KV while deeper layers receive compact KV. The characterization test observes
+prefill lengths `(6, 4, 4, 4)` and, after one decode token, `(7, 5, 5, 5)`.
+`decode_one_token` already reads each layer's own cache length, so this is the
+paper/auditor heterogeneous-cache contract rather than a bug.
+
+Final review-round CPU verification: **175 passed, 1 skipped** (the opt-in
+real-model probe). Ruff check and format check pass for all changed Python.

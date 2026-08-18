@@ -1,12 +1,14 @@
 import torch
 
-from docprune.qwen2vl.decoder import _prefill_attention_mask, prefill_with_ctp
+from docprune.qwen2vl.decoder import _prefill_attention_mask, decode_one_token, prefill_with_ctp
 
 
 def test_flash_prefill_uses_unpadded_varlen_mask_contract(tiny_qwen2vl) -> None:
     tiny_qwen2vl.model.config._attn_implementation = "flash_attention_2"
 
-    assert _prefill_attention_mask(tiny_qwen2vl.model, 6, torch.float32, torch.device("cpu")) is None
+    assert (
+        _prefill_attention_mask(tiny_qwen2vl.model, 6, torch.float32, torch.device("cpu")) is None
+    )
 
 
 def test_eager_prefill_uses_explicit_causal_mask(tiny_qwen2vl) -> None:
@@ -38,6 +40,31 @@ def test_ctp_reduces_only_deeper_layer_cache_lengths(tiny_qwen2vl) -> None:
     assert got.hidden_states.shape == (1, 4, 32)
     assert cache_lengths == (6, 4, 4, 4)
     assert got.keep_indices.tolist() == [0, 1, 4, 5]
+
+
+def test_ctp_decode_keeps_trigger_layer_full_and_compacts_deeper_caches(tiny_qwen2vl) -> None:
+    input_ids = torch.tensor([[10, 102, 100, 100, 103, 11]])
+    hidden = tiny_qwen2vl.model.embed_tokens(input_ids)
+    positions = torch.arange(6).view(1, 1, 6).expand(3, 1, 6)
+
+    with torch.no_grad():
+        prefill = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3]),
+            comprehension_threshold=0.0,
+            attention_threshold=1.0,
+        )
+        token = tiny_qwen2vl.model.embed_tokens(torch.tensor([[12]]))
+        decode_one_token(
+            tiny_qwen2vl.model,
+            token,
+            torch.full((3, 1, 1), 6, dtype=torch.long),
+            prefill.cache,
+        )
+
+    assert tuple(cache.shape[-2] for cache in prefill.cache.key_cache) == (7, 5, 5, 5)
 
 
 def test_no_crossing_preserves_full_sequence_for_every_layer(tiny_qwen2vl) -> None:
