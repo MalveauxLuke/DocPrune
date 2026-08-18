@@ -6,6 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
+from docprune.benchmark_config import (
+    COLPALI_BACKBONE_MODEL,
+    COLPALI_BACKBONE_REVISION,
+    COLPALI_MODEL,
+    COLPALI_REVISION,
+    QWEN_MODEL,
+)
 from docprune.m3docrag import SampleInput
 from docprune.m3docvqa_factory import (
     _load_index_manifest,
@@ -64,9 +71,7 @@ def test_load_completed_qids_rejects_duplicate_and_unknown_records(tmp_path: Pat
     with pytest.raises(ValueError, match="unexpected"):
         load_completed_qids(path, expected_qids=("q-1", "q-2"))
 
-    path.write_text(
-        json.dumps(result_record("q-1", question="changed")) + "\n"
-    )
+    path.write_text(json.dumps(result_record("q-1", question="changed")) + "\n")
     with pytest.raises(ValueError, match="question drift"):
         load_completed_qids(
             path,
@@ -113,6 +118,9 @@ def test_resume_manifest_requires_complete_identity_and_valid_digest(tmp_path: P
     with pytest.raises(ValueError, match="missing an immutable"):
         _write_run_manifest(tmp_path, payload, resume=True)
 
+    with pytest.raises(FileExistsError, match="complete run"):
+        _write_run_manifest(tmp_path, payload, resume=False)
+    manifest_path.unlink()
     _write_run_manifest(tmp_path, payload, resume=False)
     manifest = json.loads(manifest_path.read_text())
     manifest["run_manifest_sha256"] = "0" * 64
@@ -211,6 +219,53 @@ def test_completed_results_require_full_schema_and_regular_file(tmp_path: Path) 
     path.symlink_to(target)
     with pytest.raises(ValueError, match="regular"):
         load_completed_qids(path, expected_qids=("q-1",))
+
+
+def test_completed_results_require_exact_requested_page_count(tmp_path: Path) -> None:
+    path = tmp_path / "results.jsonl"
+    path.write_text(json.dumps(result_record("q-1")) + "\n")
+    with pytest.raises(ValueError, match="page count"):
+        load_completed_qids(path, expected_qids=("q-1",), expected_page_count=2)
+
+
+def test_completed_results_canonicalize_legacy_qid_and_reject_conflicts(tmp_path: Path) -> None:
+    path = tmp_path / "results.jsonl"
+    legacy = result_record("q-1")
+    legacy["qid"] = legacy.pop("question_id")
+    path.write_text(json.dumps(legacy) + "\n")
+    assert load_completed_qids(path, expected_qids=("q-1",)) == {"q-1"}
+
+    conflict = result_record("q-1")
+    conflict["qid"] = "q-other"
+    path.write_text(json.dumps(conflict) + "\n")
+    with pytest.raises(ValueError, match="conflicting"):
+        load_completed_qids(path, expected_qids=("q-1",))
+
+
+def test_processor_contract_resources_are_exactly_pinned(tmp_path: Path) -> None:
+    path = tmp_path / "contract.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "resources": {
+                    "qwen": {"model": QWEN_MODEL, "revision": "wrong"},
+                    "colpali": {"model": COLPALI_MODEL, "revision": COLPALI_REVISION},
+                    "colpali_backbone": {
+                        "model": COLPALI_BACKBONE_MODEL,
+                        "revision": COLPALI_BACKBONE_REVISION,
+                    },
+                },
+                "mapping_checks": {
+                    "colpali_visual_grid_inferred": True,
+                    "qwen_merge_groups_valid": True,
+                    "raster_order_verified": True,
+                },
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="resources"):
+        validate_processor_contract_file(path)
 
 
 def test_build_workload_rejects_unknown_operation_without_loading_models() -> None:

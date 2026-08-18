@@ -37,6 +37,53 @@ def _manifest_digest(payload: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+_COMMON_COMPLETE_MANIFEST_FIELDS = frozenset(
+    {
+        "output",
+        "operation",
+        "mode",
+        "page_count",
+        "runtime_commit",
+        "m3docrag_commit",
+        "resources",
+        "processor_contract_path",
+        "processor_contract_sha256",
+        "processor_contract",
+        "corpus",
+        "generation",
+        "pruning_config",
+        "selection",
+    }
+)
+
+
+def _validate_resume_manifest(existing: dict[str, object], requested: dict[str, object]) -> None:
+    _validate_complete_run_manifest(existing)
+    if existing.get("operation") != requested.get("command"):
+        raise ValueError("resume manifest operation does not match the requested command")
+    for key, value in requested.items():
+        if key == "index_manifest" and isinstance(existing.get(key), dict):
+            continue
+        if existing.get(key) != value:
+            raise ValueError("resume manifest does not exactly match the requested run")
+
+
+def _validate_complete_run_manifest(existing: dict[str, object]) -> None:
+    required = set(_COMMON_COMPLETE_MANIFEST_FIELDS)
+    operation = existing.get("operation")
+    if operation not in {"embed", "evaluate"}:
+        raise ValueError("resume requires a complete run manifest")
+    if operation == "evaluate":
+        required.add("index_manifest")
+    if not required <= set(existing):
+        raise ValueError("resume requires a complete run manifest")
+    supplied_digest = existing.get("run_manifest_sha256")
+    unsigned = dict(existing)
+    unsigned.pop("run_manifest_sha256", None)
+    if supplied_digest != _manifest_digest(unsigned):
+        raise ValueError("resume manifest digest is invalid")
+
+
 def _fsync_directory(path: Path) -> None:
     descriptor = os.open(path, os.O_RDONLY)
     try:
@@ -151,7 +198,19 @@ def _manifest(
         "output": str(output.resolve()),
         "mode": mode,
         "run_config": None if run_config is None else str(run_config.resolve()),
+        "run_config_sha256": (
+            sha256_file(run_config)
+            if run_config is not None and run_config.is_file() and not run_config.is_symlink()
+            else None
+        ),
         "index_manifest": None if index_manifest is None else str(index_manifest.resolve()),
+        "index_manifest_sha256": (
+            sha256_file(index_manifest)
+            if index_manifest is not None
+            and index_manifest.is_file()
+            and not index_manifest.is_symlink()
+            else None
+        ),
         "limit": limit,
         "sample_ids": None if sample_ids is None else list(sample_ids),
         **_resolved_config(config, pages),
@@ -183,10 +242,9 @@ def _prepare_output(output: Path, manifest: dict[str, object], resume: bool) -> 
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
             raise ValueError("resume manifest is not valid JSON") from error
-        if not isinstance(existing, dict) or any(
-            existing.get(key) != value for key, value in manifest.items()
-        ):
-            raise ValueError("resume manifest does not exactly match the requested run")
+        if not isinstance(existing, dict):
+            raise ValueError("resume requires a complete run manifest")
+        _validate_resume_manifest(existing, manifest)
         return
     output.mkdir(parents=True)
     _atomic_write_json(manifest_path, manifest)
@@ -220,15 +278,17 @@ def _run_evaluate(
     )
     if not isinstance(workload, EvaluationWorkload):
         raise TypeError("evaluate factory must return EvaluationWorkload")
-    if workload.manifest is not None:
-        manifest_path = output / "run_manifest.json"
-        existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(existing_manifest, dict):
-            raise ValueError("run manifest must be a JSON object")
-        existing_manifest.update(workload.manifest)
-        existing_manifest.pop("run_manifest_sha256", None)
-        existing_manifest["run_manifest_sha256"] = _manifest_digest(existing_manifest)
-        _atomic_write_json(manifest_path, existing_manifest)
+    if workload.manifest is None:
+        raise ValueError("evaluate workload must include a complete run manifest")
+    manifest_path = output / "run_manifest.json"
+    existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(existing_manifest, dict):
+        raise ValueError("run manifest must be a JSON object")
+    existing_manifest.update(workload.manifest)
+    existing_manifest.pop("run_manifest_sha256", None)
+    existing_manifest["run_manifest_sha256"] = _manifest_digest(existing_manifest)
+    _validate_complete_run_manifest(existing_manifest)
+    _atomic_write_json(manifest_path, existing_manifest)
     samples = tuple(
         sample if isinstance(sample, SampleInput) else SampleInput.from_mapping(sample)
         for sample in workload.samples
@@ -239,16 +299,27 @@ def _run_evaluate(
     results_path = output / "results.jsonl"
     completed: set[str] = set()
     if resume:
-        from docprune.m3docvqa_factory import load_completed_qids
+        from docprune.m3docvqa_factory import (
+            _canonicalize_result_record,
+            _validate_result_record,
+            load_completed_qids,
+        )
 
-        completed = load_completed_qids(results_path, expected_samples=samples)
+        completed = load_completed_qids(
+            results_path,
+            expected_samples=samples,
+            expected_page_count=pages,
+        )
         existing_order = []
         if results_path.exists():
             with results_path.open(encoding="utf-8") as stream:
                 for line in stream:
                     if line.strip():
                         record = json.loads(line)
-                        existing_order.append(record.get("question_id", record.get("qid")))
+                        if not isinstance(record, dict):
+                            raise ValueError("resume results contain a non-object record")
+                        canonical = _canonicalize_result_record(record, line_number=1)
+                        existing_order.append(canonical.get("question_id"))
         if tuple(existing_order) != qids[: len(existing_order)]:
             raise ValueError("resume results must be an exact source-order prefix")
     append_mode = resume and results_path.exists()
@@ -257,9 +328,13 @@ def _run_evaluate(
             continue
         result = workload.runner.run_sample(sample)
         record = result.to_dict()
-        from docprune.m3docvqa_factory import _validate_result_record
+        from docprune.m3docvqa_factory import (
+            _canonicalize_result_record,
+            _validate_result_record,
+        )
 
-        _validate_result_record(record, line_number=1)
+        record = _canonicalize_result_record(record, line_number=1)
+        _validate_result_record(record, line_number=1, expected_page_count=pages)
         if (
             record.get("question_id") != sample.question_id
             or record.get("question") != sample.question
@@ -294,7 +369,7 @@ def _validate_embed_result(
     pages: int,
     mode: str,
     output: Path,
-    run_config: Path | None = None,
+    run_config: object | None = None,
 ) -> None:
     from docprune.indexing import IndexBuildResult
 
@@ -308,14 +383,22 @@ def _validate_embed_result(
     if run_config is not None:
         from docprune.m3docvqa_factory import _resolve_run_config, _validate_run_identity
 
-        resolved_run = _resolve_run_config(run_config, mode=mode, page_count=pages)
+        if isinstance(run_config, Path):
+            resolved_run = _resolve_run_config(run_config, mode=mode, page_count=pages)
+        else:
+            resolved_run = run_config
+        if resolved_run is None:
+            raise ValueError("embed result validation requires an authoritative run config")
         expected_identity = _validate_run_identity(resolved_run, mode=mode, page_count=pages)
         if manifest.runtime_commit != expected_identity["runtime_commit"]:
             raise ValueError("embed result runtime commit does not match the requested run")
-        if manifest.processor_contract_path.resolve() != Path(
-            str(expected_identity["processor_contract_path"])
-        ).resolve():
-            raise ValueError("embed result processor contract path does not match the requested run")
+        if (
+            manifest.processor_contract_path.resolve()
+            != Path(str(expected_identity["processor_contract_path"])).resolve()
+        ):
+            raise ValueError(
+                "embed result processor contract path does not match the requested run"
+            )
         if manifest.processor_contract_sha256 != expected_identity["processor_contract_sha256"]:
             raise ValueError("embed result processor contract does not match the requested run")
         expected_corpus = expected_identity["corpus"]
@@ -353,7 +436,10 @@ def _validate_embed_result(
         digest = getattr(manifest, digest_name)
         if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest.lower()):
             raise ValueError(f"embed result {digest_name} is not a SHA-256")
-    if manifest.processor_contract_path.is_file() and sha256_file(manifest.processor_contract_path) != manifest.processor_contract_sha256:
+    if (
+        manifest.processor_contract_path.is_file()
+        and sha256_file(manifest.processor_contract_path) != manifest.processor_contract_sha256
+    ):
         raise ValueError("embed result processor contract checksum mismatch")
     manifest.validate_files()
 
@@ -375,6 +461,33 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             raise ValueError("--sample-ids contains a duplicate qid")
     if args.limit is not None and args.limit < 1:
         raise ValueError("--limit must be positive")
+    if not args.dry_run:
+        for path, label in (
+            (args.run_config, "run configuration"),
+            (args.index_manifest, "index manifest"),
+        ):
+            if path is not None and (path.is_symlink() or not path.is_file()):
+                raise ValueError(f"{label} must be a regular file: {path}")
+    resolved_embed_run = None
+    resolved_embed_identity = None
+    if command == "embed" and not args.dry_run:
+        from docprune.m3docvqa_factory import (
+            _resolve_run_config,
+            _validate_m3docrag_checkout,
+            _validate_run_identity,
+        )
+
+        resolved_embed_run = _resolve_run_config(
+            args.run_config,
+            mode=args.mode,
+            page_count=args.pages,
+        )
+        resolved_embed_identity = _validate_run_identity(
+            resolved_embed_run,
+            mode=args.mode,
+            page_count=args.pages,
+        )
+        _validate_m3docrag_checkout(resolved_embed_run)
     manifest = _manifest(
         command,
         args.config,
@@ -426,13 +539,30 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             pages=args.pages,
             mode=args.mode,
             output=args.output,
-            run_config=args.run_config,
+            run_config=resolved_embed_run,
         )
         complete = result.manifest.to_dict()
         manifest_path = args.output / "run_manifest.json"
         base = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(base, dict):
             raise ValueError("run manifest must be a JSON object")
+        if resolved_embed_identity is None:
+            raise ValueError("embed run identity was not resolved")
+        base.update(resolved_embed_identity)
+        base["operation"] = "embed"
+        base["output"] = str(args.output.resolve())
+        base["selection"] = {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [],
+            "count": 0,
+        }
+        base["pruning_config"] = {
+            "enabled": args.mode == "docprune",
+            "page_settings": asdict(config.for_pages(args.pages)),
+            "reconstruction_defaults": asdict(config.reconstruction_defaults),
+            "siglip_patch_size": 14,
+        }
         base["index_manifest"] = complete
         base["status"] = "configured"
         base.pop("run_manifest_sha256", None)

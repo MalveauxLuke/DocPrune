@@ -43,6 +43,36 @@ from docprune.processor_probe import validate_processor_contract
 
 DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
 
+_EXPECTED_CONTRACT_RESOURCES = {
+    "qwen": {"model": QWEN_MODEL, "revision": QWEN_REVISION},
+    "colpali": {"model": COLPALI_MODEL, "revision": COLPALI_REVISION},
+    "colpali_backbone": {
+        "model": COLPALI_BACKBONE_MODEL,
+        "revision": COLPALI_BACKBONE_REVISION,
+    },
+}
+_CLI_PLACEHOLDER_KEYS = frozenset(
+    {
+        "schema_version",
+        "status",
+        "command",
+        "config",
+        "factory",
+        "output",
+        "mode",
+        "run_config",
+        "run_config_sha256",
+        "index_manifest",
+        "index_manifest_sha256",
+        "limit",
+        "sample_ids",
+        "page_count",
+        "upstream",
+        "paper_values",
+        "reconstruction_defaults",
+    }
+)
+
 
 def _value(container: object, name: str, default: object = None) -> Any:
     if isinstance(container, Mapping):
@@ -70,6 +100,19 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
+def _is_cli_placeholder(existing: Mapping[str, object], payload: Mapping[str, object]) -> bool:
+    return (
+        set(existing) == _CLI_PLACEHOLDER_KEYS
+        and existing.get("schema_version") == 2
+        and existing.get("status") == "configured"
+        and existing.get("command") == payload.get("operation")
+        and existing.get("mode") == payload.get("mode")
+        and existing.get("page_count") == payload.get("page_count")
+        and existing.get("output") == payload.get("output")
+        and "runtime_commit" not in existing
+    )
+
+
 def validate_processor_contract_file(path: Path) -> dict[str, object]:
     """Read and validate the immutable processor-probe contract."""
 
@@ -88,6 +131,8 @@ def validate_processor_contract_file(path: Path) -> dict[str, object]:
     resources = payload.get("resources")
     if not isinstance(resources, Mapping):
         raise ValueError("processor contract is missing resources")
+    if dict(resources) != _EXPECTED_CONTRACT_RESOURCES:
+        raise ValueError("processor contract resources do not match the pinned resources")
     return payload
 
 
@@ -128,9 +173,12 @@ def load_completed_qids(
     *,
     expected_qids: Sequence[str] | None = None,
     expected_samples: Sequence[SampleInput] | None = None,
+    expected_page_count: int | None = None,
 ) -> set[str]:
     """Validate a result JSONL's qid set before permitting resume."""
 
+    if expected_page_count is not None and expected_page_count not in PAGE_COUNTS:
+        raise ValueError("expected_page_count must be 1, 2, or 4")
     path = Path(path)
     if path.is_symlink():
         raise ValueError("results JSONL must be a regular file")
@@ -157,8 +205,13 @@ def load_completed_qids(
                 raise ValueError(f"results JSONL is invalid at line {line_number}") from error
             if not isinstance(record, Mapping):
                 raise ValueError(f"results JSONL record {line_number} is not an object")
-            _validate_result_record(record, line_number=line_number)
-            qid = record.get("question_id", record.get("qid"))
+            record = _canonicalize_result_record(record, line_number=line_number)
+            _validate_result_record(
+                record,
+                line_number=line_number,
+                expected_page_count=expected_page_count,
+            )
+            qid = record["question_id"]
             if not isinstance(qid, str) or not qid:
                 raise ValueError(f"results JSONL record {line_number} is missing question_id")
             if qid not in expected:
@@ -179,7 +232,26 @@ def load_completed_qids(
     return completed
 
 
-def _validate_result_record(record: Mapping[str, object], *, line_number: int) -> None:
+def _canonicalize_result_record(
+    record: Mapping[str, object], *, line_number: int
+) -> dict[str, object]:
+    normalized = dict(record)
+    question_id = normalized.get("question_id")
+    legacy_qid = normalized.get("qid")
+    if question_id is not None and legacy_qid is not None and question_id != legacy_qid:
+        raise ValueError(f"results JSONL record {line_number} has conflicting question IDs")
+    if question_id is None and legacy_qid is not None:
+        normalized["question_id"] = legacy_qid
+    normalized.pop("qid", None)
+    return normalized
+
+
+def _validate_result_record(
+    record: Mapping[str, object],
+    *,
+    line_number: int,
+    expected_page_count: int | None = None,
+) -> None:
     required = {
         "question_id",
         "question",
@@ -206,6 +278,11 @@ def _validate_result_record(record: Mapping[str, object], *, line_number: int) -
     pages = record["retrieved_pages"]
     if not isinstance(pages, list) or not pages:
         raise ValueError(f"results JSONL record {line_number} has invalid retrieved_pages")
+    if expected_page_count is not None and len(pages) != expected_page_count:
+        raise ValueError(
+            f"results JSONL record {line_number} has the wrong page count: "
+            f"expected {expected_page_count}, got {len(pages)}"
+        )
     page_ids: set[tuple[str, int]] = set()
     for page in pages:
         if not isinstance(page, Mapping):
@@ -254,7 +331,7 @@ def _validate_result_record(record: Mapping[str, object], *, line_number: int) -
     if not isinstance(timing, Mapping) or set(timing) != {"retrieval_seconds", "qa_seconds"}:
         raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
     if any(
-            not isinstance(timing[name], int | float)
+        not isinstance(timing[name], int | float)
         or isinstance(timing[name], bool)
         or not math.isfinite(float(timing[name]))
         or float(timing[name]) < 0
@@ -393,8 +470,7 @@ def _normalise_run_config_mapping(
         missing_corpus = [name for name in corpus_required if corpus_values.get(name) is None]
         if missing_corpus:
             raise ValueError(
-                "run configuration corpus is missing required fields: "
-                + ", ".join(missing_corpus)
+                "run configuration corpus is missing required fields: " + ", ".join(missing_corpus)
             )
         archive_hashes = corpus_values.get("archive_hashes", {})
         if not isinstance(archive_hashes, Mapping):
@@ -466,7 +542,10 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
     contract_payload = validate_processor_contract_file(contract)
     declared_contract_sha = _value(run_config, "processor_contract_sha256")
     actual_contract_sha = sha256_file(contract)
-    if declared_contract_sha is not None and str(declared_contract_sha).lower() != actual_contract_sha:
+    if (
+        declared_contract_sha is not None
+        and str(declared_contract_sha).lower() != actual_contract_sha
+    ):
         raise ValueError("processor contract SHA-256 does not match the run configuration")
     max_new_tokens = _required(run_config, "max_new_tokens")
     do_sample = _required(run_config, "do_sample")
@@ -718,7 +797,9 @@ def _run_manifest(
     return payload
 
 
-def _expected_pruning_identity(config: DocPruneConfig, *, mode: str, page_count: int) -> dict[str, object]:
+def _expected_pruning_identity(
+    config: DocPruneConfig, *, mode: str, page_count: int
+) -> dict[str, object]:
     return {
         "enabled": mode == "docprune",
         "page_settings": asdict(config.for_pages(page_count)),
@@ -777,6 +858,7 @@ def _write_run_manifest(
             "resources",
             "processor_contract_path",
             "processor_contract_sha256",
+            "processor_contract",
             "corpus",
             "generation",
             "pruning_config",
@@ -791,44 +873,17 @@ def _write_run_manifest(
             unsigned_existing.pop("run_manifest_sha256", None)
             if supplied_digest != _sha256_json(unsigned_existing):
                 raise ValueError("resume manifest digest is invalid")
-        compare_keys = tuple(
-            key
-            for key in identity_keys
-            if key in payload
-            and key in existing
-            and not (key == "index_manifest" and isinstance(existing[key], str) and not resume)
-        )
-        requested_identity_keys = tuple(key for key in identity_keys if key in payload)
-        placeholder_required = {
-            "schema_version",
-            "status",
-            "command",
-            "factory",
-            "config",
-            "output",
-            "mode",
-            "page_count",
-            "run_config",
-            "index_manifest",
-            "limit",
-            "sample_ids",
-            "upstream",
-            "paper_values",
-            "reconstruction_defaults",
-        }
-        placeholder = (
-            existing.get("status") == "configured"
-            and placeholder_required <= set(existing)
-            and "runtime_commit" not in existing
-            and existing.get("command") == payload.get("operation")
-        )
-        if not resume and all(key in existing for key in requested_identity_keys) and not placeholder:
-            raise FileExistsError(f"output directory already contains a complete run: {output}")
-        if compare_keys:
-            if any(existing.get(key) != payload.get(key) for key in compare_keys):
+        placeholder = _is_cli_placeholder(existing, payload)
+        if not resume:
+            if not placeholder:
+                label = "complete run" if "runtime_commit" in existing else "unrelated run"
+                raise FileExistsError(f"output directory already contains a {label}: {output}")
+        else:
+            requested_identity_keys = tuple(key for key in identity_keys if key in payload)
+            if any(key not in existing for key in requested_identity_keys):
+                raise ValueError("resume manifest is missing an immutable identity field")
+            if any(existing.get(key) != payload.get(key) for key in requested_identity_keys):
                 raise ValueError("resume manifest does not exactly match the requested run")
-        elif not resume and not placeholder:
-            raise FileExistsError(f"output directory already contains an unrelated run: {output}")
     elif any(output.iterdir()) and not resume:
         raise FileExistsError(f"output directory already contains artifacts: {output}")
     merged = {**existing, **dict(payload)}
@@ -954,7 +1009,9 @@ def build_workload(
     if manifest.to_dict()["resources"] != identity["resources"]:
         raise ValueError("index manifest model resources do not match the run configuration")
     if manifest.pruning_config != identity["pruning_config"]:
-        raise ValueError("index manifest pruning configuration does not match the run configuration")
+        raise ValueError(
+            "index manifest pruning configuration does not match the run configuration"
+        )
     corpus = identity["corpus"]
     if manifest.corpus_integrity_sha256 != corpus["integrity_sha256"]:
         raise ValueError("index manifest corpus identity does not match the run configuration")
@@ -997,7 +1054,7 @@ def build_workload(
             colpali_model=colpali_model,
             colpali_processor=colpali_processor,
             page_config=config.for_pages(page_count),
-    )
+        )
     runner = DocPruneM3DocRAG(boundary, dataset, answerer, top_k=page_count)
     return EvaluationWorkload(
         runner=runner,

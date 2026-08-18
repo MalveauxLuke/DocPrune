@@ -5,7 +5,14 @@ from types import SimpleNamespace
 import pytest
 
 import docprune.processor_probe
-from docprune.cli import EvaluationWorkload, _validate_embed_result, main
+from docprune.cli import (
+    EvaluationWorkload,
+    _manifest,
+    _manifest_digest,
+    _prepare_output,
+    _validate_embed_result,
+    main,
+)
 from docprune.config import load_config
 from docprune.indexing import IndexBuildResult
 from docprune.m3docrag import RetrievedPage, SampleResult, SampleTiming
@@ -112,6 +119,175 @@ def test_evaluate_resume_requires_existing_output(tmp_path, capsys) -> None:
     )
     assert exit_code == 2
     assert "existing output" in capsys.readouterr().err
+
+
+def test_evaluate_resume_rejects_incomplete_manifest_before_custom_factory(
+    tmp_path, capsys, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    config = load_config(config_path)
+    (output / "run_manifest.json").write_text(
+        json.dumps(
+            _manifest(
+                "evaluate",
+                config_path,
+                config,
+                1,
+                "fake:factory",
+                output=output,
+                mode="all-kept",
+                run_config=None,
+                index_manifest=None,
+                limit=None,
+                sample_ids=None,
+            )
+        )
+    )
+    calls = []
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: calls.append(spec))
+
+    exit_code = main(
+        [
+            "evaluate",
+            "--config",
+            str(config_path),
+            "--pages",
+            "1",
+            "--output",
+            str(output),
+            "--factory",
+            "fake:factory",
+            "--resume",
+        ]
+    )
+
+    assert exit_code == 2
+    assert calls == []
+    assert "complete" in capsys.readouterr().err
+
+
+def test_evaluate_rejects_workload_without_manifest_before_results(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "run"
+
+    class Runner:
+        def run_sample(self, sample):
+            raise AssertionError("runner must not execute without a workload manifest")
+
+    def factory(**kwargs):
+        return EvaluationWorkload(Runner(), (SimpleNamespace(question_id="q-1", question="q"),))
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    exit_code = main(
+        [
+            "evaluate",
+            "--config",
+            "configs/docprune-m3docvqa.toml",
+            "--pages",
+            "1",
+            "--output",
+            str(output),
+            "--factory",
+            "fake:factory",
+        ]
+    )
+
+    assert exit_code == 2
+    assert not (output / "results.jsonl").exists()
+
+
+def test_resume_rejects_changed_run_config_content_at_same_path(tmp_path) -> None:
+    output = tmp_path / "run"
+    run_config = tmp_path / "run-config.json"
+    run_config.write_text('{"generation": {"max_new_tokens": 128}}')
+    index_manifest = tmp_path / "index-manifest.json"
+    index_manifest.write_text('{"manifest_sha256": "old"}')
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    config = load_config(config_path)
+    manifest = _manifest(
+        "evaluate",
+        config_path,
+        config,
+        1,
+        "fake:factory",
+        output=output,
+        mode="all-kept",
+        run_config=run_config,
+        index_manifest=index_manifest,
+        limit=None,
+        sample_ids=None,
+    )
+    _prepare_output(output, manifest, resume=False)
+    complete = json.loads((output / "run_manifest.json").read_text())
+    complete.update(
+        {
+            "operation": "evaluate",
+            "runtime_commit": "a" * 40,
+            "m3docrag_commit": "b" * 40,
+            "resources": {},
+            "processor_contract_path": "contract.json",
+            "processor_contract_sha256": "c" * 64,
+            "processor_contract": {},
+            "corpus": {},
+            "generation": {},
+            "pruning_config": {},
+            "selection": {},
+            "index_manifest": {},
+        }
+    )
+    complete["run_manifest_sha256"] = _manifest_digest(
+        {key: value for key, value in complete.items() if key != "run_manifest_sha256"}
+    )
+    (output / "run_manifest.json").write_text(json.dumps(complete))
+    run_config.write_text('{"generation": {"max_new_tokens": 64}}')
+    index_manifest.write_text('{"manifest_sha256": "new"}')
+    changed = _manifest(
+        "evaluate",
+        config_path,
+        config,
+        1,
+        "fake:factory",
+        output=output,
+        mode="all-kept",
+        run_config=run_config,
+        index_manifest=index_manifest,
+        limit=None,
+        sample_ids=None,
+    )
+    with pytest.raises(ValueError, match="exactly match"):
+        _prepare_output(output, changed, resume=True)
+
+
+def test_embed_requires_authoritative_default_run_config_before_custom_factory(
+    tmp_path, monkeypatch
+) -> None:
+    calls = []
+
+    def factory(**kwargs):
+        calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    monkeypatch.delenv("DOCPRUNE_CORPUS_ROOT", raising=False)
+    monkeypatch.delenv("DOCPRUNE_RUNTIME_COMMIT", raising=False)
+
+    exit_code = main(
+        [
+            "embed",
+            "--config",
+            "configs/docprune-m3docvqa.toml",
+            "--pages",
+            "1",
+            "--output",
+            str(tmp_path / "embed"),
+            "--factory",
+            "fake:factory",
+        ]
+    )
+
+    assert exit_code == 2
+    assert calls == []
 
 
 def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -> None:
@@ -224,7 +400,21 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
                 SampleInput("q-2", "two"),
                 SampleInput("q-3", "three"),
             ),
-            manifest={"factory_complete_marker": True},
+            manifest={
+                "operation": "evaluate",
+                "output": str(output.resolve()),
+                "runtime_commit": "a" * 40,
+                "m3docrag_commit": "b" * 40,
+                "resources": {},
+                "processor_contract_path": "contract.json",
+                "processor_contract_sha256": "c" * 64,
+                "processor_contract": {},
+                "corpus": {},
+                "generation": {},
+                "pruning_config": {},
+                "selection": {},
+                "index_manifest": {},
+            },
         )
 
     monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
@@ -253,9 +443,12 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     digest = unsigned.pop("run_manifest_sha256")
     import hashlib
 
-    assert digest == hashlib.sha256(
-        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    assert (
+        digest
+        == hashlib.sha256(
+            json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
     assert not any(path.name.startswith(".run_manifest.") for path in output.iterdir())
 
 
