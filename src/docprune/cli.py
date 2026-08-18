@@ -7,12 +7,24 @@ import hashlib
 import importlib
 import inspect
 import json
+import os
 import sys
+import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from docprune.benchmark_config import (
+    COLPALI_BACKBONE_MODEL,
+    COLPALI_BACKBONE_REVISION,
+    COLPALI_MODEL,
+    COLPALI_REVISION,
+    M3DOCRAG_COMMIT,
+    QWEN_MODEL,
+    QWEN_REVISION,
+    sha256_file,
+)
 from docprune.config import DocPruneConfig, load_config
 from docprune.m3docrag import DocPruneM3DocRAG, SampleInput
 from docprune.metrics import append_result_jsonl, summarize_jsonl
@@ -23,6 +35,34 @@ DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
 def _manifest_digest(payload: dict[str, object]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _atomic_write_json(path: Path, payload: object) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, raw_temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(raw_temp)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        descriptor = -1
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True)
@@ -95,6 +135,7 @@ def _manifest(
     pages: int,
     factory: str,
     *,
+    output: Path,
     mode: str,
     run_config: Path | None,
     index_manifest: Path | None,
@@ -107,6 +148,7 @@ def _manifest(
         "command": command,
         "config": str(config_path.resolve()),
         "factory": factory,
+        "output": str(output.resolve()),
         "mode": mode,
         "run_config": None if run_config is None else str(run_config.resolve()),
         "index_manifest": None if index_manifest is None else str(index_manifest.resolve()),
@@ -128,6 +170,8 @@ def _load_factory(spec: str) -> Callable[..., object]:
 
 def _prepare_output(output: Path, manifest: dict[str, object], resume: bool) -> None:
     manifest_path = output / "run_manifest.json"
+    if resume and not output.exists():
+        raise FileNotFoundError("resume requires an existing output directory")
     if output.exists():
         if output.is_symlink() or not output.is_dir():
             raise ValueError(f"output must be a regular directory: {output}")
@@ -145,7 +189,7 @@ def _prepare_output(output: Path, manifest: dict[str, object], resume: bool) -> 
             raise ValueError("resume manifest does not exactly match the requested run")
         return
     output.mkdir(parents=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    _atomic_write_json(manifest_path, manifest)
 
 
 def _run_evaluate(
@@ -184,7 +228,7 @@ def _run_evaluate(
         existing_manifest.update(workload.manifest)
         existing_manifest.pop("run_manifest_sha256", None)
         existing_manifest["run_manifest_sha256"] = _manifest_digest(existing_manifest)
-        manifest_path.write_text(json.dumps(existing_manifest, indent=2, sort_keys=True) + "\n")
+        _atomic_write_json(manifest_path, existing_manifest)
     samples = tuple(
         sample if isinstance(sample, SampleInput) else SampleInput.from_mapping(sample)
         for sample in workload.samples
@@ -212,11 +256,19 @@ def _run_evaluate(
         if sample.question_id in completed:
             continue
         result = workload.runner.run_sample(sample)
-        append_result_jsonl(results_path, result.to_dict(), resume=append_mode)
+        record = result.to_dict()
+        from docprune.m3docvqa_factory import _validate_result_record
+
+        _validate_result_record(record, line_number=1)
+        if (
+            record.get("question_id") != sample.question_id
+            or record.get("question") != sample.question
+            or record.get("answers") != list(sample.answers)
+        ):
+            raise ValueError(f"result does not match source sample {sample.question_id}")
+        append_result_jsonl(results_path, record, resume=append_mode)
         append_mode = True
-    (output / "summary.json").write_text(
-        json.dumps(summarize_jsonl(results_path), indent=2, sort_keys=True) + "\n"
-    )
+    _atomic_write_json(output / "summary.json", summarize_jsonl(results_path))
 
 
 def _invoke_factory(factory: Callable[..., object], **kwargs: object) -> object:
@@ -233,6 +285,77 @@ def _invoke_factory(factory: Callable[..., object], **kwargs: object) -> object:
         return factory(**kwargs)
     accepted = {name: value for name, value in kwargs.items() if name in signature.parameters}
     return factory(**accepted)
+
+
+def _validate_embed_result(
+    result: object,
+    *,
+    config: DocPruneConfig,
+    pages: int,
+    mode: str,
+    output: Path,
+    run_config: Path | None = None,
+) -> None:
+    from docprune.indexing import IndexBuildResult
+
+    if not isinstance(result, IndexBuildResult):
+        raise TypeError("embed factory must return IndexBuildResult")
+    manifest = result.manifest
+    if manifest.mode != mode or manifest.page_count != pages:
+        raise ValueError("embed result mode/page_count does not match the requested run")
+    if manifest.m3docrag_commit != M3DOCRAG_COMMIT:
+        raise ValueError("embed result uses the wrong M3DocRAG commit")
+    if run_config is not None:
+        from docprune.m3docvqa_factory import _resolve_run_config, _validate_run_identity
+
+        resolved_run = _resolve_run_config(run_config, mode=mode, page_count=pages)
+        expected_identity = _validate_run_identity(resolved_run, mode=mode, page_count=pages)
+        if manifest.runtime_commit != expected_identity["runtime_commit"]:
+            raise ValueError("embed result runtime commit does not match the requested run")
+        if manifest.processor_contract_path.resolve() != Path(
+            str(expected_identity["processor_contract_path"])
+        ).resolve():
+            raise ValueError("embed result processor contract path does not match the requested run")
+        if manifest.processor_contract_sha256 != expected_identity["processor_contract_sha256"]:
+            raise ValueError("embed result processor contract does not match the requested run")
+        expected_corpus = expected_identity["corpus"]
+        if manifest.corpus_integrity_sha256 != expected_corpus["integrity_sha256"]:
+            raise ValueError("embed result corpus does not match the requested run")
+    resources = {
+        "qwen_model": QWEN_MODEL,
+        "qwen_revision": QWEN_REVISION,
+        "colpali_model": COLPALI_MODEL,
+        "colpali_revision": COLPALI_REVISION,
+        "colpali_backbone_model": COLPALI_BACKBONE_MODEL,
+        "colpali_backbone_revision": COLPALI_BACKBONE_REVISION,
+    }
+    if any(getattr(manifest, name) != value for name, value in resources.items()):
+        raise ValueError("embed result model resources do not match the requested run")
+    expected_pruning = {
+        "enabled": mode == "docprune",
+        "page_settings": asdict(config.for_pages(pages)),
+        "reconstruction_defaults": asdict(config.reconstruction_defaults),
+        "siglip_patch_size": 14,
+    }
+    if manifest.pruning_config != expected_pruning:
+        raise ValueError("embed result pruning configuration does not match the requested run")
+    output_root = output.resolve()
+    artifact_root = manifest.artifact_root.resolve()
+    try:
+        artifact_root.relative_to(output_root)
+    except ValueError as error:
+        raise ValueError("embed result artifacts are outside the requested output") from error
+    if result.mode_root.resolve() != artifact_root:
+        raise ValueError("embed result mode root does not match its manifest artifact root")
+    if result.manifest_path.resolve() != artifact_root / "manifest.json":
+        raise ValueError("embed result manifest path does not match its artifact root")
+    for digest_name in ("corpus_integrity_sha256", "source_order_sha256"):
+        digest = getattr(manifest, digest_name)
+        if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest.lower()):
+            raise ValueError(f"embed result {digest_name} is not a SHA-256")
+    if manifest.processor_contract_path.is_file() and sha256_file(manifest.processor_contract_path) != manifest.processor_contract_sha256:
+        raise ValueError("embed result processor contract checksum mismatch")
+    manifest.validate_files()
 
 
 def _run_external(command: str, args: argparse.Namespace) -> int:
@@ -258,6 +381,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
         config,
         args.pages,
         args.factory,
+        output=args.output,
         mode=args.mode,
         run_config=args.run_config,
         index_manifest=args.index_manifest,
@@ -296,10 +420,14 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             index_manifest=args.index_manifest,
             resume=args.resume,
         )
-        from docprune.indexing import IndexBuildResult
-
-        if not isinstance(result, IndexBuildResult):
-            raise TypeError("embed factory must return IndexBuildResult")
+        _validate_embed_result(
+            result,
+            config=config,
+            pages=args.pages,
+            mode=args.mode,
+            output=args.output,
+            run_config=args.run_config,
+        )
         complete = result.manifest.to_dict()
         manifest_path = args.output / "run_manifest.json"
         base = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -309,7 +437,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
         base["status"] = "configured"
         base.pop("run_manifest_sha256", None)
         base["run_manifest_sha256"] = _manifest_digest(base)
-        manifest_path.write_text(json.dumps(base, indent=2, sort_keys=True) + "\n")
+        _atomic_write_json(manifest_path, base)
     return 0
 
 

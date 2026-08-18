@@ -1,9 +1,13 @@
 import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 import docprune.processor_probe
-from docprune.cli import EvaluationWorkload, main
+from docprune.cli import EvaluationWorkload, _validate_embed_result, main
+from docprune.config import load_config
+from docprune.indexing import IndexBuildResult
 from docprune.m3docrag import RetrievedPage, SampleResult, SampleTiming
 from docprune.qwen2vl.model import PruningTrace
 
@@ -89,6 +93,25 @@ def test_evaluate_dry_run_emits_manifest_for_new_output(tmp_path, capsys) -> Non
     assert payload["factory"] == "bridge:build"
     assert payload["page_count"] == 2
     assert not output.exists()
+
+
+def test_evaluate_resume_requires_existing_output(tmp_path, capsys) -> None:
+    exit_code = main(
+        [
+            "evaluate",
+            "--config",
+            "configs/docprune-m3docvqa.toml",
+            "--pages",
+            "1",
+            "--output",
+            str(tmp_path / "missing"),
+            "--factory",
+            "fake:factory",
+            "--resume",
+        ]
+    )
+    assert exit_code == 2
+    assert "existing output" in capsys.readouterr().err
 
 
 def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -> None:
@@ -201,6 +224,7 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
                 SampleInput("q-2", "two"),
                 SampleInput("q-3", "three"),
             ),
+            manifest={"factory_complete_marker": True},
         )
 
     monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
@@ -224,3 +248,73 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     assert calls["answers"] == ["q-2", "q-3"]
     records = [json.loads(line) for line in (output / "results.jsonl").read_text().splitlines()]
     assert [record["question_id"] for record in records] == ["q-1", "q-2", "q-3"]
+    manifest = json.loads((output / "run_manifest.json").read_text())
+    unsigned = dict(manifest)
+    digest = unsigned.pop("run_manifest_sha256")
+    import hashlib
+
+    assert digest == hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert not any(path.name.startswith(".run_manifest.") for path in output.iterdir())
+
+
+def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> None:
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    output = tmp_path / "output"
+    artifact_root = output / "all-kept"
+    artifact_root.mkdir(parents=True)
+    contract = tmp_path / "contract.json"
+    contract.write_text("contract")
+    manifest = SimpleNamespace(
+        mode="all-kept",
+        page_count=1,
+        m3docrag_commit=config.m3docrag_commit,
+        qwen_model="Qwen/Qwen2-VL-7B-Instruct",
+        qwen_revision="eed13092ef92e448dd6875b2a00151bd3f7db0ac",
+        colpali_model="vidore/colpali-v1.2",
+        colpali_revision="961b51745de3e9adb3468ac5c9ccca0ac626c217",
+        colpali_backbone_model="vidore/colpaligemma-3b-pt-448-base",
+        colpali_backbone_revision="30ab955d073de4a91dc5a288e8c97226647e3e5a",
+        pruning_config={
+            "enabled": False,
+            "page_settings": {
+                "retrieval_background_threshold": 0.9,
+                "qa_background_threshold": 0.9,
+                "background_error_tolerance": 1.0,
+                "question_threshold": 0.3,
+                "comprehension_threshold": 65.0,
+                "attention_threshold": 0.5,
+            },
+            "reconstruction_defaults": {
+                "source": "reconstruction_default",
+                "grayscale": "bt601_uint8",
+                "gaussian_sigma": 1.0,
+                "group_retention": "any",
+                "attention_head_aggregation": "mean",
+                "ctp_timing": "prefill_last_prompt_token",
+            },
+            "siglip_patch_size": 14,
+        },
+        artifact_root=artifact_root,
+        processor_contract_path=contract,
+        processor_contract_sha256="0" * 64,
+        corpus_integrity_sha256="1" * 64,
+        source_order_sha256="2" * 64,
+        validate_files=lambda: None,
+    )
+    result = IndexBuildResult(
+        manifest=manifest,
+        manifest_path=artifact_root / "manifest.json",
+        mode_root=artifact_root,
+        token2pageuid_path=artifact_root / "token2pageuid.json",
+        completion_ledger_path=artifact_root / "completion-ledger.json",
+        documents_built=0,
+        documents_resumed=0,
+    )
+    with pytest.raises(ValueError, match="processor contract checksum"):
+        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
+    manifest.processor_contract_sha256 = __import__("hashlib").sha256(b"contract").hexdigest()
+    manifest.mode = "docprune"
+    with pytest.raises(ValueError, match="mode/page_count"):
+        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)

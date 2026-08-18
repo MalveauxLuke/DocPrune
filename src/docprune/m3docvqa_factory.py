@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import subprocess
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,11 +24,14 @@ from docprune.benchmark_config import (
     COLPALI_MODEL,
     COLPALI_REVISION,
     M3DOCRAG_COMMIT,
+    MAX_NEW_TOKENS,
     MODES,
     PAGE_COUNTS,
     QWEN_MODEL,
     QWEN_REVISION,
+    SHORT_ANSWER_TEMPLATE,
     BenchmarkRunConfig,
+    CorpusIdentity,
     sha256_file,
 )
 from docprune.cli import EvaluationWorkload
@@ -55,6 +60,14 @@ def _required(container: object, name: str) -> Any:
 def _sha256_json(value: object) -> str:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def validate_processor_contract_file(path: Path) -> dict[str, object]:
@@ -119,10 +132,14 @@ def load_completed_qids(
     """Validate a result JSONL's qid set before permitting resume."""
 
     path = Path(path)
-    if not path.exists():
-        return set()
+    if path.is_symlink():
+        raise ValueError("results JSONL must be a regular file")
     if expected_qids is None and expected_samples is None:
         raise ValueError("resume validation requires expected question IDs or samples")
+    if not path.exists():
+        return set()
+    if not path.is_file():
+        raise ValueError("results JSONL must be a regular file")
     expected_by_qid = (
         {sample.question_id: sample for sample in expected_samples}
         if expected_samples is not None
@@ -140,6 +157,7 @@ def load_completed_qids(
                 raise ValueError(f"results JSONL is invalid at line {line_number}") from error
             if not isinstance(record, Mapping):
                 raise ValueError(f"results JSONL record {line_number} is not an object")
+            _validate_result_record(record, line_number=line_number)
             qid = record.get("question_id", record.get("qid"))
             if not isinstance(qid, str) or not qid:
                 raise ValueError(f"results JSONL record {line_number} is missing question_id")
@@ -159,6 +177,90 @@ def load_completed_qids(
                     raise ValueError(f"results JSONL answers drift for question ID: {qid}")
             completed.add(qid)
     return completed
+
+
+def _validate_result_record(record: Mapping[str, object], *, line_number: int) -> None:
+    required = {
+        "question_id",
+        "question",
+        "answers",
+        "predicted_answer",
+        "retrieved_pages",
+        "trace",
+        "timing",
+    }
+    fields = set(record)
+    missing = required - fields
+    if missing:
+        raise ValueError(f"results JSONL record {line_number} is missing {sorted(missing)!r}")
+    extra = fields - required
+    if extra:
+        raise ValueError(f"results JSONL record {line_number} has unknown fields {sorted(extra)!r}")
+    if not isinstance(record["question_id"], str) or not record["question_id"]:
+        raise ValueError(f"results JSONL record {line_number} has an invalid question ID")
+    if not isinstance(record["question"], str) or not isinstance(record["predicted_answer"], str):
+        raise ValueError(f"results JSONL record {line_number} has invalid answer fields")
+    answers = record["answers"]
+    if not isinstance(answers, list) or not all(isinstance(answer, str) for answer in answers):
+        raise ValueError(f"results JSONL record {line_number} has invalid answers")
+    pages = record["retrieved_pages"]
+    if not isinstance(pages, list) or not pages:
+        raise ValueError(f"results JSONL record {line_number} has invalid retrieved_pages")
+    page_ids: set[tuple[str, int]] = set()
+    for page in pages:
+        if not isinstance(page, Mapping):
+            raise ValueError(f"results JSONL record {line_number} has an invalid page")
+        doc_id = page.get("doc_id")
+        page_index = page.get("page_index")
+        score = page.get("score")
+        if (
+            not isinstance(doc_id, str)
+            or not doc_id
+            or not isinstance(page_index, int)
+            or isinstance(page_index, bool)
+            or page_index < 0
+            or not isinstance(score, int | float)
+            or isinstance(score, bool)
+            or not math.isfinite(float(score))
+        ):
+            raise ValueError(f"results JSONL record {line_number} has an invalid page")
+        identity = (doc_id, page_index)
+        if identity in page_ids:
+            raise ValueError(f"results JSONL record {line_number} has duplicate retrieved pages")
+        page_ids.add(identity)
+    trace = record["trace"]
+    if not isinstance(trace, Mapping):
+        raise ValueError(f"results JSONL record {line_number} has an invalid trace")
+    trace_field_order = (
+        "original_visual_tokens",
+        "post_btp_visual_tokens",
+        "post_qtp_visual_tokens",
+        "post_ctp_visual_tokens",
+        "ctp_layer",
+    )
+    trace_fields = set(trace_field_order)
+    if set(trace) != trace_fields:
+        raise ValueError(f"results JSONL record {line_number} has an invalid trace schema")
+    counts = [trace[name] for name in trace_field_order[:4]]
+    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts):
+        raise ValueError(f"results JSONL record {line_number} has invalid trace counts")
+    if not all(left >= right for left, right in zip(counts, counts[1:])):
+        raise ValueError(f"results JSONL record {line_number} trace is not monotonic")
+    if trace["ctp_layer"] is not None and (
+        not isinstance(trace["ctp_layer"], int) or isinstance(trace["ctp_layer"], bool)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid ctp_layer")
+    timing = record["timing"]
+    if not isinstance(timing, Mapping) or set(timing) != {"retrieval_seconds", "qa_seconds"}:
+        raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
+    if any(
+            not isinstance(timing[name], int | float)
+        or isinstance(timing[name], bool)
+        or not math.isfinite(float(timing[name]))
+        or float(timing[name]) < 0
+        for name in ("retrieval_seconds", "qa_seconds")
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid timings")
 
 
 def _resolve_mode(mode: str | None, run_config: object | None) -> str:
@@ -188,15 +290,9 @@ def _resolve_run_config(
             raise ValueError("run configuration file must be JSON") from error
         if not isinstance(payload, Mapping):
             raise ValueError("run configuration file must contain a JSON object")
-        # The run-config file is an identity assertion; production construction
-        # remains centralized in BenchmarkRunConfig.from_env so corpus checks
-        # cannot be accidentally bypassed by a partial JSON file.
-        resolved = BenchmarkRunConfig.from_env(mode, page_count)
-        for name in ("runtime_commit", "m3docrag_commit", "qwen_revision", "colpali_revision"):
-            if name in payload and str(payload[name]) != str(_required(resolved, name)):
-                raise ValueError(f"run configuration {name} does not match the pinned value")
+        resolved = _normalise_run_config_mapping(payload, base=path.parent)
     elif isinstance(run_config, Mapping):
-        resolved = SimpleNamespace(**run_config)
+        resolved = _normalise_run_config_mapping(run_config)
     else:
         resolved = run_config
     if str(_required(resolved, "mode")) != mode:
@@ -204,6 +300,147 @@ def _resolve_run_config(
     if int(_required(resolved, "page_count")) != page_count:
         raise ValueError("run configuration page_count does not match requested page_count")
     return resolved
+
+
+def _normalise_run_config_mapping(
+    payload: Mapping[str, object], *, base: Path | None = None
+) -> object:
+    """Build a complete run-config object without consulting the environment."""
+
+    if isinstance(payload.get("run_config"), Mapping):
+        payload = payload["run_config"]  # type: ignore[assignment]
+    values = dict(payload)
+    resources = values.get("resources")
+    if isinstance(resources, Mapping):
+        for field, group in (
+            ("qwen_model", "qwen"),
+            ("qwen_revision", "qwen"),
+            ("colpali_model", "colpali"),
+            ("colpali_revision", "colpali"),
+            ("colpali_backbone_model", "colpali_backbone"),
+            ("colpali_backbone_revision", "colpali_backbone"),
+        ):
+            if field not in values and isinstance(resources.get(group), Mapping):
+                suffix = "model" if field.endswith("model") else "revision"
+                values[field] = resources[group].get(suffix)
+            elif field in values and isinstance(resources.get(group), Mapping):
+                suffix = "model" if field.endswith("model") else "revision"
+                nested_value = resources[group].get(suffix)
+                if nested_value is not None and values[field] != nested_value:
+                    raise ValueError(f"run configuration {field} conflicts with resources")
+    generation = values.get("generation")
+    if isinstance(generation, Mapping):
+        for field in ("max_new_tokens", "do_sample", "num_beams"):
+            if field in generation:
+                if field in values and values[field] != generation[field]:
+                    raise ValueError(f"run configuration {field} conflicts with generation")
+                values[field] = generation[field]
+        generation_prompt = generation.get("prompt", generation.get("short_answer_template"))
+        if generation_prompt is not None:
+            if "prompt" in values and values["prompt"] != generation_prompt:
+                raise ValueError("run configuration prompt conflicts with generation")
+            values["prompt"] = generation_prompt
+    required = (
+        "mode",
+        "page_count",
+        "runtime_commit",
+        "m3docrag_commit",
+        "qwen_model",
+        "qwen_revision",
+        "colpali_model",
+        "colpali_revision",
+        "colpali_backbone_model",
+        "colpali_backbone_revision",
+        "processor_contract_path",
+        "corpus",
+        "max_new_tokens",
+        "do_sample",
+        "num_beams",
+        "prompt",
+    )
+    missing = [name for name in required if values.get(name) is None]
+    if missing:
+        raise ValueError(f"run configuration is missing required fields: {', '.join(missing)}")
+    contract = Path(str(values["processor_contract_path"]))
+    if base is not None and not contract.is_absolute():
+        contract = (base / contract).resolve()
+    values["processor_contract_path"] = contract
+    corpus = values["corpus"]
+    if isinstance(corpus, Mapping):
+        corpus_values = dict(corpus)
+        path_fields = (
+            "root",
+            "questions_path",
+            "document_ids_path",
+            "pdf_dir",
+            "integrity_report_path",
+            "archive_checksum_manifest_path",
+        )
+        if base is not None:
+            for field in path_fields:
+                if field in corpus_values and not Path(str(corpus_values[field])).is_absolute():
+                    corpus_values[field] = str((base / str(corpus_values[field])).resolve())
+        corpus_required = (
+            *path_fields,
+            "integrity_sha256",
+            "archive_checksum_manifest_sha256",
+            "questions_sha256",
+            "document_ids_sha256",
+            "expected_question_count",
+            "expected_pdf_count",
+            "expected_page_count",
+        )
+        missing_corpus = [name for name in corpus_required if corpus_values.get(name) is None]
+        if missing_corpus:
+            raise ValueError(
+                "run configuration corpus is missing required fields: "
+                + ", ".join(missing_corpus)
+            )
+        archive_hashes = corpus_values.get("archive_hashes", {})
+        if not isinstance(archive_hashes, Mapping):
+            raise ValueError("run configuration corpus archive_hashes must be a mapping")
+        corpus_values["archive_hashes"] = dict(archive_hashes)
+        corpus_values.setdefault("is_fixture", False)
+        try:
+            corpus = CorpusIdentity(**corpus_values)
+        except (TypeError, ValueError) as error:
+            raise ValueError("run configuration corpus identity is invalid") from error
+        values["corpus"] = corpus
+    elif not callable(getattr(corpus, "validate", None)):
+        raise ValueError("run configuration corpus must be a complete identity")
+    return SimpleNamespace(**values)
+
+
+def _corpus_identity_payload(corpus: object) -> dict[str, object]:
+    """Serialize every immutable corpus input into the run identity."""
+
+    path_fields = (
+        "root",
+        "questions_path",
+        "document_ids_path",
+        "pdf_dir",
+        "integrity_report_path",
+        "archive_checksum_manifest_path",
+    )
+    payload: dict[str, object] = {
+        name: str(Path(_required(corpus, name)).resolve()) for name in path_fields
+    }
+    payload.update(
+        {
+            "integrity_sha256": str(_required(corpus, "integrity_sha256")),
+            "archive_checksum_manifest_sha256": str(
+                _required(corpus, "archive_checksum_manifest_sha256")
+            ),
+            "questions_sha256": str(_required(corpus, "questions_sha256")),
+            "document_ids_sha256": str(_required(corpus, "document_ids_sha256")),
+            "expected_question_count": int(_required(corpus, "expected_question_count")),
+            "expected_pdf_count": int(_required(corpus, "expected_pdf_count")),
+            "expected_page_count": int(_required(corpus, "expected_page_count")),
+            "is_fixture": bool(_value(corpus, "is_fixture", False)),
+            "archive_hashes": dict(_value(corpus, "archive_hashes", {})),
+        }
+    )
+    return payload
 
 
 def _validate_run_identity(run_config: object, *, mode: str, page_count: int) -> dict[str, object]:
@@ -227,6 +464,28 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
             raise ValueError(f"{name} does not match its pinned revision/resource")
     contract = Path(_required(run_config, "processor_contract_path"))
     contract_payload = validate_processor_contract_file(contract)
+    declared_contract_sha = _value(run_config, "processor_contract_sha256")
+    actual_contract_sha = sha256_file(contract)
+    if declared_contract_sha is not None and str(declared_contract_sha).lower() != actual_contract_sha:
+        raise ValueError("processor contract SHA-256 does not match the run configuration")
+    max_new_tokens = _required(run_config, "max_new_tokens")
+    do_sample = _required(run_config, "do_sample")
+    num_beams = _required(run_config, "num_beams")
+    prompt = _required(run_config, "prompt")
+    if isinstance(max_new_tokens, bool) or not isinstance(max_new_tokens, int):
+        raise ValueError("max_new_tokens must be an integer")
+    if not isinstance(do_sample, bool):
+        raise ValueError("do_sample must be a boolean")
+    if isinstance(num_beams, bool) or not isinstance(num_beams, int):
+        raise ValueError("num_beams must be an integer")
+    if not isinstance(prompt, str):
+        raise ValueError("prompt must be a string")
+    if max_new_tokens != MAX_NEW_TOKENS:
+        raise ValueError(f"max_new_tokens must equal {MAX_NEW_TOKENS}")
+    if do_sample or num_beams != 1:
+        raise ValueError("generation must use greedy decoding (do_sample=False, num_beams=1)")
+    if prompt != SHORT_ANSWER_TEMPLATE:
+        raise ValueError("prompt must equal the official short-answer prompt")
     corpus = _value(run_config, "corpus")
     if corpus is None:
         raise ValueError("run configuration is missing corpus identity")
@@ -247,22 +506,14 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
             },
         },
         "processor_contract_path": str(contract.resolve()),
-        "processor_contract_sha256": sha256_file(contract),
+        "processor_contract_sha256": actual_contract_sha,
         "processor_contract": contract_payload,
-        "corpus": {
-            "root": str(Path(_required(corpus, "root")).resolve()),
-            "integrity_sha256": str(_required(corpus, "integrity_sha256")),
-            "questions_sha256": str(_required(corpus, "questions_sha256")),
-            "document_ids_sha256": str(_required(corpus, "document_ids_sha256")),
-            "expected_question_count": int(_required(corpus, "expected_question_count")),
-            "expected_pdf_count": int(_required(corpus, "expected_pdf_count")),
-            "expected_page_count": int(_required(corpus, "expected_page_count")),
-        },
+        "corpus": _corpus_identity_payload(corpus),
         "generation": {
-            "max_new_tokens": int(_value(run_config, "max_new_tokens", 128)),
-            "do_sample": bool(_value(run_config, "do_sample", False)),
-            "num_beams": int(_value(run_config, "num_beams", 1)),
-            "prompt": str(_value(run_config, "prompt", "question: $question\noutput only answer.")),
+            "max_new_tokens": max_new_tokens,
+            "do_sample": do_sample,
+            "num_beams": num_beams,
+            "prompt": prompt,
         },
     }
 
@@ -366,6 +617,13 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
             raise ValueError("index manifest must be valid JSON") from error
         if not isinstance(payload, Mapping):
             raise ValueError("index manifest must be a JSON object")
+        if payload.get("schema_version") != 4:
+            raise ValueError("index manifest schema_version must equal 4")
+        supplied_digest = payload.get("manifest_sha256")
+        unsigned_payload = dict(payload)
+        unsigned_payload.pop("manifest_sha256", None)
+        if supplied_digest != _sha256_json(unsigned_payload):
+            raise ValueError("index manifest canonical SHA-256 is invalid")
         resources = payload.get("resources")
         if not isinstance(resources, Mapping):
             raise ValueError("index manifest is missing resources")
@@ -406,6 +664,11 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
             )
         except (KeyError, TypeError, ValueError) as error:
             raise ValueError("index manifest is missing required immutable fields") from error
+    manifest_payload = manifest.to_dict()
+    if manifest_payload.get("manifest_sha256") != _sha256_json(
+        {key: value for key, value in manifest_payload.items() if key != "manifest_sha256"}
+    ):
+        raise ValueError("index manifest canonical SHA-256 is invalid")
     manifest.validate_files()
     return manifest
 
@@ -455,6 +718,28 @@ def _run_manifest(
     return payload
 
 
+def _expected_pruning_identity(config: DocPruneConfig, *, mode: str, page_count: int) -> dict[str, object]:
+    return {
+        "enabled": mode == "docprune",
+        "page_settings": asdict(config.for_pages(page_count)),
+        "reconstruction_defaults": asdict(config.reconstruction_defaults),
+        "siglip_patch_size": 14,
+    }
+
+
+def _selection_identity(
+    samples: Sequence[SampleInput], *, limit: int | None, sample_ids: Sequence[str] | None
+) -> dict[str, object]:
+    return {
+        "requested_sample_ids": None
+        if sample_ids is None
+        else [str(value) for value in sample_ids],
+        "limit": limit,
+        "resolved_question_ids": [sample.question_id for sample in samples],
+        "count": len(samples),
+    }
+
+
 def _write_run_manifest(
     output: Path,
     payload: Mapping[str, object],
@@ -465,8 +750,12 @@ def _write_run_manifest(
 
     if output.is_symlink():
         raise ValueError("output must not be a symbolic link")
+    if resume and (not output.exists() or not output.is_dir()):
+        raise FileNotFoundError("resume requires an existing regular output directory")
     output.mkdir(parents=True, exist_ok=True)
     manifest_path = output / "run_manifest.json"
+    if resume and not manifest_path.is_file():
+        raise ValueError("resume requires a complete run manifest")
     existing: dict[str, object] = {}
     if manifest_path.exists():
         if manifest_path.is_symlink() or not manifest_path.is_file():
@@ -479,6 +768,8 @@ def _write_run_manifest(
             raise ValueError("run manifest must be a JSON object")
         existing = raw
         identity_keys = (
+            "output",
+            "operation",
             "mode",
             "page_count",
             "runtime_commit",
@@ -488,6 +779,8 @@ def _write_run_manifest(
             "processor_contract_sha256",
             "corpus",
             "generation",
+            "pruning_config",
+            "selection",
             "index_manifest",
         )
         if resume:
@@ -505,10 +798,36 @@ def _write_run_manifest(
             and key in existing
             and not (key == "index_manifest" and isinstance(existing[key], str) and not resume)
         )
+        requested_identity_keys = tuple(key for key in identity_keys if key in payload)
+        placeholder_required = {
+            "schema_version",
+            "status",
+            "command",
+            "factory",
+            "config",
+            "output",
+            "mode",
+            "page_count",
+            "run_config",
+            "index_manifest",
+            "limit",
+            "sample_ids",
+            "upstream",
+            "paper_values",
+            "reconstruction_defaults",
+        }
+        placeholder = (
+            existing.get("status") == "configured"
+            and placeholder_required <= set(existing)
+            and "runtime_commit" not in existing
+            and existing.get("command") == payload.get("operation")
+        )
+        if not resume and all(key in existing for key in requested_identity_keys) and not placeholder:
+            raise FileExistsError(f"output directory already contains a complete run: {output}")
         if compare_keys:
             if any(existing.get(key) != payload.get(key) for key in compare_keys):
                 raise ValueError("resume manifest does not exactly match the requested run")
-        elif not resume and not ({"command", "factory"} <= set(existing)):
+        elif not resume and not placeholder:
             raise FileExistsError(f"output directory already contains an unrelated run: {output}")
     elif any(output.iterdir()) and not resume:
         raise FileExistsError(f"output directory already contains artifacts: {output}")
@@ -523,8 +842,9 @@ def _write_run_manifest(
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, manifest_path)
         descriptor = -1
+        os.replace(temporary, manifest_path)
+        _fsync_directory(output)
     finally:
         if descriptor != -1:
             os.close(descriptor)
@@ -562,6 +882,8 @@ def build_workload(
     output = Path(output)
     if output.is_symlink():
         raise ValueError("output must not be a symbolic link")
+    if resume and (not output.exists() or not output.is_dir()):
+        raise FileNotFoundError("resume requires an existing regular output directory")
     if output.exists() and output.is_file():
         raise FileExistsError(f"output must be a directory: {output}")
     if operation == "evaluate" and output.exists() and not output.is_dir():
@@ -579,8 +901,22 @@ def build_workload(
             if isinstance(existing_manifest, Mapping) and "runtime_commit" in existing_manifest:
                 raise FileExistsError(f"evaluation output already exists: {output}")
     dataset = _make_dataset(resolved_run)
+    samples = (
+        filter_samples(dataset, limit=limit, sample_ids=sample_ids)
+        if operation == "evaluate"
+        else ()
+    )
+    identity = {
+        **identity,
+        "pruning_config": _expected_pruning_identity(
+            config, mode=resolved_mode, page_count=page_count
+        ),
+        "selection": _selection_identity(samples, limit=limit, sample_ids=sample_ids),
+    }
 
     if operation == "embed":
+        if sample_ids is not None or limit is not None:
+            raise ValueError("sample selection applies only to evaluation")
         _write_run_manifest(
             output,
             _run_manifest(identity, operation=operation, output=output, index_manifest=None),
@@ -617,6 +953,8 @@ def build_workload(
         raise ValueError("index manifest runtime commit does not match the run configuration")
     if manifest.to_dict()["resources"] != identity["resources"]:
         raise ValueError("index manifest model resources do not match the run configuration")
+    if manifest.pruning_config != identity["pruning_config"]:
+        raise ValueError("index manifest pruning configuration does not match the run configuration")
     corpus = identity["corpus"]
     if manifest.corpus_integrity_sha256 != corpus["integrity_sha256"]:
         raise ValueError("index manifest corpus identity does not match the run configuration")
@@ -659,9 +997,8 @@ def build_workload(
             colpali_model=colpali_model,
             colpali_processor=colpali_processor,
             page_config=config.for_pages(page_count),
-        )
+    )
     runner = DocPruneM3DocRAG(boundary, dataset, answerer, top_k=page_count)
-    samples = filter_samples(dataset, limit=limit, sample_ids=sample_ids)
     return EvaluationWorkload(
         runner=runner,
         samples=samples,

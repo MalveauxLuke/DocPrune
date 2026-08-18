@@ -77,6 +77,8 @@ class StageMetrics:
 
 def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = False) -> None:
     path = Path(path)
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise ValueError(f"results JSONL must be a regular file: {path}")
     if path.exists() and not resume:
         raise FileExistsError(f"{path} exists; pass resume only after its manifest is verified")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,6 +94,8 @@ def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = Fa
 
 
 def summarize_jsonl(path: Path) -> dict[str, object]:
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"results JSONL must be a regular file: {path}")
     metrics = StageMetrics()
     with Path(path).open(encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
