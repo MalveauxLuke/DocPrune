@@ -2,6 +2,41 @@ import torch
 
 from docprune.config import PagePruningConfig, ReconstructionDefaults
 from docprune.pipeline import prepare_qa_pruning_masks
+from docprune.qtp import dense_relevance_from_sparse_tokens
+
+
+def test_sparse_qtp_scatter_preserves_rejected_background_mask() -> None:
+    tokens = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+    question = torch.tensor([[1.0, 0.0]])
+
+    got = dense_relevance_from_sparse_tokens(
+        tokens,
+        torch.tensor([0, 3]),
+        (2, 2),
+        question,
+    )
+
+    assert got.shape == (1, 2, 2)
+    assert got[0, 0, 0].item() == 1.0
+    assert got[0, 1, 1].item() == 0.0
+    assert torch.isneginf(got[0, 0, 1])
+    assert torch.isneginf(got[0, 1, 0])
+
+
+def test_pipeline_sparse_qtp_cannot_resurrect_rejected_raster_cells() -> None:
+    got = prepare_qa_pruning_masks(
+        resized_images=[torch.zeros((1, 1, 2, 2), dtype=torch.uint8)],
+        image_grid_thw=torch.tensor([[1, 2, 2]]),
+        document_tokens=[torch.tensor([[1.0, 0.0], [1.0, 0.0]])],
+        document_source_hw=((2, 2),),
+        document_raster_indices=[torch.tensor([0, 3])],
+        question_tokens=torch.tensor([[1.0, 0.0]]),
+        patch_size=1,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, -0.0, 45.0, 0.075),
+        reconstruction=ReconstructionDefaults(gaussian_sigma=0.01),
+    )
+
+    assert got.question_keep.tolist() == [False]
 
 
 def test_pipeline_supports_page_specific_qwen_grids() -> None:

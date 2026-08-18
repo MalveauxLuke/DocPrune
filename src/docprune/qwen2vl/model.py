@@ -47,6 +47,7 @@ class PruningTrace:
 class GenerationResult:
     generated_ids: torch.Tensor
     trace: PruningTrace
+    first_step_logits: torch.Tensor | None = None
 
 
 class DocPruneQwen2VL:
@@ -72,6 +73,12 @@ class DocPruneQwen2VL:
             raise ValueError("max_new_tokens must be positive")
         if input_ids.ndim != 2 or input_ids.shape[0] != 1:
             raise ValueError("DocPrune generation requires batch size one")
+        if attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must match input_ids")
+        if not bool(torch.as_tensor(attention_mask, dtype=torch.bool).all()):
+            raise ValueError(
+                "DocPrune Qwen2-VL manual cache compaction does not support padding in attention_mask"
+            )
         full_positions, _ = self.model.get_rope_index(
             input_ids,
             image_grid_thw=image_grid_thw,
@@ -79,6 +86,9 @@ class DocPruneQwen2VL:
         )
         background = torch.as_tensor(pruning_masks.background_keep, dtype=torch.bool)
         combined = pruning_masks.combined().to(pixel_values.device)
+        vision_dtype = getattr(self.model.visual, "get_dtype", lambda: pixel_values.dtype)()
+        vision_device = getattr(self.model.visual, "get_device", lambda: pixel_values.device)()
+        pixel_values = pixel_values.to(device=vision_device, dtype=vision_dtype)
         vision = compact_vision_batch(
             self.model.visual,
             pixel_values,
@@ -112,6 +122,7 @@ class DocPruneQwen2VL:
 
         generated: list[torch.Tensor] = []
         logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
+        first_step_logits = logits.detach()
         next_token = logits.argmax(dim=-1)
         next_position = int(prefill.position_ids.max().item()) + 1
         eos = set(eos_token_ids)
@@ -148,4 +159,4 @@ class DocPruneQwen2VL:
             post_ctp_visual_tokens=post_ctp,
             ctp_layer=prefill.decision.layer_index if prefill.decision is not None else None,
         )
-        return GenerationResult(generated_ids, trace)
+        return GenerationResult(generated_ids, trace, first_step_logits)
