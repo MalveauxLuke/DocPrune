@@ -153,8 +153,8 @@ payload = {
 print(json.dumps(payload, sort_keys=True, indent=2))
 assert payload == {
     "dev_questions": 2441,
-    "dev_document_ids": 3368,
-    "unique_dev_document_ids": 3368,
+    "dev_document_ids": 3366,
+    "unique_dev_document_ids": 3366,
 }
 PY
 '
@@ -260,8 +260,8 @@ report_path.write_text(json.dumps(report, sort_keys=True, indent=2) + "\n", enco
 print(json.dumps(report, sort_keys=True, indent=2))
 
 assert question_count == 2441
-assert len(expected_ids) == 3368
-assert len(pdf_paths) == 3368
+assert len(expected_ids) == 3366
+assert len(pdf_paths) == 3366
 assert not missing
 assert not extra
 assert not corrupt
