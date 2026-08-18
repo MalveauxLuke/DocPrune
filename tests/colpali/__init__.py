@@ -1,0 +1,1 @@
+"""ColPali adapter tests."""

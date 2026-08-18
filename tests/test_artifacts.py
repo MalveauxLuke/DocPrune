@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
+import faiss
+import numpy as np
 import pytest
+import torch
+from safetensors.torch import save_file
 
 from docprune.artifacts import (
     IndexManifest,
@@ -26,13 +31,27 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
     root = tmp_path / mode
     root.mkdir()
     embeddings = root / "embeddings.safetensors"
-    embeddings.write_bytes(b"embeddings")
+    save_file(
+        {
+            "embeddings": torch.zeros(12, 128, dtype=torch.float32),
+            "raster_indices": torch.arange(12, dtype=torch.int64),
+        },
+        embeddings,
+    )
     metadata = root / "embeddings.json"
     metadata.write_text('{"shape": [12, 128], "dtype": "float32"}')
     contract = root / "processor-contract.json"
     contract.write_text("{}")
+    token2pageuid = root / "token2pageuid.json"
+    token2pageuid.write_text(
+        json.dumps([{"doc_id": "doc", "page_index": 0}] * 12), encoding="utf-8"
+    )
+    ledger = root / "completion-ledger.json"
+    ledger.write_text("[]", encoding="utf-8")
     index = root / "index.faiss"
-    index.write_bytes(b"index")
+    faiss_index = faiss.IndexFlatIP(128)
+    faiss_index.add(np.zeros((12, 128), dtype=np.float32))
+    faiss.write_index(faiss_index, str(index))
     return IndexManifest(
         mode=mode,
         page_count=4,
@@ -54,6 +73,10 @@ def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
         embedding_metadata_path=metadata,
         embedding_shape=(12, 128),
         embedding_dtype="float32",
+        token2pageuid_path=token2pageuid,
+        token2pageuid_sha256=sha256_file(token2pageuid),
+        completion_ledger_path=ledger,
+        completion_ledger_sha256=sha256_file(ledger),
         index_path=index,
         index_sha256=sha256_file(index),
     )
@@ -68,7 +91,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
 
     payload = manifest.to_dict()
 
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["mode"] == "docprune"
     assert payload["corpus_integrity_sha256"] == "a" * 64
     assert payload["source_order_sha256"] == "b" * 64
@@ -108,6 +131,33 @@ def test_manifest_validates_contract_and_embedding_metadata_sidecars(
         manifest.validate_files()
 
 
+@pytest.mark.parametrize(
+    "tensors",
+    [
+        {
+            "embeddings": torch.zeros(11, 128, dtype=torch.float32),
+            "raster_indices": torch.arange(11, dtype=torch.int64),
+        },
+        {
+            "embeddings": torch.zeros(12, 128, dtype=torch.float16),
+            "raster_indices": torch.arange(12, dtype=torch.int64),
+        },
+        {
+            "embeddings": torch.zeros(12, 128, dtype=torch.float32),
+            "raster_indices": torch.arange(11, dtype=torch.int64),
+        },
+    ],
+)
+def test_manifest_validates_physical_safetensors_shape_dtype_and_raster_rows(
+    tmp_path: Path, tensors: dict[str, torch.Tensor]
+) -> None:
+    manifest = make_manifest(tmp_path)
+    save_file(tensors, manifest.embeddings_path)
+
+    with pytest.raises(ValueError, match="safetensors"):
+        manifest.validate_files()
+
+
 def test_manifest_validation_rejects_artifact_symlink_escape(tmp_path: Path) -> None:
     manifest = make_manifest(tmp_path)
     external_root = tmp_path / "shared"
@@ -142,6 +192,16 @@ def test_manifest_pruning_configuration_is_immutable(tmp_path: Path) -> None:
 
     with pytest.raises(TypeError):
         manifest.pruning_config["attention_threshold"] = 0.5  # type: ignore[index]
+
+
+def test_manifest_nested_pruning_configuration_is_immutable(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path)
+    arguments = dict(manifest.__dict__)
+    arguments["pruning_config"] = {"retrieval": {"threshold": 0.9}}
+    nested = IndexManifest(**arguments)
+
+    with pytest.raises(TypeError):
+        nested.pruning_config["retrieval"]["threshold"] = 1.0  # type: ignore[index]
 
 
 def test_manifest_pair_requires_distinct_mode_bound_artifacts(tmp_path: Path) -> None:
