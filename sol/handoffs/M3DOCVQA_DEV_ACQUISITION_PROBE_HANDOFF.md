@@ -29,6 +29,7 @@ Qwen: eed13092ef92e448dd6875b2a00151bd3f7db0ac
 set -euo pipefail
 
 export PROJECT_DIR="/home/lmalveau/DocPrune-runtime-64ea70c"
+export CONTROL_DIR="/home/lmalveau/DocPrune-control-bda6f3b"
 export M3DOCRAG_DIR="/home/lmalveau/src/m3docrag-runtime-29e6ac2"
 export ENV_DIR="/home/lmalveau/mamba-envs/docprune-sol"
 export ACQ_ENV_DIR="/home/lmalveau/mamba-envs/m3docvqa-acquisition"
@@ -36,6 +37,7 @@ export DATA_ROOT="/scratch/lmalveau/docprune/datasets/m3docvqa"
 export RUN_ROOT="/scratch/lmalveau/docprune/handoff-64ea70c"
 export SMOKE_GATE="$RUN_ROOT/smoke-pass.json"
 export EXPECTED_COMMIT="64ea70c66a8f9e3dbce804d1fde265a4a2b8b09d"
+export CONTROL_COMMIT="bda6f3be448d05fd066032ceed90c700183e4b21"
 export M3DOCRAG_COMMIT="29e6ac2294d6b87075a1d45b8a8df175b214248a"
 export N_PROC=16
 
@@ -53,6 +55,8 @@ PY
 
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
+test "$(git -C "$CONTROL_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test -z "$(git -C "$CONTROL_DIR" status --porcelain)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
 ```
@@ -173,7 +177,7 @@ export ATTEMPT="attempt-1"
 
 ARRAY_JOB_ID="$(sbatch --parsable --array="0-$((N_PROC - 1))" \
   --export=ALL,BUILDER_DIR="$M3DOCRAG_DIR",ACQ_ENV_DIR="$ACQ_ENV_DIR",DATA_ROOT="$DATA_ROOT",N_PROC="$N_PROC",ATTEMPT="$ATTEMPT" \
-  "$PROJECT_DIR/examples/sbatch/20_m3docvqa_download_array.sbatch")"
+  "$CONTROL_DIR/examples/sbatch/20_m3docvqa_download_array.sbatch")"
 printf '%s\n' "$ARRAY_JOB_ID" | tee "$DATA_ROOT/$ATTEMPT-job-id.txt"
 ```
 
@@ -311,7 +315,7 @@ done < "$DATA_ROOT/$FAILED_ATTEMPT-extra.txt"
 cd "$DATA_ROOT/slurm-logs"
 ARRAY_JOB_ID="$(sbatch --parsable --array="0-$((N_PROC - 1))" \
   --export=ALL,BUILDER_DIR="$M3DOCRAG_DIR",ACQ_ENV_DIR="$ACQ_ENV_DIR",DATA_ROOT="$DATA_ROOT",N_PROC="$N_PROC",ATTEMPT="$ATTEMPT" \
-  "$PROJECT_DIR/examples/sbatch/20_m3docvqa_download_array.sbatch")"
+  "$CONTROL_DIR/examples/sbatch/20_m3docvqa_download_array.sbatch")"
 printf '%s\n' "$ARRAY_JOB_ID" | tee "$DATA_ROOT/$ATTEMPT-job-id.txt"
 ```
 
