@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,9 @@ class StageMetrics:
         if any(value < 0 for value in counts) or not all(
             left >= right for left, right in zip(counts, counts[1:])
         ):
-            raise ValueError("visual token counts must be nonnegative and monotonically nonincreasing")
+            raise ValueError(
+                "visual token counts must be nonnegative and monotonically nonincreasing"
+            )
         if timing.retrieval_seconds < 0 or timing.qa_seconds < 0:
             raise ValueError("timings must be nonnegative")
         self.samples += 1
@@ -77,9 +80,15 @@ def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = Fa
     if path.exists() and not resume:
         raise FileExistsError(f"{path} exists; pass resume only after its manifest is verified")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
-        handle.flush()
+    payload = (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        written = 0
+        while written < len(payload):
+            written += os.write(descriptor, payload[written:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def summarize_jsonl(path: Path) -> dict[str, object]:

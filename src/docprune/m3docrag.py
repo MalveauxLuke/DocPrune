@@ -7,6 +7,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
+import numpy as np
+import torch
+
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -139,6 +142,9 @@ class OfficialM3DocRAGBoundary:
     ) -> None:
         self.rag_model = rag_model
         self.dataset = dataset
+        self.index = index
+        self.token2pageuid = token2pageuid
+        self.all_token_embeddings = all_token_embeddings
         self.retrieval_kwargs = {
             "docid2embs": docid2embs,
             "docid2lens": docid2lens,
@@ -148,13 +154,149 @@ class OfficialM3DocRAGBoundary:
         }
 
     def retrieve(self, question: str, top_k: int) -> tuple[RetrievedPage, ...]:
-        raw = self.rag_model.retrieve_pages_from_docs(
-            query=question,
-            n_return_pages=top_k,
-            show_progress=False,
-            **self.retrieval_kwargs,
+        if top_k not in {1, 2, 4}:
+            raise ValueError("top_k must be 1, 2, or 4")
+        if (
+            self.index is not None
+            and self.token2pageuid is not None
+            and self.all_token_embeddings is not None
+        ):
+            return self._retrieve_indexed(question, top_k)
+
+        # The pinned upstream implementation uses n_return_pages for both the
+        # number of requested pages and the per-query-token FAISS neighbors.
+        # Increase that neighbor count deterministically, then retain the first
+        # occurrence of each structured page identity.  This preserves its
+        # MaxSim ordering while preventing one page's many tokens from
+        # consuming the requested page budget.
+        neighbor_count = top_k
+        for _ in range(16):
+            raw = self.rag_model.retrieve_pages_from_docs(
+                query=question,
+                n_return_pages=neighbor_count,
+                show_progress=False,
+                **self.retrieval_kwargs,
+            )
+            pages = self._unique_pages(raw)
+            if len(pages) >= top_k:
+                return tuple(pages[:top_k])
+            next_count = max(neighbor_count + 1, neighbor_count * 2)
+            if next_count <= neighbor_count:
+                break
+            neighbor_count = next_count
+        raise ValueError(
+            f"official retrieval returned only {len(pages)} unique pages; expected {top_k}"
         )
-        return tuple(RetrievedPage(str(doc), int(page), float(score)) for doc, page, score in raw)
+
+    @staticmethod
+    def _unique_pages(raw: Sequence[object]) -> list[RetrievedPage]:
+        pages: list[RetrievedPage] = []
+        seen: set[tuple[str, int]] = set()
+        for item in raw:
+            if isinstance(item, RetrievedPage):
+                page = item
+            else:
+                try:
+                    doc, page_index, score = item  # type: ignore[misc]
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        "official retrieval rows must be (doc_id, page_index, score)"
+                    ) from error
+                page = RetrievedPage(str(doc), int(page_index), float(score))
+            if not page.doc_id or page.page_index < 0 or not np.isfinite(page.score):
+                raise ValueError("official retrieval returned an invalid page row")
+            identity = (page.doc_id, page.page_index)
+            if identity not in seen:
+                pages.append(page)
+                seen.add(identity)
+        return pages
+
+    def _retrieve_indexed(self, question: str, top_k: int) -> tuple[RetrievedPage, ...]:
+        """Run the pinned index branch with exact per-query-token MaxSim.
+
+        The upstream branch searches ``k`` token neighbors for every query
+        token, takes the maximum score per page, sums those maxima, and sorts
+        descending.  We reproduce that operation here so structured
+        ``token2pageuid`` rows from the DocPrune index can be consumed without
+        converting them to lossy string IDs.
+        """
+
+        retrieval_model = getattr(self.rag_model, "retrieval_model", None)
+        encode_queries = getattr(retrieval_model, "encode_queries", None)
+        if not callable(encode_queries):
+            raise ValueError("indexed retrieval requires retrieval_model.encode_queries")
+        query = torch.as_tensor(encode_queries([question])[0])
+        if query.ndim == 3:
+            if query.shape[0] != 1:
+                raise ValueError("indexed query embeddings must have batch size one")
+            query = query[0]
+        if query.ndim != 2:
+            raise ValueError("indexed query embeddings must have shape [tokens, width]")
+        query_array = query.detach().cpu().float().numpy().astype(np.float32, copy=False)
+        all_embeddings = torch.as_tensor(self.all_token_embeddings)
+        if all_embeddings.ndim != 2 or all_embeddings.shape[1] != query_array.shape[1]:
+            raise ValueError("indexed token embeddings have an incompatible shape")
+        all_array = all_embeddings.detach().cpu().float().numpy().astype(np.float32, copy=False)
+        token_map = tuple(self.token2pageuid)
+        index = self.index
+        total_tokens = int(getattr(index, "ntotal", len(token_map)))
+        if total_tokens != len(token_map) or total_tokens != len(all_array):
+            raise ValueError("indexed token rows do not agree with token2pageuid")
+        if total_tokens < top_k:
+            raise ValueError("indexed corpus contains fewer tokens than requested pages")
+
+        neighbor_count = min(top_k, total_tokens)
+        for _ in range(16):
+            _distances, nearest = index.search(query_array, neighbor_count)
+            page_scores: dict[tuple[str, int], float] = {}
+            page_order: dict[tuple[str, int], int] = {}
+            order = 0
+            for query_row, nearest_row in zip(query_array, nearest):
+                query_page_scores: dict[tuple[str, int], float] = {}
+                for token_index in nearest_row:
+                    token_index = int(token_index)
+                    if token_index < 0:
+                        continue
+                    page = self._page_identity(token_map[token_index])
+                    score = float(np.dot(query_row, all_array[token_index]))
+                    query_page_scores[page] = max(query_page_scores.get(page, -np.inf), score)
+                    page_order.setdefault(page, order)
+                    order += 1
+                for page, score in query_page_scores.items():
+                    page_scores[page] = page_scores.get(page, 0.0) + score
+            ordered = sorted(page_scores, key=lambda page: (-page_scores[page], page_order[page]))
+            if len(ordered) >= top_k:
+                return tuple(
+                    RetrievedPage(page[0], page[1], page_scores[page]) for page in ordered[:top_k]
+                )
+            if neighbor_count >= total_tokens:
+                break
+            neighbor_count = min(total_tokens, max(neighbor_count + 1, neighbor_count * 2))
+        raise ValueError(
+            f"indexed retrieval returned only {len(ordered)} unique pages; expected {top_k}"
+        )
+
+    @staticmethod
+    def _page_identity(value: object) -> tuple[str, int]:
+        if isinstance(value, Mapping):
+            doc_id = value.get("doc_id")
+            page_index = value.get("page_index")
+            if (
+                isinstance(doc_id, str)
+                and doc_id
+                and isinstance(page_index, int)
+                and page_index >= 0
+            ):
+                return doc_id, page_index
+            raise ValueError("token2pageuid rows must contain doc_id and page_index")
+        if isinstance(value, tuple | list) and len(value) == 2:
+            doc_id, page_index = value
+            return str(doc_id), int(page_index)
+        if isinstance(value, str) and "_page" in value:
+            doc_id, raw_page = value.rsplit("_page", 1)
+            if doc_id and raw_page.isdigit():
+                return doc_id, int(raw_page)
+        raise ValueError("token2pageuid row has unsupported page identity")
 
     def load_page(self, doc_id: str, page_index: int) -> object:
         return self.dataset.get_images_from_doc_id(doc_id)[page_index]

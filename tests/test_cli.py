@@ -1,7 +1,11 @@
 import json
 
+import pytest
+
 import docprune.processor_probe
-from docprune.cli import main
+from docprune.cli import EvaluationWorkload, main
+from docprune.m3docrag import RetrievedPage, SampleResult, SampleTiming
+from docprune.qwen2vl.model import PruningTrace
 
 
 def test_inspect_validates_config_without_loading_models(capsys) -> None:
@@ -165,3 +169,58 @@ def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
 
     assert exit_code == 2
     assert "must equal the pinned" in capsys.readouterr().err
+
+
+def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    calls = {"runs": 0, "answers": []}
+
+    class Runner:
+        def run_sample(self, sample):
+            calls["answers"].append(sample.question_id)
+            if calls["runs"] == 1 and sample.question_id == "q-2":
+                raise RuntimeError("interrupted")
+            return SampleResult(
+                question_id=sample.question_id,
+                question=sample.question,
+                answers=sample.answers,
+                predicted_answer="answer",
+                retrieved_pages=(RetrievedPage("doc", 0, 1.0),),
+                trace=PruningTrace(4, 3, 2, 1, None),
+                timing=SampleTiming(0.1, 0.2),
+            )
+
+    def factory(**kwargs):
+        calls["runs"] += 1
+        from docprune.m3docrag import SampleInput
+
+        return EvaluationWorkload(
+            Runner(),
+            (
+                SampleInput("q-1", "one"),
+                SampleInput("q-2", "two"),
+                SampleInput("q-3", "three"),
+            ),
+        )
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    args = [
+        "evaluate",
+        "--config",
+        "configs/docprune-m3docvqa.toml",
+        "--pages",
+        "1",
+        "--output",
+        str(output),
+        "--factory",
+        "fake:factory",
+    ]
+    with pytest.raises(RuntimeError, match="interrupted"):
+        main(args)
+    assert calls["answers"] == ["q-1", "q-2"]
+
+    calls["answers"] = []
+    assert main(args + ["--resume"]) == 0
+    assert calls["answers"] == ["q-2", "q-3"]
+    records = [json.loads(line) for line in (output / "results.jsonl").read_text().splitlines()]
+    assert [record["question_id"] for record in records] == ["q-1", "q-2", "q-3"]
