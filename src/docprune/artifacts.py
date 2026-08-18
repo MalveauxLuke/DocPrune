@@ -1,0 +1,125 @@
+"""Canonical, immutable manifests for derived benchmark artifacts."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from types import MappingProxyType
+
+from docprune.benchmark_config import M3DOCRAG_COMMIT, MODES, PAGE_COUNTS, sha256_file
+from docprune.processor_probe import require_immutable_revision, require_pinned_processor_resources
+
+
+def canonical_json_sha256(value: object) -> str:
+    """Hash JSON with stable keys and no insignificant whitespace."""
+
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _require_sha256(value: str, *, name: str) -> str:
+    if len(value) != 64 or any(character not in "0123456789abcdefABCDEF" for character in value):
+        raise ValueError(f"{name} must be a 64-character hexadecimal SHA-256")
+    return value.lower()
+
+
+@dataclass(frozen=True)
+class IndexManifest:
+    """Identity of one mode/page-count index and its checked derived files."""
+
+    mode: str
+    page_count: int
+    corpus_integrity_sha256: str
+    source_order_sha256: str
+    runtime_commit: str
+    m3docrag_commit: str
+    qwen_model: str
+    qwen_revision: str
+    colpali_model: str
+    colpali_revision: str
+    colpali_backbone_model: str
+    colpali_backbone_revision: str
+    processor_contract_sha256: str
+    pruning_config: Mapping[str, object]
+    embeddings_path: Path
+    embedding_shape: tuple[int, int]
+    embedding_dtype: str
+    index_path: Path
+    index_sha256: str
+
+    def __post_init__(self) -> None:
+        if self.mode not in MODES:
+            raise ValueError(f"mode must be one of {', '.join(MODES)}")
+        if self.page_count not in PAGE_COUNTS:
+            raise ValueError("page_count must be 1, 2, or 4")
+        for name in (
+            "corpus_integrity_sha256",
+            "source_order_sha256",
+            "processor_contract_sha256",
+            "index_sha256",
+        ):
+            object.__setattr__(self, name, _require_sha256(getattr(self, name), name=name))
+        require_immutable_revision(self.runtime_commit, name="runtime_commit")
+        if self.m3docrag_commit != M3DOCRAG_COMMIT:
+            raise ValueError(f"m3docrag_commit must equal the pinned {M3DOCRAG_COMMIT}")
+        require_pinned_processor_resources(
+            qwen_model=self.qwen_model,
+            qwen_revision=self.qwen_revision,
+            colpali_model=self.colpali_model,
+            colpali_revision=self.colpali_revision,
+            colpali_backbone_model=self.colpali_backbone_model,
+            colpali_backbone_revision=self.colpali_backbone_revision,
+        )
+        object.__setattr__(self, "embeddings_path", Path(self.embeddings_path))
+        object.__setattr__(self, "index_path", Path(self.index_path))
+        object.__setattr__(self, "pruning_config", MappingProxyType(dict(self.pruning_config)))
+        if len(self.embedding_shape) != 2 or self.embedding_shape[0] < 1:
+            raise ValueError("embedding_shape must contain positive token and width dimensions")
+        if self.embedding_shape[1] != 128:
+            raise ValueError("embedding_shape must have width 128")
+        if self.embedding_dtype not in {"float16", "float32", "bfloat16"}:
+            raise ValueError("embedding_dtype must be float16, float32, or bfloat16")
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "schema_version": 1,
+            "mode": self.mode,
+            "page_count": self.page_count,
+            "corpus_integrity_sha256": self.corpus_integrity_sha256,
+            "source_order_sha256": self.source_order_sha256,
+            "runtime_commit": self.runtime_commit,
+            "m3docrag_commit": self.m3docrag_commit,
+            "resources": {
+                "qwen": {"model": self.qwen_model, "revision": self.qwen_revision},
+                "colpali": {"model": self.colpali_model, "revision": self.colpali_revision},
+                "colpali_backbone": {
+                    "model": self.colpali_backbone_model,
+                    "revision": self.colpali_backbone_revision,
+                },
+            },
+            "processor_contract_sha256": self.processor_contract_sha256,
+            "pruning_config": dict(self.pruning_config),
+            "embeddings_path": str(self.embeddings_path),
+            "embeddings": {
+                "shape": list(self.embedding_shape),
+                "dtype": self.embedding_dtype,
+            },
+            "index_path": str(self.index_path),
+            "index_sha256": self.index_sha256,
+        }
+        payload["manifest_sha256"] = canonical_json_sha256(payload)
+        return payload
+
+    def validate_files(self) -> None:
+        if not self.embeddings_path.is_file():
+            raise FileNotFoundError(f"embedding artifact is missing: {self.embeddings_path}")
+        if not self.index_path.is_file():
+            raise FileNotFoundError(f"index artifact is missing: {self.index_path}")
+        actual = sha256_file(self.index_path)
+        if actual != self.index_sha256:
+            raise ValueError(
+                f"index SHA-256 mismatch: expected {self.index_sha256}, got {actual}"
+            )
