@@ -7,6 +7,7 @@ import math
 import re
 import tempfile
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,17 @@ import torch
 from PIL import Image
 
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+COLPALI_BACKBONE_MODEL = "vidore/colpaligemma-3b-pt-448-base"
+COLPALI_BACKBONE_REVISION = "30ab955d073de4a91dc5a288e8c97226647e3e5a"
+
+
+@dataclass(frozen=True)
+class ColPaliVisualMapping:
+    image_token_id: int
+    visual_start: int
+    visual_stop: int
+    grid_hw: tuple[int, int]
+    raster_indices: tuple[int, ...]
 
 
 def require_immutable_revision(value: str, *, name: str) -> str:
@@ -62,6 +74,65 @@ def _image_token_id(processor: object) -> int | None:
 def _perfect_square_grid(token_count: int) -> list[int] | None:
     side = math.isqrt(token_count)
     return [side, side] if side * side == token_count and token_count > 0 else None
+
+
+def _image_seq_length(processor: object) -> int | None:
+    for owner in (processor, getattr(processor, "image_processor", None)):
+        if owner is None:
+            continue
+        value = getattr(owner, "image_seq_length", None)
+        if value is not None:
+            return int(value)
+    return None
+
+
+def resolve_colpali_visual_mapping(
+    *,
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    image_token_id: int,
+    image_seq_length: int,
+) -> ColPaliVisualMapping:
+    """Prove the PaliGemma image-placeholder span maps to a square raster."""
+
+    if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+        raise ValueError("one-page ColPali input_ids must have shape [1, sequence]")
+    if attention_mask.shape != input_ids.shape:
+        raise ValueError("ColPali attention_mask must match input_ids")
+    if image_seq_length <= 0:
+        raise ValueError("ColPali image_seq_length must be positive")
+
+    positions = (input_ids[0] == image_token_id).nonzero(as_tuple=False).flatten()
+    if len(positions) != image_seq_length:
+        raise ValueError(
+            "ColPali image-token positions must contain exactly "
+            f"{image_seq_length} placeholders"
+        )
+    visual_start = int(positions[0].item())
+    visual_stop = visual_start + image_seq_length
+    expected_positions = torch.arange(
+        visual_start,
+        visual_stop,
+        device=positions.device,
+        dtype=positions.dtype,
+    )
+    if not torch.equal(positions, expected_positions):
+        raise ValueError("ColPali image-token positions must be contiguous")
+    if not bool(attention_mask[0, visual_start:visual_stop].bool().all()):
+        raise ValueError("ColPali image-token positions must not be padded")
+    grid = _perfect_square_grid(image_seq_length)
+    if grid is None:
+        raise ValueError("ColPali image_seq_length must form a square visual grid")
+    raster_indices = tuple(range(image_seq_length))
+    if len(set(raster_indices)) != image_seq_length:
+        raise ValueError("ColPali raster indices must be unique")
+    return ColPaliVisualMapping(
+        image_token_id=image_token_id,
+        visual_start=visual_start,
+        visual_stop=visual_stop,
+        grid_hw=(grid[0], grid[1]),
+        raster_indices=raster_indices,
+    )
 
 
 def collect_processor_contract(
@@ -123,29 +194,38 @@ def collect_processor_contract(
     if colpali_attention.shape != colpali_ids.shape:
         raise ValueError("ColPali attention_mask must match input_ids")
     image_token_id = _image_token_id(colpali_processor)
-    positions = (
-        []
-        if image_token_id is None
-        else (colpali_ids[0] == image_token_id).nonzero(as_tuple=False).flatten().tolist()
-    )
-    inferred_grid = _perfect_square_grid(len(positions))
-    unresolved: list[str] = [
-        "ColPali raster order requires review against the pinned processor implementation."
-    ]
+    positions = [] if image_token_id is None else (colpali_ids[0] == image_token_id).nonzero(
+        as_tuple=False
+    ).flatten().tolist()
+    image_seq_length = _image_seq_length(colpali_processor)
+    mapping: ColPaliVisualMapping | None = None
+    unresolved: list[str] = []
     if image_token_id is None:
         unresolved.append("ColPali image token ID could not be detected.")
-    elif not positions:
-        unresolved.append("No ColPali image-token positions were detected.")
-    if inferred_grid is None:
-        unresolved.append("ColPali visual tokens do not form an inferred square grid.")
+    elif image_seq_length is None:
+        unresolved.append("ColPali processor is missing image_seq_length.")
+    else:
+        try:
+            mapping = resolve_colpali_visual_mapping(
+                input_ids=colpali_ids,
+                attention_mask=colpali_attention,
+                image_token_id=image_token_id,
+                image_seq_length=image_seq_length,
+            )
+        except ValueError as error:
+            unresolved.append(str(error))
     if not merge_valid:
         unresolved.append("Qwen fine-token count is not divisible by its merge area.")
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "resources": {
             "qwen": {"model": qwen_model, "revision": qwen_revision},
             "colpali": {"model": colpali_model, "revision": colpali_revision},
+            "colpali_backbone": {
+                "model": COLPALI_BACKBONE_MODEL,
+                "revision": COLPALI_BACKBONE_REVISION,
+            },
         },
         "page": {"raw_size_wh": [int(image.width), int(image.height)]},
         "qwen": {
@@ -162,14 +242,18 @@ def collect_processor_contract(
             "candidate_visual_token_count": len(positions),
             "image_token_id": image_token_id,
             "image_token_positions": positions,
-            "inferred_visual_grid_hw": inferred_grid,
+            "image_seq_length": image_seq_length,
+            "inferred_visual_grid_hw": None if mapping is None else list(mapping.grid_hw),
             "pixel_values_shape": list(torch.as_tensor(_value(colpali_batch, "pixel_values")).shape),
+            "raster_indices": None if mapping is None else list(mapping.raster_indices),
             "sequence_length": int(colpali_ids.shape[1]),
+            "visual_start": None if mapping is None else mapping.visual_start,
+            "visual_stop": None if mapping is None else mapping.visual_stop,
         },
         "mapping_checks": {
-            "colpali_visual_grid_inferred": inferred_grid is not None,
+            "colpali_visual_grid_inferred": mapping is not None,
             "qwen_merge_groups_valid": merge_valid,
-            "raster_order_verified": False,
+            "raster_order_verified": mapping is not None,
         },
         "unresolved": unresolved,
     }
@@ -204,7 +288,11 @@ def validate_processor_contract(payload: Mapping[str, object]) -> None:
     checks = payload.get("mapping_checks")
     if not isinstance(checks, Mapping):
         raise ValueError("processor contract is missing mapping_checks")
-    required = ("colpali_visual_grid_inferred", "qwen_merge_groups_valid")
+    required = (
+        "colpali_visual_grid_inferred",
+        "qwen_merge_groups_valid",
+        "raster_order_verified",
+    )
     failed = [name for name in required if checks.get(name) is not True]
     if failed:
         unresolved = payload.get("unresolved")

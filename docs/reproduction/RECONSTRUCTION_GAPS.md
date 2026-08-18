@@ -7,8 +7,8 @@ prevents local choices from being misreported as author-provided details.
 |---|---|---|---|
 | Grayscale conversion | Not specified | `reconstruction_default`: BT.601, rounded uint8 | Ablate against mean/channel/PIL grayscale |
 | QTP Gaussian sigma and border rule | Not specified | sigma 1.0, replicate padding | Sweep and compare masks/quality |
-| ColPali special/non-image tokens | Not specified | Caller must pass an explicit visual-only slice; shape mismatch fails | Inspect pinned processor and record exact indices |
-| ColPali relevance source grid | Not specified | Caller supplies `document_source_hw` per page | Verify token ordering and grid dimensions |
+| ColPali special/non-image tokens | Pinned M3DocRAG v1.2 contract | Require exactly `image_seq_length` contiguous, unpadded PaliGemma image placeholders; preserve all non-image tokens | Processor probe records the visual span and fails closed on ambiguity |
+| ColPali relevance source grid | Pinned M3DocRAG v1.2 contract | Derive the square visual grid and unique row-major raster indices from the verified placeholder span | Processor probe records the raster mapping before retrieval is authorized |
 | Qwen resized pixels used by BTP | Not specified | Caller supplies the exact post-resize uint8 image and patch size | Verify against pinned processor pixels and `grid_thw` |
 | 2-by-2 group aggregation | Group pruning specified; reduction rule absent | Keep group if any member passes | Ablate any/all/mean |
 | Attention head aggregation | Not specified | Arithmetic mean | Compare mean and max |

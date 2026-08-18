@@ -109,7 +109,7 @@ def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -
             "--qwen-revision",
             "a" * 40,
             "--colpali-model",
-            "vidore/colpali-v1",
+            "vidore/colpali-v1.2",
             "--colpali-revision",
             "b" * 40,
             "--output",
@@ -124,7 +124,7 @@ def test_probe_processors_forwards_exact_inputs(tmp_path, capsys, monkeypatch) -
             "page_image": page,
             "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
             "qwen_revision": "a" * 40,
-            "colpali_model": "vidore/colpali-v1",
+            "colpali_model": "vidore/colpali-v1.2",
             "colpali_revision": "b" * 40,
             "output": output,
         }
