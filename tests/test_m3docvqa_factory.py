@@ -309,6 +309,21 @@ def test_index_manifest_rejects_a_malicious_index_manifest_subclass() -> None:
         _load_index_manifest(fake)
 
 
+def test_index_manifest_reconstructs_an_exact_but_uninitialized_instance() -> None:
+    fake = object.__new__(IndexManifest)
+    object.__setattr__(
+        fake,
+        "to_dict",
+        lambda: {
+            "manifest_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+    )
+    object.__setattr__(fake, "validate_files", lambda: None)
+
+    with pytest.raises(ValueError, match="required immutable fields"):
+        _load_index_manifest(fake)
+
+
 def test_completed_results_require_full_schema_and_regular_file(tmp_path: Path) -> None:
     path = tmp_path / "results.jsonl"
     path.write_text(json.dumps({"question_id": "q-1"}) + "\n")

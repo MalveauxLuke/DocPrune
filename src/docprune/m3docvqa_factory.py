@@ -702,7 +702,10 @@ def _make_dataset(run_config: object) -> object:
 
 def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
     if type(value) is IndexManifest:
-        manifest = value
+        try:
+            payload = IndexManifest.to_dict(value)
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("index manifest is missing required immutable fields") from error
     elif not isinstance(value, str | Path):
         raise TypeError("index manifest must be an IndexManifest or a manifest JSON path")
     else:
@@ -722,54 +725,54 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
         unsigned_payload.pop("manifest_sha256", None)
         if supplied_digest != _sha256_json(unsigned_payload):
             raise ValueError("index manifest canonical SHA-256 is invalid")
-        resources = payload.get("resources")
-        if not isinstance(resources, Mapping):
-            raise ValueError("index manifest is missing resources")
-        qwen = resources.get("qwen", {})
-        colpali = resources.get("colpali", {})
-        backbone = resources.get("colpali_backbone", {})
-        if not all(isinstance(item, Mapping) for item in (qwen, colpali, backbone)):
-            raise ValueError("index manifest resources are invalid")
-        try:
-            manifest = IndexManifest(
-                mode=str(payload["mode"]),
-                page_count=int(payload["page_count"]),
-                corpus_integrity_sha256=str(payload["corpus_integrity_sha256"]),
-                source_order_sha256=str(payload["source_order_sha256"]),
-                runtime_commit=str(payload["runtime_commit"]),
-                m3docrag_commit=str(payload["m3docrag_commit"]),
-                qwen_model=str(qwen["model"]),
-                qwen_revision=str(qwen["revision"]),
-                colpali_model=str(colpali["model"]),
-                colpali_revision=str(colpali["revision"]),
-                colpali_backbone_model=str(backbone["model"]),
-                colpali_backbone_revision=str(backbone["revision"]),
-                processor_contract_path=Path(payload["processor_contract_path"]),
-                processor_contract_sha256=str(payload["processor_contract_sha256"]),
-                pruning_config=payload["pruning_config"],
-                artifact_root=Path(payload["artifact_root"]),
-                embeddings_path=Path(payload["embeddings_path"]),
-                embedding_metadata_path=Path(payload["embedding_metadata_path"]),
-                embedding_shape=tuple(payload["embeddings"]["shape"]),
-                embedding_dtype=str(payload["embeddings"]["dtype"]),
-                embeddings_sha256=str(payload["embeddings_sha256"]),
-                token2pageuid_path=Path(payload["token2pageuid_path"]),
-                token2pageuid_sha256=str(payload["token2pageuid_sha256"]),
-                completion_ledger_path=Path(payload["completion_ledger_path"]),
-                completion_ledger_sha256=str(payload["completion_ledger_sha256"]),
-                index_path=Path(payload["index_path"]),
-                index_sha256=str(payload["index_sha256"]),
-            )
-        except (KeyError, TypeError, ValueError) as error:
-            raise ValueError("index manifest is missing required immutable fields") from error
-    manifest_payload = manifest.to_dict()
-    if not isinstance(value, IndexManifest) and payload != manifest_payload:
+    resources = payload.get("resources")
+    if not isinstance(resources, Mapping):
+        raise ValueError("index manifest is missing resources")
+    qwen = resources.get("qwen", {})
+    colpali = resources.get("colpali", {})
+    backbone = resources.get("colpali_backbone", {})
+    if not all(isinstance(item, Mapping) for item in (qwen, colpali, backbone)):
+        raise ValueError("index manifest resources are invalid")
+    try:
+        manifest = IndexManifest(
+            mode=str(payload["mode"]),
+            page_count=int(payload["page_count"]),
+            corpus_integrity_sha256=str(payload["corpus_integrity_sha256"]),
+            source_order_sha256=str(payload["source_order_sha256"]),
+            runtime_commit=str(payload["runtime_commit"]),
+            m3docrag_commit=str(payload["m3docrag_commit"]),
+            qwen_model=str(qwen["model"]),
+            qwen_revision=str(qwen["revision"]),
+            colpali_model=str(colpali["model"]),
+            colpali_revision=str(colpali["revision"]),
+            colpali_backbone_model=str(backbone["model"]),
+            colpali_backbone_revision=str(backbone["revision"]),
+            processor_contract_path=Path(payload["processor_contract_path"]),
+            processor_contract_sha256=str(payload["processor_contract_sha256"]),
+            pruning_config=payload["pruning_config"],
+            artifact_root=Path(payload["artifact_root"]),
+            embeddings_path=Path(payload["embeddings_path"]),
+            embedding_metadata_path=Path(payload["embedding_metadata_path"]),
+            embedding_shape=tuple(payload["embeddings"]["shape"]),
+            embedding_dtype=str(payload["embeddings"]["dtype"]),
+            embeddings_sha256=str(payload["embeddings_sha256"]),
+            token2pageuid_path=Path(payload["token2pageuid_path"]),
+            token2pageuid_sha256=str(payload["token2pageuid_sha256"]),
+            completion_ledger_path=Path(payload["completion_ledger_path"]),
+            completion_ledger_sha256=str(payload["completion_ledger_sha256"]),
+            index_path=Path(payload["index_path"]),
+            index_sha256=str(payload["index_sha256"]),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError("index manifest is missing required immutable fields") from error
+    manifest_payload = IndexManifest.to_dict(manifest)
+    if payload != manifest_payload:
         raise ValueError("index manifest payload does not exactly match IndexManifest")
     if manifest_payload.get("manifest_sha256") != _sha256_json(
         {key: value for key, value in manifest_payload.items() if key != "manifest_sha256"}
     ):
         raise ValueError("index manifest canonical SHA-256 is invalid")
-    manifest.validate_files()
+    IndexManifest.validate_files(manifest)
     return manifest
 
 
