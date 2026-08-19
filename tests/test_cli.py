@@ -824,6 +824,13 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     assert not any(path.name.startswith(".run_manifest.") for path in output.iterdir())
 
 
+def test_pending_evaluation_requires_runner_warmup_callable() -> None:
+    from docprune.cli import _require_runner_warmup
+
+    with pytest.raises(ValueError, match="warmup"):
+        _require_runner_warmup(object(), SampleInput("q-1", "question"))
+
+
 def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> None:
     config = load_config(Path("configs/docprune-m3docvqa.toml"))
     output = tmp_path / "output"

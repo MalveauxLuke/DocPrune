@@ -11,6 +11,7 @@ from docprune.evaluation import (
     summarize_benchmark_run,
     validate_benchmark_run,
 )
+from docprune.metrics import MEASUREMENT_DEFINITION
 
 
 def _source_rows():
@@ -107,17 +108,37 @@ def test_evaluate_m3docvqa_matches_official_lists_and_slices():
     }
 
 
+def test_evaluator_fails_closed_without_required_word2number(monkeypatch):
+    import docprune.evaluation as evaluation
+
+    monkeypatch.setattr(evaluation, "word_to_num", None)
+    with pytest.raises(RuntimeError, match="word2number"):
+        evaluate_m3docvqa(
+            [_result("q1", "2", [("doc-a", 0, 1.0)])],
+            [
+                {
+                    "qid": "q1",
+                    "question": "How many?",
+                    "answers": [{"answer": "two", "modality": "text"}],
+                    "metadata": {"type": "TextQ"},
+                    "supporting_context": [{"doc_id": "doc-a"}],
+                }
+            ],
+        )
+
+
 def _run_manifest(qids):
     manifest = {
         "schema_version": 2,
         "status": "configured",
         "operation": "evaluate",
-        "selection": {"resolved_question_ids": qids},
+        "selection": {"resolved_question_ids": qids, "count": len(qids)},
         "index_manifest_source_path": None,
         "index_manifest_source_sha256": None,
         "index_manifest": None,
         "measurement": {
-            "warmup_excluded": True,
+            "definition": MEASUREMENT_DEFINITION,
+            "warmup_required": True,
             "profiler_enabled": False,
         },
     }
@@ -134,23 +155,64 @@ def _write_valid_run(path: Path):
         _result("q1", "answer", [("doc-a", 0, 1.0)]),
         _result("q2", "answer", [("doc-a", 0, 1.0)]),
     ]
-    source_path = path / "MMQA_dev.jsonl"
+    corpus_root = path / "corpus"
+    corpus_root.mkdir()
+    source_path = corpus_root / "MMQA_dev.jsonl"
     source_path.write_text(
         "".join(
             json.dumps({"qid": qid, "question": qid, "answers": [{"answer": "answer"}]}) + "\n"
             for qid in ("q1", "q2")
         )
     )
+    document_ids_path = corpus_root / "dev_doc_ids.json"
+    document_ids_path.write_text("[]")
+    pdf_dir = corpus_root / "pdfs_dev"
+    pdf_dir.mkdir()
+    integrity_path = corpus_root / "attempt-3-integrity.json"
+    integrity_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "dev_questions": 2,
+                "expected_pdf_count": 1,
+                "actual_pdf_count": 1,
+                "missing_pdf_ids": [],
+                "extra_pdf_ids": [],
+                "corrupt_pdfs": [],
+                "observed_page_count": 1,
+                "within_ten_percent_of_published_page_count": True,
+            }
+        )
+    )
+    archive_manifest = corpus_root / "mmqa-archives.sha256"
+    archive_manifest.write_text("")
+    corpus = {
+        "root": str(corpus_root),
+        "questions_path": str(source_path),
+        "document_ids_path": str(document_ids_path),
+        "pdf_dir": str(pdf_dir),
+        "integrity_report_path": str(integrity_path),
+        "integrity_sha256": hashlib.sha256(integrity_path.read_bytes()).hexdigest(),
+        "archive_checksum_manifest_path": str(archive_manifest),
+        "archive_checksum_manifest_sha256": hashlib.sha256(
+            archive_manifest.read_bytes()
+        ).hexdigest(),
+        "questions_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
+        "document_ids_sha256": hashlib.sha256(document_ids_path.read_bytes()).hexdigest(),
+        "expected_question_count": 2,
+        "expected_pdf_count": 1,
+        "expected_page_count": 1,
+        "is_fixture": True,
+        "archive_hashes": {},
+    }
     for record in records:
         record["answers"] = ["answer"]
     (path / "results.jsonl").write_text(
         "".join(json.dumps(record, sort_keys=True) + "\n" for record in records)
     )
     manifest = _run_manifest(["q1", "q2"])
-    manifest["corpus"] = {
-        "questions_path": str(source_path),
-        "questions_sha256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
-    }
+    manifest["fixture_mode"] = True
+    manifest["corpus"] = corpus
     unsigned = dict(manifest)
     unsigned.pop("run_manifest_sha256")
     manifest["run_manifest_sha256"] = hashlib.sha256(
@@ -335,3 +397,114 @@ def test_validate_benchmark_run_requires_production_source_identity(tmp_path):
 
     assert report.valid is False
     assert any("corpus source identity" in error for error in report.errors)
+
+
+def test_validate_benchmark_run_requires_exact_measurement_manifest(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    manifest["measurement"] = {"warmup_required": True, "profiler_enabled": False}
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (run / "run_manifest.json").write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2)
+
+    assert report.valid is False
+    assert any("measurement definition" in error for error in report.errors)
+
+
+def test_validate_benchmark_run_requires_production_run_config_and_index_sources(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    manifest["corpus"]["is_fixture"] = False
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (run / "run_manifest.json").write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2)
+
+    assert report.valid is False
+    assert any("run configuration" in error for error in report.errors)
+    assert any("index manifest" in error for error in report.errors)
+
+
+def test_fixture_marker_cannot_bypass_default_production_validation(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+
+    report = validate_benchmark_run(run)
+
+    assert report.valid is False
+    assert any("run configuration" in error for error in report.errors)
+
+
+def test_production_records_reject_zero_peak_gpu_measurement(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    manifest["corpus"]["is_fixture"] = False
+    records = [json.loads(line) for line in (run / "results.jsonl").read_text().splitlines()]
+    records[0]["timing"]["peak_allocated_gpu_bytes"] = 0
+    (run / "results.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (run / "run_manifest.json").write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2)
+
+    assert report.valid is False
+    assert any("peak allocated GPU bytes" in error for error in report.errors)
+
+
+def test_validate_benchmark_run_accepts_selected_rows_as_source_order_subsequence(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    source_path = run / "corpus" / "MMQA_dev.jsonl"
+    source_path.write_text(
+        "".join(
+            json.dumps({"qid": qid, "question": qid, "answers": [{"answer": "answer"}]}) + "\n"
+            for qid in ("q0", "q1", "q2", "q3")
+        )
+    )
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    manifest["selection"]["resolved_question_ids"] = ["q1", "q3"]
+    manifest["corpus"]["expected_question_count"] = 4
+    manifest["corpus"]["questions_sha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (run / "run_manifest.json").write_text(json.dumps(manifest))
+    records = [json.loads(line) for line in (run / "results.jsonl").read_text().splitlines()]
+    records[0]["question_id"] = "q1"
+    records[0]["question"] = "q1"
+    records[1]["question_id"] = "q3"
+    records[1]["question"] = "q3"
+    (run / "results.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
+    (run / "summary.json").write_text(
+        json.dumps(
+            summarize_benchmark_run(
+                run / "results.jsonl",
+                [
+                    {"qid": qid, "question": qid, "answers": [{"answer": "answer"}]}
+                    for qid in ("q1", "q3")
+                ],
+            )
+        )
+    )
+
+    report = validate_benchmark_run(run, expected_questions=2)
+
+    assert report.valid is True

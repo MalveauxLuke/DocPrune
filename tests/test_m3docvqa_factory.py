@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ from docprune.m3docrag import SampleInput
 from docprune.m3docvqa_factory import (
     _is_cli_placeholder,
     _load_index_manifest,
+    _validate_result_record,
     _write_run_manifest,
     build_workload,
     filter_samples,
@@ -56,6 +58,83 @@ def test_filter_samples_is_deterministic_and_rejects_duplicate_requested_ids() -
     ]
     with pytest.raises(ValueError, match="duplicate"):
         filter_samples(samples, sample_ids=("q-1", "q-1"))
+
+
+def test_validate_result_record_enforces_mode_aware_trace_contract() -> None:
+    all_kept = result_record("q-1")
+    all_kept["trace"]["ctp_layer"] = 3
+    with pytest.raises(ValueError, match="all-kept"):
+        _validate_result_record(all_kept, line_number=1, mode="all-kept")
+
+    docprune = result_record("q-1")
+    docprune["trace"]["ctp_layer"] = 28
+    with pytest.raises(ValueError, match="ctp_layer"):
+        _validate_result_record(docprune, line_number=1, mode="docprune")
+
+
+def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -> None:
+    import torch
+
+    import docprune.m3docvqa_factory as factory
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(factory, "_cached_snapshot", lambda repo, revision: Path("/cached"))
+    monkeypatch.setattr(factory, "assert_supported_colpali", lambda model, processor: None)
+
+    class ColPaliModel:
+        def __init__(self):
+            self.devices = []
+
+        @classmethod
+        def from_pretrained(cls, *args, **kwargs):
+            return cls()
+
+        def load_adapter(self, path):
+            self.adapter_path = path
+
+        def eval(self):
+            return self
+
+        def to(self, device):
+            self.devices.append(device)
+            return self
+
+    colpali_model = ColPaliModel()
+    colpali_models = SimpleNamespace(
+        ColPali=SimpleNamespace(from_pretrained=lambda *args, **kwargs: colpali_model),
+        ColPaliProcessor=SimpleNamespace(from_pretrained=lambda *args, **kwargs: object()),
+    )
+    monkeypatch.setitem(sys.modules, "colpali_engine", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "colpali_engine.models", colpali_models)
+    model, _ = factory._load_colpali(SimpleNamespace())
+    assert model.devices == [torch.device("cuda")]
+
+    class QwenModel(ColPaliModel):
+        pass
+
+    qwen_model = QwenModel()
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoProcessor=SimpleNamespace(from_pretrained=lambda *args, **kwargs: object()),
+            Qwen2VLForConditionalGeneration=SimpleNamespace(
+                from_pretrained=lambda *args, **kwargs: qwen_model
+            ),
+        ),
+    )
+    model, _ = factory._load_qwen(SimpleNamespace())
+    assert model.devices == [torch.device("cuda")]
+
+
+def test_model_loaders_fail_before_import_when_cuda_is_unavailable(monkeypatch) -> None:
+    import torch
+
+    import docprune.m3docvqa_factory as factory
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="requires a CUDA GPU"):
+        factory._load_qwen(SimpleNamespace())
 
 
 def test_load_completed_qids_rejects_duplicate_and_unknown_records(tmp_path: Path) -> None:

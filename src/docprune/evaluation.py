@@ -17,8 +17,10 @@ from docprune.metrics import MEASUREMENT_DEFINITION, summarize_jsonl
 
 try:
     from word2number.w2n import word_to_num
-except ImportError:  # pragma: no cover - the SOL environment supplies this optional helper
-    word_to_num = None
+except ImportError as error:  # pragma: no cover - dependency is declared and pinned by the env
+    raise RuntimeError(
+        "word2number is required for official M3DocVQA answer normalization"
+    ) from error
 
 
 _MULTI_HOP_QUESTION_TYPES = frozenset(
@@ -52,11 +54,12 @@ def _is_number(text: str) -> bool:
 def _normalize_number(text: str) -> str:
     if _is_number(text):
         return str(float(text))
-    if word_to_num is not None:
-        try:
-            return str(float(word_to_num(text)))
-        except (TypeError, ValueError):
-            pass
+    if word_to_num is None:  # defensive for a corrupted/monkeypatched runtime
+        raise RuntimeError("word2number is required for official M3DocVQA answer normalization")
+    try:
+        return str(float(word_to_num(text)))
+    except (TypeError, ValueError):
+        pass
     return text
 
 
@@ -329,6 +332,8 @@ class M3DocVQAMetrics:
 def evaluate_m3docvqa(results: object, source_rows: object) -> M3DocVQAMetrics:
     """Evaluate predictions with the pinned M3DocRAG/M3DocVQA formulas."""
 
+    if word_to_num is None:
+        raise RuntimeError("word2number is required for official M3DocVQA answer normalization")
     sources = _source_rows(source_rows)
     source_by_qid = {str(row["qid"]): row for row in sources}
     if len(source_by_qid) != len(sources):
@@ -552,13 +557,32 @@ def _validate_source_questions(
         errors.append(f"source question content is invalid: {error}")
         return
     source_qids = tuple(str(row.get("qid", row.get("question_id", ""))) for row in source_rows)
-    if source_qids != tuple(expected_qids):
-        errors.append("source question order/content does not match the run manifest")
+    if any(not qid for qid in source_qids) or len(source_qids) != len(set(source_qids)):
+        errors.append("source question content has missing or duplicate qids")
         return
-    if len(source_rows) != len(records):
+    expected_count = corpus.get("expected_question_count")
+    if isinstance(expected_count, int) and len(source_rows) != expected_count:
+        errors.append(
+            "source question content count does not match corpus identity: "
+            f"expected {expected_count}, got {len(source_rows)}"
+        )
+    positions: list[int] = []
+    source_by_qid = {qid: row for qid, row in zip(source_qids, source_rows)}
+    for qid in expected_qids:
+        if qid not in source_by_qid:
+            errors.append(f"source question order/content is missing {qid}")
+            continue
+        positions.append(source_qids.index(qid))
+    if positions != sorted(positions) or len(positions) != len(expected_qids):
+        errors.append("source question order/content does not match the run selection")
+        return
+    if len(source_rows) < len(records):
         errors.append("source question content count does not match results")
         return
-    for record, source in zip(records, source_rows):
+    for record, qid in zip(records, expected_qids):
+        source = source_by_qid.get(qid)
+        if source is None:
+            continue
         if record.get("question") != source.get("question"):
             errors.append(f"source question content mismatch for {record.get('question_id')}")
         raw_answers = source.get("answers", ())
@@ -579,6 +603,209 @@ def _validate_source_questions(
             expected_answers.append(value)
         if record.get("answers") != expected_answers:
             errors.append(f"source answer content mismatch for {record.get('question_id')}")
+
+
+def _manifest_is_fixture(manifest: Mapping[str, object]) -> bool:
+    corpus = manifest.get("corpus")
+    return (
+        manifest.get("fixture_mode") is True
+        and isinstance(corpus, Mapping)
+        and corpus.get("is_fixture") is True
+    )
+
+
+def _fixture_identity_complete(manifest: Mapping[str, object]) -> bool:
+    corpus = manifest.get("corpus")
+    required = {
+        "root",
+        "questions_path",
+        "document_ids_path",
+        "pdf_dir",
+        "integrity_report_path",
+        "integrity_sha256",
+        "archive_checksum_manifest_path",
+        "archive_checksum_manifest_sha256",
+        "questions_sha256",
+        "document_ids_sha256",
+        "expected_question_count",
+        "expected_pdf_count",
+        "expected_page_count",
+        "is_fixture",
+        "archive_hashes",
+    }
+    return (
+        manifest.get("operation") == "evaluate"
+        and _manifest_is_fixture(manifest)
+        and isinstance(corpus, Mapping)
+        and required <= set(corpus)
+    )
+
+
+def _manifest_path(value: object, run_dir: Path) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value)
+    return path if path.is_absolute() else run_dir / path
+
+
+def _validate_production_corpus(manifest: Mapping[str, object], errors: list[str]) -> str | None:
+    corpus = manifest.get("corpus")
+    if not isinstance(corpus, Mapping):
+        errors.append("production run manifest is missing complete corpus identity")
+        return None
+    required = {
+        "root",
+        "questions_path",
+        "document_ids_path",
+        "pdf_dir",
+        "integrity_report_path",
+        "integrity_sha256",
+        "archive_checksum_manifest_path",
+        "archive_checksum_manifest_sha256",
+        "questions_sha256",
+        "document_ids_sha256",
+        "expected_question_count",
+        "expected_pdf_count",
+        "expected_page_count",
+        "is_fixture",
+        "archive_hashes",
+    }
+    missing = sorted(required - set(corpus))
+    if missing:
+        errors.append(f"production corpus identity is missing fields: {missing!r}")
+        return None
+    try:
+        from docprune.benchmark_config import CorpusIdentity
+
+        identity = CorpusIdentity(
+            **{key: corpus[key] for key in required if key != "is_fixture"},
+            is_fixture=bool(corpus["is_fixture"]),
+        )
+        identity.validate()
+        from docprune.m3docvqa_dataset import M3DocVQADevDataset
+
+        dataset = M3DocVQADevDataset(
+            identity, expected_question_count=identity.expected_question_count
+        )
+        from docprune.m3docvqa_factory import _corpus_identity_payload
+
+        if dict(corpus) != _corpus_identity_payload(identity):
+            errors.append("manifest corpus identity does not match its complete validated payload")
+        return dataset.source_order_sha256
+    except (FileNotFoundError, OSError, TypeError, ValueError) as error:
+        errors.append(f"corpus identity validation failed: {error}")
+        return None
+
+
+def _validate_production_run_config(
+    manifest: Mapping[str, object], run_dir: Path, errors: list[str]
+) -> None:
+    path = _manifest_path(manifest.get("run_config_source_path"), run_dir)
+    digest = manifest.get("run_config_source_sha256")
+    if path is None or not isinstance(digest, str) or not digest:
+        errors.append("production run requires run configuration path and SHA-256")
+        return
+    if not _regular_file(path, "run configuration", errors):
+        return
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != digest:
+        errors.append("run configuration digest mismatch")
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError("run configuration is not an object")
+        from docprune.m3docvqa_factory import _normalise_run_config_mapping, _validate_run_identity
+
+        resolved = _normalise_run_config_mapping(payload, base=path.parent)
+        identity = _validate_run_identity(
+            resolved,
+            mode=str(manifest.get("mode")),
+            page_count=int(manifest.get("page_count")),
+        )
+        for key in (
+            "runtime_commit",
+            "m3docrag_commit",
+            "resources",
+            "processor_contract_path",
+            "processor_contract_sha256",
+            "processor_contract",
+            "corpus",
+            "generation",
+        ):
+            if manifest.get(key) != identity.get(key):
+                errors.append(f"manifest identity does not match run configuration: {key}")
+    except (FileNotFoundError, OSError, TypeError, ValueError, KeyError) as error:
+        errors.append(f"run configuration validation failed: {error}")
+
+
+def _validate_production_index(
+    manifest: Mapping[str, object],
+    run_dir: Path,
+    errors: list[str],
+    source_order_sha256: str | None,
+) -> None:
+    path = _manifest_path(manifest.get("index_manifest_source_path"), run_dir)
+    digest = manifest.get("index_manifest_source_sha256")
+    nested = manifest.get("index_manifest")
+    if path is None or not isinstance(digest, str) or not digest:
+        errors.append("production run requires index manifest path and SHA-256")
+        return
+    if not isinstance(nested, Mapping):
+        errors.append("production run requires nested index manifest identity")
+    if not _regular_file(path, "index manifest", errors):
+        return
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != digest:
+        errors.append("index manifest digest mismatch")
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise ValueError("index manifest is not an object")
+        if payload.get("schema_version") != 4:
+            raise ValueError("index manifest schema_version must equal 4")
+        supplied = payload.get("manifest_sha256")
+        unsigned = dict(payload)
+        unsigned.pop("manifest_sha256", None)
+        if supplied != _canonical_digest_index(unsigned):
+            raise ValueError("index manifest canonical digest is invalid")
+        if isinstance(nested, Mapping) and dict(payload) != dict(nested):
+            errors.append("index manifest identity does not match its source file")
+        from docprune.m3docvqa_factory import _load_index_manifest
+
+        loaded = _load_index_manifest(path)
+        if loaded.to_dict() != dict(payload):
+            errors.append("index manifest loader payload does not match source bytes")
+        resources = payload.get("resources")
+        expected_resources = manifest.get("resources")
+        if resources != expected_resources:
+            errors.append("index manifest resources do not match the run")
+        for key in ("mode", "page_count", "runtime_commit", "m3docrag_commit", "pruning_config"):
+            if payload.get(key) != manifest.get(key):
+                errors.append(f"index manifest {key} does not match the run")
+        corpus = manifest.get("corpus")
+        if isinstance(corpus, Mapping) and payload.get("corpus_integrity_sha256") != corpus.get(
+            "integrity_sha256"
+        ):
+            errors.append("index manifest corpus identity does not match the run")
+        if (
+            source_order_sha256 is not None
+            and payload.get("source_order_sha256") != source_order_sha256
+        ):
+            errors.append("index manifest source order does not match the corpus")
+        if payload.get("processor_contract_path") != manifest.get("processor_contract_path"):
+            errors.append("index manifest processor contract path does not match the run")
+        if payload.get("processor_contract_sha256") != manifest.get("processor_contract_sha256"):
+            errors.append("index manifest processor contract digest does not match the run")
+    except (FileNotFoundError, OSError, TypeError, ValueError, KeyError) as error:
+        errors.append(f"index artifact validation failed: {error}")
+
+
+def _canonical_digest_index(payload: Mapping[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
 
 
 def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> ValidationReport:
@@ -604,16 +831,73 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
         supplied = manifest.get("run_manifest_sha256")
         if not isinstance(supplied, str) or supplied != _canonical_digest(manifest):
             errors.append("run manifest digest mismatch")
+    fixture_relaxation = expected_questions != 2441 and _fixture_identity_complete(manifest)
+    production_run = (
+        manifest.get("operation") == "evaluate" or "corpus" in manifest
+    ) and not fixture_relaxation
+    if production_run:
+        if manifest.get("operation") != "evaluate":
+            errors.append("production benchmark validation requires an evaluate manifest")
+        if manifest.get("schema_version") != 2 or manifest.get("status") != "configured":
+            errors.append("production run manifest schema/status is invalid")
+        required_manifest_fields = {
+            "schema_version",
+            "status",
+            "operation",
+            "output",
+            "mode",
+            "page_count",
+            "runtime_commit",
+            "m3docrag_commit",
+            "resources",
+            "processor_contract_path",
+            "processor_contract_sha256",
+            "processor_contract",
+            "run_config_source_path",
+            "run_config_source_sha256",
+            "index_manifest_source_path",
+            "index_manifest_source_sha256",
+            "corpus",
+            "generation",
+            "pruning_config",
+            "selection",
+            "index_manifest",
+            "measurement",
+            "run_manifest_sha256",
+        }
+        missing_manifest = sorted(required_manifest_fields - set(manifest))
+        if missing_manifest:
+            errors.append(
+                f"production run manifest is missing immutable fields: {missing_manifest!r}"
+            )
+        output = _manifest_path(manifest.get("output"), run_dir)
+        if output is None or output.resolve() != run_dir.resolve():
+            errors.append(
+                "production run manifest output does not match the validated run directory"
+            )
     measurement = manifest.get("measurement")
     declared_profiler = False
-    if "corpus" in manifest and not isinstance(measurement, Mapping):
+    required_measurement = {"definition", "warmup_required", "profiler_enabled"}
+    if production_run and not isinstance(measurement, Mapping):
         errors.append("production run manifest is missing measurement definition")
     if isinstance(measurement, Mapping):
-        if "definition" in measurement and measurement.get("definition") != MEASUREMENT_DEFINITION:
+        if set(measurement) != required_measurement:
+            errors.append("measurement manifest contains unexpected or missing fields")
+        if not required_measurement <= set(measurement):
+            errors.append("measurement manifest is missing required fields")
+        if measurement.get("definition") != MEASUREMENT_DEFINITION:
             errors.append("measurement definition does not match the benchmark contract")
-        if measurement.get("warmup_required") is False:
-            errors.append("measurement manifest does not require an explicit warmup")
-        declared_profiler = measurement.get("profiler_enabled", False) is True
+        if measurement.get("warmup_required") is not True:
+            errors.append("measurement manifest must require an explicit warmup")
+        profiler_value = measurement.get("profiler_enabled")
+        if not isinstance(profiler_value, bool):
+            errors.append("measurement profiler_enabled must be boolean")
+        else:
+            declared_profiler = profiler_value
+    if production_run:
+        source_order_sha256 = _validate_production_corpus(manifest, errors)
+        _validate_production_run_config(manifest, run_dir, errors)
+        _validate_production_index(manifest, run_dir, errors, source_order_sha256)
 
     expected_qids: tuple[str, ...] = ()
     selection = manifest.get("selection")
@@ -623,6 +907,8 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
             expected_qids = tuple(raw_qids)
             if len(expected_qids) != len(set(expected_qids)):
                 errors.append("manifest source question IDs contain duplicates")
+            if selection.get("count") != len(expected_qids):
+                errors.append("manifest selection count does not match resolved question IDs")
         else:
             errors.append("manifest is missing source question order")
     else:
@@ -653,6 +939,9 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
                         expected_page_count=expected_pages
                         if isinstance(expected_pages, int)
                         else None,
+                        mode=manifest.get("mode")
+                        if isinstance(manifest.get("mode"), str)
+                        else None,
                     )
                     timing = record["timing"]
                     if not isinstance(timing, Mapping):
@@ -668,6 +957,8 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
                     peak = timing["peak_allocated_gpu_bytes"]
                     if not isinstance(peak, int) or isinstance(peak, bool) or peak < 0:
                         raise ValueError("peak allocated GPU bytes must be nonnegative")
+                    if production_run and peak == 0:
+                        raise ValueError("production peak allocated GPU bytes must be positive")
                     if timing["warmup_excluded"] is not True:
                         raise ValueError("warmup must be explicitly excluded")
                     if timing.get("profiler_enabled", False) is not declared_profiler:
@@ -695,7 +986,6 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
         errors.append(f"unexpected question IDs: {unexpected!r}")
     if expected_qids and qids != expected_qids:
         errors.append("results do not preserve source order")
-    production_run = manifest.get("operation") == "evaluate" or "corpus" in manifest
     _validate_source_questions(
         manifest,
         run_dir,

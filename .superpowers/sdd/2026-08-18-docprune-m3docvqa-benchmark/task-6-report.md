@@ -26,6 +26,22 @@
   one unrecorded warmup and only then marks measured rows as warmup-excluded;
   resumed processes warm up before their first pending row as well.
 
+## Hardening round
+
+- Production model loaders now require CUDA, explicitly move both Qwen and
+  ColPali models to CUDA in bfloat16, and fail before model imports when no GPU
+  is available.
+- Production validation now requires a complete evaluate manifest, exact
+  measurement declaration, raw run-config and index source bytes plus hashes,
+  validated CorpusIdentity/PDF and archive inputs, schema-4 index artifacts,
+  and cross-checked runtime/resource/corpus/processor/pruning/source-order
+  identity. Fixture relaxation requires an explicit complete fixture identity
+  and never bypasses the default 2,441-question validation.
+- Selected runs validate qids as an ordered subsequence of the full source;
+  production records require a positive GPU peak, mode-aware traces, finite
+  timings, and a callable warmup before pending rows. `word2number` is now a
+  declared required dependency and answer evaluation fails closed if absent.
+
 ## TDD evidence
 
 The required focused command initially failed during collection because the
@@ -44,17 +60,17 @@ source-integrity, profiler, and warmup tests.
 
 ```text
 PYTHONPATH=src .../python -m pytest -q
-235 passed, 1 skipped (opt-in cached real-model probe)
+247 passed, 1 skipped (opt-in cached real-model probe)
 
 PYTHONPATH=src .../python -m pytest \
   tests/test_evaluation.py tests/test_metrics.py tests/test_cli.py -q
-48 passed
+57 passed
 
 .../ruff check [all Task-6 changed source/tests]
 All checks passed!
 
 .../ruff format --check [all Task-6 changed source/tests]
-11 files already formatted
+8 files already formatted
 
 git diff --check
 clean

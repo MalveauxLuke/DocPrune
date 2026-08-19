@@ -13,6 +13,7 @@ dependencies = [
   "numpy==1.26.4",
   "torch>=2.4,<2.7",
   "Pillow>=11,<13",
+  "word2number>=1.1",
   "tomli>=1.1.0; python_version < '3.11'",
 ]
 

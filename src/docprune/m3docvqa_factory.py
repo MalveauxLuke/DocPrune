@@ -271,6 +271,7 @@ def _validate_result_record(
     *,
     line_number: int,
     expected_page_count: int | None = None,
+    mode: str | None = None,
 ) -> None:
     required = {
         "question_id",
@@ -343,10 +344,17 @@ def _validate_result_record(
         raise ValueError(f"results JSONL record {line_number} has invalid trace counts")
     if not all(left >= right for left, right in zip(counts, counts[1:])):
         raise ValueError(f"results JSONL record {line_number} trace is not monotonic")
-    if trace["ctp_layer"] is not None and (
-        not isinstance(trace["ctp_layer"], int) or isinstance(trace["ctp_layer"], bool)
+    ctp_layer = trace["ctp_layer"]
+    if ctp_layer is not None and (
+        not isinstance(ctp_layer, int) or isinstance(ctp_layer, bool) or not 0 <= ctp_layer < 28
     ):
         raise ValueError(f"results JSONL record {line_number} has invalid ctp_layer")
+    if mode == "all-kept" and (len(set(counts)) != 1 or ctp_layer is not None):
+        raise ValueError(f"results JSONL record {line_number} violates the all-kept trace contract")
+    if mode == "docprune" and ctp_layer is None and counts[3] != counts[2]:
+        raise ValueError(
+            f"results JSONL record {line_number} has a docprune trace without a CTP decision"
+        )
     timing = record["timing"]
     timing_fields = {"retrieval_seconds", "qa_seconds"}
     optional_timing_fields = {
@@ -704,29 +712,43 @@ def _cached_snapshot(repo_id: str, revision: str) -> Path:
 
 
 def _load_colpali(run_config: object) -> tuple[object, object]:
+    device = _require_benchmark_cuda()
     from colpali_engine.models import ColPali, ColPaliProcessor
 
     backbone = _cached_snapshot(COLPALI_BACKBONE_MODEL, COLPALI_BACKBONE_REVISION)
     adapter = _cached_snapshot(COLPALI_MODEL, COLPALI_REVISION)
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    model = ColPali.from_pretrained(str(backbone), torch_dtype=dtype, low_cpu_mem_usage=True)
+    model = ColPali.from_pretrained(
+        str(backbone), torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+    )
     model.load_adapter(str(adapter))
-    model.eval()
+    model = model.to(device).eval()
     processor = ColPaliProcessor.from_pretrained(str(adapter))
     assert_supported_colpali(model, processor)
     return model, processor
 
 
 def _load_qwen(run_config: object) -> tuple[object, object]:
+    device = _require_benchmark_cuda()
     from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
     snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
-    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
-        str(snapshot), torch_dtype=dtype, low_cpu_mem_usage=True
-    ).eval()
+    model = (
+        Qwen2VLForConditionalGeneration.from_pretrained(
+            str(snapshot), torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+        )
+        .to(device)
+        .eval()
+    )
     processor = AutoProcessor.from_pretrained(str(snapshot))
     return model, processor
+
+
+def _require_benchmark_cuda() -> torch.device:
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "the production M3DocVQA benchmark requires a CUDA GPU; CUDA is unavailable"
+        )
+    return torch.device("cuda")
 
 
 def _make_dataset(run_config: object) -> object:

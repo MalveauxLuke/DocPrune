@@ -289,6 +289,13 @@ class EvaluationWorkload:
     manifest: dict[str, object] | None = None
 
 
+def _require_runner_warmup(runner: object, sample: SampleInput) -> None:
+    warmup = getattr(runner, "warmup", None)
+    if not callable(warmup):
+        raise ValueError("pending evaluation runner must provide a callable warmup method")
+    warmup(sample)
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="docprune-m3docvqa")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -634,9 +641,7 @@ def _run_evaluate(
     append_mode = resume and results_path.exists()
     pending_samples = tuple(sample for sample in samples if sample.question_id not in completed)
     if pending_samples:
-        warmup = getattr(workload.runner, "warmup", None)
-        if callable(warmup):
-            warmup(pending_samples[0])
+        _require_runner_warmup(workload.runner, pending_samples[0])
     for sample in samples:
         if sample.question_id in completed:
             continue

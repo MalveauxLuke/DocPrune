@@ -115,3 +115,15 @@ def test_profiler_fields_are_serialized_only_when_enabled() -> None:
         "profiler_definition": "torch.profiler total FLOPs",
         "flops": 10.5,
     }
+
+
+@pytest.mark.parametrize("field", ["retrieval_seconds", "qa_seconds"])
+def test_stage_metrics_rejects_nonfinite_timings(field: str) -> None:
+    values = {"retrieval_seconds": 1.0, "qa_seconds": 2.0}
+    values[field] = float("nan")
+
+    with pytest.raises(ValueError, match="finite"):
+        StageMetrics().update(
+            PruningTrace(10, 8, 6, 4, None),
+            SampleTiming(**values),
+        )

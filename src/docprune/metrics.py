@@ -46,8 +46,14 @@ class StageMetrics:
             raise ValueError(
                 "visual token counts must be nonnegative and monotonically nonincreasing"
             )
-        if timing.retrieval_seconds < 0 or timing.qa_seconds < 0:
-            raise ValueError("timings must be nonnegative")
+        if any(
+            not isinstance(value, int | float)
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or float(value) < 0
+            for value in (timing.retrieval_seconds, timing.qa_seconds)
+        ):
+            raise ValueError("timings must be finite and nonnegative")
         peak = getattr(timing, "peak_allocated_gpu_bytes", 0)
         warmup_excluded = getattr(timing, "warmup_excluded", False)
         profiler_enabled = getattr(timing, "profiler_enabled", False)
