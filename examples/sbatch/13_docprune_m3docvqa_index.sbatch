@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# One immutable evaluation cell. The array wrapper supplies the selectors.
-#SBATCH --job-name=docprune-m3docvqa-cell
+# Build one page-specific, mode-scoped manifest-bound index. Submit this
+# wrapper once for every mode/page pair, with afterok on the semantic gate.
+#SBATCH --job-name=docprune-m3docvqa-index
 #SBATCH --partition=public
 #SBATCH --qos=public
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --time=3-00:00:00
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 
@@ -21,19 +22,17 @@ set -euo pipefail
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
 : "${RUN_CONFIG:?set RUN_CONFIG to the complete immutable run-config JSON}"
-: "${INDEX_MANIFEST:?set INDEX_MANIFEST to the matching mode/page index manifest}"
 : "${MODE:?set MODE to all-kept or docprune}"
 : "${PAGES:?set PAGES to 1, 2, or 4}"
-: "${CELL_ROOT:?set CELL_ROOT to a new attempt-specific cell directory}"
+: "${INDEX_ROOT:?set INDEX_ROOT to a new attempt-specific index directory}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 
 case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
-test -d "$PROJECT_DIR"
+test ! -e "$INDEX_ROOT"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
-test -d "$RUNTIME_DIR"
 test -f "$RUN_CONFIG"
-test -f "$INDEX_MANIFEST"
+test -d "$RUNTIME_DIR"
 test -d "$M3DOCRAG_DIR"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain)"
@@ -47,47 +46,40 @@ export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
 export TOKENIZERS_PARALLELISM=false
 export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
-mkdir -p "$CELL_ROOT"
+mkdir -p "$(dirname "$INDEX_ROOT")"
 cd "$RUNTIME_DIR"
 
-RESUME_ARGS=()
-if [[ -d "$CELL_ROOT/run" ]]; then
-  RESUME_ARGS+=(--resume)
-fi
-
-docprune-m3docvqa evaluate \
+docprune-m3docvqa embed \
   --config configs/docprune-m3docvqa.toml \
   --pages "$PAGES" \
   --mode "$MODE" \
   --run-config "$RUN_CONFIG" \
-  --index-manifest "$INDEX_MANIFEST" \
-  --output "$CELL_ROOT/run" \
-  --factory "$DOCPRUNE_FACTORY" \
-  "${RESUME_ARGS[@]}"
+  --output "$INDEX_ROOT" \
+  --factory "$DOCPRUNE_FACTORY"
 
-docprune-m3docvqa validate-run \
-  --run "$CELL_ROOT/run" \
-  --expected-questions 2441 \
-  | tee "$CELL_ROOT/validation.json"
+MANIFEST="$INDEX_ROOT/$MODE/manifest.json"
+test -f "$MANIFEST"
+docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml \
+  --pages "$PAGES" > "$INDEX_ROOT/inspection.json"
 
-python - "$CELL_ROOT/validation.json" <<'PY'
+python - "$MANIFEST" "$MODE" "$PAGES" <<'PY'
 import json
 import sys
+from pathlib import Path
 
-with open(sys.argv[1], encoding="utf-8") as stream:
-    report = json.load(stream)
-if report.get("valid") is not True:
-    raise SystemExit("independent run validation failed")
+manifest = Path(sys.argv[1])
+mode = sys.argv[2]
+pages = int(sys.argv[3])
+payload = json.loads(manifest.read_text(encoding="utf-8"))
+if payload.get("schema_version") != 4 or payload.get("mode") != mode or payload.get("page_count") != pages:
+    raise SystemExit("index manifest mode/page/schema mismatch")
+for key in ("manifest_sha256", "index_sha256", "embeddings_sha256", "token2pageuid_sha256", "completion_ledger_sha256"):
+    value = payload.get(key)
+    if not isinstance(value, str) or len(value) != 64:
+        raise SystemExit(f"index manifest lacks {key}")
+for key in ("index_path", "embeddings_path", "token2pageuid_path", "completion_ledger_path"):
+    path = Path(str(payload[key]))
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f"index artifact missing: {path}")
+print(json.dumps({"status": "passed", "manifest": str(manifest.resolve())}, sort_keys=True))
 PY
-
-python - "$CELL_ROOT/run/summary.json" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as stream:
-    summary = json.load(stream)
-if not isinstance(summary, dict) or summary.get("count") != 2441:
-    raise SystemExit("summary does not contain exactly 2441 results")
-PY
-
-cp -- "$CELL_ROOT/run/summary.json" "$CELL_ROOT/summary.json"

@@ -11,8 +11,12 @@ DocPrune code release.
 Local validation covers the equations, threshold boundaries, page layouts,
 2-by-2 merge groups, sparse Qwen vision execution, original rotary positions,
 prompt-token preservation, one-time CTP, heterogeneous per-layer KV caches,
-greedy generation, the pinned M3DocRAG API boundary, metrics, and CLI behavior.
-No checkpoint or dataset was loaded and no GPU or benchmark result exists.
+greedy generation, the pinned M3DocRAG API boundary, metrics, immutable
+manifests, independent validation, and CLI behavior. The active benchmark
+runtime is pinned in
+[`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
+No benchmark result is claimed until its gate, index manifests, and 2,441-row
+validation report pass.
 
 ## Implemented method
 
@@ -49,12 +53,12 @@ The machine-readable source is
 
 | Concern | Path |
 |---|---|
-| Configuration and provenance | `src/docprune/config.py`, `provenance.py` |
+| Configuration and provenance | `src/docprune/benchmark_config.py`, `src/docprune/artifacts.py` |
 | BTP/QTP/CTP | `src/docprune/btp.py`, `qtp.py`, `ctp.py` |
 | Pagewise BTP/QTP composition | `src/docprune/pipeline.py` |
 | Sparse Qwen2-VL | `src/docprune/qwen2vl/` |
 | M3DocRAG boundary | `src/docprune/m3docrag.py` |
-| Metrics and CLI | `src/docprune/metrics.py`, `cli.py` |
+| Metrics and CLI | `src/docprune/evaluation.py`, `src/docprune/metrics.py`, `src/docprune/cli.py` |
 
 The Qwen adapter intentionally supports batch size one, image pages only, a
 2-by-2 spatial merge, greedy decoding, and Transformers 4.46.3. A changed
@@ -87,22 +91,24 @@ docprune-m3docvqa inspect \
 
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
-  --output /scratch/$USER/docprune/top4 \
-  --factory local_docprune_factory:build --dry-run
+  --mode docprune \
+  --run-config /scratch/$USER/docprune/benchmark-d5cefb3/run-configs/docprune-top4.json \
+  --index-manifest /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/eval/docprune/top4/run \
+  --factory docprune.m3docvqa_factory:build_workload
+
+docprune-m3docvqa validate-run \
+  --run /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/eval/docprune/top4/run \
+  --expected-questions 2441
 
 docprune-m3docvqa summarize \
   --results /scratch/$USER/docprune/top4/results.jsonl
 ```
 
-Before an integration factory is approved, SOL must first pass the corrected
-runtime smoke in
-[`../../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
-After that result is reviewed and the staged handoff is explicitly activated,
-SOL may acquire the complete dev corpus and run the processor-only contract
-probe in
-[`../../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md).
-The probe records token/grid shapes and immutable revisions without loading
-model weights or generating an answer.
+Before benchmarking, SOL must execute the ordered gate and dependency graph in
+[`../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
+The gate records the pinned processor contract and fixed-sample equivalence;
+the six index jobs and six evaluation cells remain separate and manifest-bound.
 
 The evaluation factory is an explicit integration boundary. It must return
 `docprune.cli.EvaluationWorkload` and must pin the official M3DocRAG checkout,
@@ -114,12 +120,14 @@ the existing run manifest exactly equals the requested manifest.
 
 The first SOL task must establish, in order:
 
-1. environment and FlashAttention imports;
-2. exact ColPali visual-token slice and grid mapping;
+1. environment and pinned runtime/source cleanliness;
+2. exact ColPali visual-token slice, grid, and raster mapping;
 3. exact Qwen processor resize and patch/grid correspondence;
 4. all-kept baseline answer equivalence on fixed samples;
-5. one-sample pruning traces with no empty page;
-6. frozen baseline versus DocPrune top-1, top-2, and top-4 evaluation.
+5. one-sample pruning traces for pages 1/2/4 with no empty page;
+6. six separate manifest-bound baseline/DocPrune indexes;
+7. frozen baseline versus DocPrune top-1, top-2, and top-4 evaluation;
+8. independent 2,441-row result validation and summary reproduction.
 
 Only after those gates may reports compare EM, F1, throughput, memory, or FLOPs
 with the paper.

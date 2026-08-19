@@ -2,18 +2,14 @@
 
 ## State
 
-The corrected runtime at `64ea70c` passed structural GPU smoke job `61656249`
-with exit code `0:0`: pinned imports succeeded, all 69 tests passed, Ruff
-passed, the Table B inspection completed, and the clean-source checks passed.
-The validated gate is recorded at
-`/scratch/lmalveau/docprune/handoff-64ea70c/smoke-pass.json`.
-
-The complete dev acquisition and processor probe are now active under
-[`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md)
-and are bounded by that handoff. Indexing, generation, evaluation, training,
-and benchmarking remain unauthorized.
+The active benchmark runtime is
+`d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`, with M3DocRAG pinned to
+`29e6ac2294d6b87075a1d45b8a8df175b214248a`. The Task-7 handoff below is the
+only authority for the processor gate, six page-specific indexes, and six
+evaluation cells. No job has been submitted and no result is claimed.
 
 ## Next action
 
-Execute the acquisition and processor-probe handoff through its return-and-stop
-boundary. The benchmark SBATCH file remains prepared but unauthorized.
+Execute [`handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md)
+from a compute allocation. Submit gate → six indexes → six-cell evaluation in
+that order, preserving every failed attempt.

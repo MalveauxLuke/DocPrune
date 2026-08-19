@@ -1,8 +1,8 @@
 # SOL Workspace
 
-The active task is a bounded corrected-runtime GPU smoke recovery. M3DocVQA
-acquisition and the processor contract are staged behind a reviewed smoke pass.
-Benchmark execution is inactive.
+The active task is the commit-pinned M3DocVQA benchmark handoff. It stages the
+processor gate, six page-specific indexes, and six evaluation cells behind
+explicit Slurm dependencies. No training is authorized.
 
 Read in this order:
 
@@ -17,7 +17,8 @@ task specifications, and wrappers from the source repository are preserved
 under [`archive/source-repo/`](archive/source-repo/) and are not active.
 
 Active handoff:
-[`handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md).
+[`handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
 
-Staged, inactive follow-up:
-[`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md).
+Historical acquisition/probe material remains under
+[`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md)
+and does not authorize benchmark execution.

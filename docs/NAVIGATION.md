@@ -31,8 +31,9 @@
 |---|---|
 | [`docs/SOL_INSTRUCTIONS.md`](SOL_INSTRUCTIONS.md) | General SOL operating rules |
 | [`sol/README.md`](../sol/README.md) | Active SOL entry point |
-| [`sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md) | Active corrected-runtime smoke recovery |
-| [`sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md) | Staged complete-dev acquisition and processor probe |
+| [`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md) | Active commit-pinned M3DocVQA benchmark handoff |
+| [`sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md) | Historical corrected-runtime smoke recovery |
+| [`sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md) | Historical corpus acquisition and processor probe |
 | [`examples/sbatch/`](../examples/sbatch/README.md) | Project-neutral SBATCH examples |
 | [`environments/docprune-sol.yml`](../environments/docprune-sol.yml) | Candidate pinned SOL environment; GPU validation pending |
 | [`sol/archive/source-repo/`](../sol/archive/source-repo/) | Historical source handoffs and wrappers |

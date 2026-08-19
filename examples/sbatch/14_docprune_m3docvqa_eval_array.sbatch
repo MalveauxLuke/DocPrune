@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Six immutable cells: all-kept/docprune crossed with top-1/top-2/top-4.
+# Submit with afterok dependencies on all six matching index jobs and the
+# semantic gate. The wrapper fails closed if the mapping is changed.
+#SBATCH --job-name=docprune-m3docvqa-eval
+#SBATCH --partition=public
+#SBATCH --qos=public
+#SBATCH --array=0-5%6
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=a100_80
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=128G
+#SBATCH --time=24:00:00
+#SBATCH --output=slurm-%x-%A_%a.out
+#SBATCH --error=slurm-%x-%A_%a.err
+
+set -euo pipefail
+
+: "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
+: "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
+: "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
+: "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
+: "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
+: "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
+: "${RUN_CONFIG_ROOT:?set RUN_CONFIG_ROOT to the six complete immutable run-config JSON files}"
+: "${ALL_KEPT_INDEX_ROOT:?set ALL_KEPT_INDEX_ROOT to the validated all-kept index family}"
+: "${DOCPRUNE_INDEX_ROOT:?set DOCPRUNE_INDEX_ROOT to the validated docprune index family}"
+: "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the benchmark attempt root}"
+: "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
+: "${SLURM_ARRAY_TASK_ID:?submit this wrapper as a Slurm array}"
+
+test "$SLURM_ARRAY_TASK_ID" -ge 0
+test "$SLURM_ARRAY_TASK_ID" -le 5
+test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+case "$SLURM_ARRAY_TASK_ID" in
+  0) MODE=all-kept; PAGES=1; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top1" ;;
+  1) MODE=all-kept; PAGES=2; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top2" ;;
+  2) MODE=all-kept; PAGES=4; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top4" ;;
+  3) MODE=docprune; PAGES=1; INDEX_ROOT="$DOCPRUNE_INDEX_ROOT/top1" ;;
+  4) MODE=docprune; PAGES=2; INDEX_ROOT="$DOCPRUNE_INDEX_ROOT/top2" ;;
+  5) MODE=docprune; PAGES=4; INDEX_ROOT="$DOCPRUNE_INDEX_ROOT/top4" ;;
+  *) echo "invalid array index" >&2; exit 2 ;;
+esac
+export MODE PAGES
+export RUN_CONFIG="$RUN_CONFIG_ROOT/${MODE}-top${PAGES}.json"
+export INDEX_MANIFEST="$INDEX_ROOT/$MODE/manifest.json"
+export CELL_ROOT="$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
+test -f "$RUN_CONFIG"
+test -f "$INDEX_MANIFEST"
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+exec "$SCRIPT_DIR/11_docprune_m3docvqa.sbatch"
