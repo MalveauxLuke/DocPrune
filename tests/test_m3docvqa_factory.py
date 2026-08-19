@@ -42,7 +42,11 @@ def result_record(qid: str, *, question: str = "question", answers: list[str] | 
             "post_ctp_visual_tokens": 1,
             "ctp_layer": None,
         },
-        "timing": {"retrieval_seconds": 0.1, "qa_seconds": 0.2},
+        "timing": {
+            "retrieval_seconds": 0.1,
+            "qa_seconds": 0.2,
+            "profiler_enabled": False,
+        },
     }
 
 
@@ -70,6 +74,31 @@ def test_validate_result_record_enforces_mode_aware_trace_contract() -> None:
     docprune["trace"]["ctp_layer"] = 28
     with pytest.raises(ValueError, match="ctp_layer"):
         _validate_result_record(docprune, line_number=1, mode="docprune")
+
+    for mode in ("all-kept", "docprune"):
+        zero_trace = result_record("q-1")
+        zero_trace["trace"].update(
+            {
+                "original_visual_tokens": 0,
+                "post_btp_visual_tokens": 0,
+                "post_qtp_visual_tokens": 0,
+                "post_ctp_visual_tokens": 0,
+            }
+        )
+        with pytest.raises(ValueError, match="positive"):
+            _validate_result_record(zero_trace, line_number=1, mode=mode)
+
+
+@pytest.mark.parametrize("value", [None, "false", 0])
+def test_validate_result_record_requires_boolean_profiler_state(value) -> None:
+    record = result_record("q-1")
+    if value is None:
+        del record["timing"]["profiler_enabled"]
+    else:
+        record["timing"]["profiler_enabled"] = value
+
+    with pytest.raises(ValueError, match="profiler"):
+        _validate_result_record(record, line_number=1)
 
 
 def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -> None:

@@ -340,8 +340,8 @@ def _validate_result_record(
     if set(trace) != trace_fields:
         raise ValueError(f"results JSONL record {line_number} has an invalid trace schema")
     counts = [trace[name] for name in trace_field_order[:4]]
-    if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in counts):
-        raise ValueError(f"results JSONL record {line_number} has invalid trace counts")
+    if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in counts):
+        raise ValueError(f"results JSONL record {line_number} has non-positive trace counts")
     if not all(left >= right for left, right in zip(counts, counts[1:])):
         raise ValueError(f"results JSONL record {line_number} trace is not monotonic")
     ctp_layer = trace["ctp_layer"]
@@ -384,7 +384,9 @@ def _validate_result_record(
         raise ValueError(f"results JSONL record {line_number} has invalid peak GPU bytes")
     if "warmup_excluded" in timing and not isinstance(timing["warmup_excluded"], bool):
         raise ValueError(f"results JSONL record {line_number} has invalid warmup flag")
-    profiler_enabled = timing.get("profiler_enabled", False)
+    if "profiler_enabled" not in timing:
+        raise ValueError(f"results JSONL record {line_number} is missing profiler_enabled")
+    profiler_enabled = timing["profiler_enabled"]
     if not isinstance(profiler_enabled, bool):
         raise ValueError(f"results JSONL record {line_number} has invalid profiler flag")
     if profiler_enabled:

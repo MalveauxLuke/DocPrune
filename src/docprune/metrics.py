@@ -40,7 +40,7 @@ class StageMetrics:
             trace.post_qtp_visual_tokens,
             trace.post_ctp_visual_tokens,
         )
-        if any(value < 0 for value in counts) or not all(
+        if any(value <= 0 for value in counts) or not all(
             left >= right for left, right in zip(counts, counts[1:])
         ):
             raise ValueError(

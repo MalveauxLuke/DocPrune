@@ -614,6 +614,13 @@ def _manifest_is_fixture(manifest: Mapping[str, object]) -> bool:
     )
 
 
+def _manifest_declares_fixture(manifest: Mapping[str, object]) -> bool:
+    corpus = manifest.get("corpus")
+    return manifest.get("fixture_mode") is True or (
+        isinstance(corpus, Mapping) and corpus.get("is_fixture") is True
+    )
+
+
 def _fixture_identity_complete(manifest: Mapping[str, object]) -> bool:
     corpus = manifest.get("corpus")
     required = {
@@ -718,10 +725,26 @@ def _validate_production_run_config(
         from docprune.m3docvqa_factory import _normalise_run_config_mapping, _validate_run_identity
 
         resolved = _normalise_run_config_mapping(payload, base=path.parent)
+        raw_mode = getattr(resolved, "mode", None)
+        raw_page_count = getattr(resolved, "page_count", None)
+        if raw_mode != manifest.get("mode"):
+            errors.append("run configuration mode does not match the run manifest")
+        if raw_page_count != manifest.get("page_count"):
+            errors.append("run configuration page_count does not match the run manifest")
+        if (
+            not isinstance(raw_mode, str)
+            or isinstance(raw_page_count, bool)
+            or not isinstance(raw_page_count, int)
+            or raw_mode not in {"all-kept", "docprune"}
+            or raw_page_count not in {1, 2, 4}
+            or raw_mode != manifest.get("mode")
+            or raw_page_count != manifest.get("page_count")
+        ):
+            return
         identity = _validate_run_identity(
             resolved,
-            mode=str(manifest.get("mode")),
-            page_count=int(manifest.get("page_count")),
+            mode=raw_mode,
+            page_count=raw_page_count,
         )
         for key in (
             "runtime_commit",
@@ -808,13 +831,17 @@ def _canonical_digest_index(payload: Mapping[str, object]) -> str:
     ).hexdigest()
 
 
-def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> ValidationReport:
+def validate_benchmark_run(
+    run_dir: Path, expected_questions: int = 2441, *, allow_fixture: bool = False
+) -> ValidationReport:
     """Independently validate immutable results, measurements, and summaries."""
 
     run_dir = Path(run_dir)
     errors: list[str] = []
     if expected_questions < 1:
         raise ValueError("expected_questions must be positive")
+    if not isinstance(allow_fixture, bool):
+        raise TypeError("allow_fixture must be a boolean")
     manifest_path = run_dir / "run_manifest.json"
     results_path = run_dir / "results.jsonl"
     summary_path = run_dir / "summary.json"
@@ -831,10 +858,17 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
         supplied = manifest.get("run_manifest_sha256")
         if not isinstance(supplied, str) or supplied != _canonical_digest(manifest):
             errors.append("run manifest digest mismatch")
-    fixture_relaxation = expected_questions != 2441 and _fixture_identity_complete(manifest)
+    fixture_relaxation = (
+        allow_fixture and expected_questions != 2441 and _fixture_identity_complete(manifest)
+    )
     production_run = (
         manifest.get("operation") == "evaluate" or "corpus" in manifest
     ) and not fixture_relaxation
+    if _manifest_declares_fixture(manifest) and not fixture_relaxation:
+        errors.append(
+            "fixture identity is not valid for production validation; "
+            "use the explicit allow_fixture API only for tiny internal fixtures"
+        )
     if production_run:
         if manifest.get("operation") != "evaluate":
             errors.append("production benchmark validation requires an evaluate manifest")
@@ -898,6 +932,8 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
         source_order_sha256 = _validate_production_corpus(manifest, errors)
         _validate_production_run_config(manifest, run_dir, errors)
         _validate_production_index(manifest, run_dir, errors, source_order_sha256)
+    elif fixture_relaxation:
+        _validate_production_corpus(manifest, errors)
 
     expected_qids: tuple[str, ...] = ()
     selection = manifest.get("selection")
@@ -961,7 +997,11 @@ def validate_benchmark_run(run_dir: Path, expected_questions: int = 2441) -> Val
                         raise ValueError("production peak allocated GPU bytes must be positive")
                     if timing["warmup_excluded"] is not True:
                         raise ValueError("warmup must be explicitly excluded")
-                    if timing.get("profiler_enabled", False) is not declared_profiler:
+                    if "profiler_enabled" not in timing or not isinstance(
+                        timing["profiler_enabled"], bool
+                    ):
+                        raise ValueError("per-record profiler_enabled must be a boolean")
+                    if timing["profiler_enabled"] is not declared_profiler:
                         raise ValueError(
                             "per-record profiler state does not match the run manifest"
                         )

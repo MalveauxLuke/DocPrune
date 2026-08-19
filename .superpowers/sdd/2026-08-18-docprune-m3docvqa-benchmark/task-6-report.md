@@ -42,6 +42,16 @@
   timings, and a callable warmup before pending rows. `word2number` is now a
   declared required dependency and answer evaluation fails closed if absent.
 
+## Hardening round 2
+
+- Fixture validation is now opt-in through the `allow_fixture=True` API
+  argument and is unavailable to the CLI or the default 2,441-question
+  contract. Fixture corpus identities are still reconstructed and validated;
+  self-declared fixture flags cannot relax production validation.
+- Raw run-config mode and page count are checked before identity validation,
+  trace counts are strictly positive, and every result must explicitly carry
+  a boolean `profiler_enabled` state matching the run declaration.
+
 ## TDD evidence
 
 The required focused command initially failed during collection because the
@@ -60,17 +70,17 @@ source-integrity, profiler, and warmup tests.
 
 ```text
 PYTHONPATH=src .../python -m pytest -q
-247 passed, 1 skipped (opt-in cached real-model probe)
+252 passed, 1 skipped (opt-in cached real-model probe)
 
 PYTHONPATH=src .../python -m pytest \
   tests/test_evaluation.py tests/test_metrics.py tests/test_cli.py -q
-57 passed
+59 passed
 
 .../ruff check [all Task-6 changed source/tests]
 All checks passed!
 
 .../ruff format --check [all Task-6 changed source/tests]
-8 files already formatted
+5 files already formatted
 
 git diff --check
 clean

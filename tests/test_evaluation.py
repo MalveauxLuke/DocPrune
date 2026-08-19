@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +75,7 @@ def _result(qid, answer, pages):
             "qa_seconds": 2.0,
             "peak_allocated_gpu_bytes": 123,
             "warmup_excluded": True,
+            "profiler_enabled": False,
         },
     }
 
@@ -237,7 +239,7 @@ def test_validate_benchmark_run_accepts_sealed_two_record_fixture(tmp_path):
     run = tmp_path / "run"
     _write_valid_run(run)
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert isinstance(report, ValidationReport)
     assert report.valid is True
@@ -275,7 +277,7 @@ def test_validate_benchmark_run_reports_integrity_failures(tmp_path, mutation, m
     if mutation != "summary":
         result_path.write_text("".join(json.dumps(record) + "\n" for record in records))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any(message in error.lower() for error in report.errors)
@@ -306,7 +308,7 @@ def test_validate_benchmark_run_checks_run_and_index_digests(tmp_path):
     (run / "run_manifest.json").write_text(json.dumps(manifest))
     index_path.write_text(index_path.read_text() + "tampered")
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("index manifest digest mismatch" in error for error in report.errors)
@@ -322,7 +324,7 @@ def test_validate_benchmark_run_rejects_profiler_data_when_disabled(tmp_path):
         json.dumps(record) + "\n" + result_path.read_text().splitlines()[1] + "\n"
     )
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("profiler" in error.lower() for error in report.errors)
@@ -348,7 +350,7 @@ def test_validate_benchmark_run_checks_nested_index_manifest_digest(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("canonical digest" in error for error in report.errors)
@@ -375,7 +377,7 @@ def test_validate_benchmark_run_checks_source_question_content(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("source" in error for error in report.errors)
@@ -393,7 +395,7 @@ def test_validate_benchmark_run_requires_production_source_identity(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("corpus source identity" in error for error in report.errors)
@@ -411,7 +413,7 @@ def test_validate_benchmark_run_requires_exact_measurement_manifest(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("measurement definition" in error for error in report.errors)
@@ -429,7 +431,7 @@ def test_validate_benchmark_run_requires_production_run_config_and_index_sources
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("run configuration" in error for error in report.errors)
@@ -461,7 +463,7 @@ def test_production_records_reject_zero_peak_gpu_measurement(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is False
     assert any("peak allocated GPU bytes" in error for error in report.errors)
@@ -480,6 +482,11 @@ def test_validate_benchmark_run_accepts_selected_rows_as_source_order_subsequenc
     manifest = json.loads((run / "run_manifest.json").read_text())
     manifest["selection"]["resolved_question_ids"] = ["q1", "q3"]
     manifest["corpus"]["expected_question_count"] = 4
+    integrity_path = Path(manifest["corpus"]["integrity_report_path"])
+    integrity = json.loads(integrity_path.read_text())
+    integrity["dev_questions"] = 4
+    integrity_path.write_text(json.dumps(integrity))
+    manifest["corpus"]["integrity_sha256"] = hashlib.sha256(integrity_path.read_bytes()).hexdigest()
     manifest["corpus"]["questions_sha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
     unsigned = dict(manifest)
     unsigned.pop("run_manifest_sha256")
@@ -505,6 +512,33 @@ def test_validate_benchmark_run_accepts_selected_rows_as_source_order_subsequenc
         )
     )
 
-    report = validate_benchmark_run(run, expected_questions=2)
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
 
     assert report.valid is True
+
+
+@pytest.mark.parametrize(
+    ("raw_mode", "raw_pages", "message"),
+    [("docprune", 1, "mode"), ("all-kept", 2, "page_count")],
+)
+def test_production_run_config_cannot_inherit_manifest_mode_or_page_count(
+    tmp_path, monkeypatch, raw_mode, raw_pages, message
+):
+    config_path = tmp_path / "run-config.json"
+    config_path.write_text(json.dumps({"mode": raw_mode, "page_count": raw_pages}))
+    manifest = {
+        "run_config_source_path": str(config_path),
+        "run_config_source_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+        "mode": "all-kept",
+        "page_count": 1,
+    }
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._normalise_run_config_mapping",
+        lambda payload, base: SimpleNamespace(mode=raw_mode, page_count=raw_pages),
+    )
+    errors = []
+    from docprune.evaluation import _validate_production_run_config
+
+    _validate_production_run_config(manifest, tmp_path, errors)
+
+    assert any(message in error for error in errors)
