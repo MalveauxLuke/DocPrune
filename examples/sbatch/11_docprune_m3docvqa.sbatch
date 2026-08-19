@@ -55,15 +55,7 @@ test -d "$M3DOCRAG_DIR"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
-if [[ -n "$M3DOCRAG_DIRTY" ]]; then
-  while IFS= read -r status_line; do
-    case "$status_line" in
-      "?? "*__pycache__/*.py[co]) ;;
-      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
-    esac
-  done <<< "$M3DOCRAG_DIRTY"
-fi
+test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1

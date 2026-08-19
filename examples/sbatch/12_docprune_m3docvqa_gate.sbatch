@@ -66,15 +66,7 @@ test -f "$RUN_CONFIG"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
-if [[ -n "$M3DOCRAG_DIRTY" ]]; then
-  while IFS= read -r status_line; do
-    case "$status_line" in
-      "?? "*__pycache__/*.py[co]) ;;
-      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
-    esac
-  done <<< "$M3DOCRAG_DIRTY"
-fi
+test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 case "$QWEN_MODEL:$QWEN_REVISION" in
   Qwen/Qwen2-VL-7B-Instruct:eed13092ef92e448dd6875b2a00151bd3f7db0ac) ;;
   *) echo "Qwen resource/revision is not pinned" >&2; exit 2 ;;
@@ -104,55 +96,12 @@ cd "$RUNTIME_DIR"
 
 PROBE_IMAGE="$GATE_ROOT/probe-page.png"
 export PROBE_IMAGE
-python - "$PROBE_IMAGE" "$CORPUS_ROOT" "$RUN_CONFIG" "a33985b1e8b2502fc18cc8147dc27db8" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-from pdf2image import convert_from_path
-
-from docprune.benchmark_config import CorpusIdentity
-
-output = Path(sys.argv[1]).resolve()
-corpus_root = Path(sys.argv[2]).resolve()
-run_config_path = Path(sys.argv[3]).resolve()
-expected_qid = sys.argv[4]
-run_config = json.loads(run_config_path.read_text(encoding="utf-8"))
-if Path(str(run_config.get("corpus", {}).get("root", ""))).resolve() != corpus_root:
-    raise SystemExit("gate input config is not bound to CORPUS_ROOT")
-corpus = CorpusIdentity.from_root(corpus_root)
-corpus.validate()
-rows = {}
-with corpus.questions_path.open(encoding="utf-8") as stream:
-    for line in stream:
-        if line.strip():
-            row = json.loads(line)
-            rows[str(row["qid"])] = row
-row = rows.get(expected_qid)
-if row is None:
-    raise SystemExit("fixed probe qid is absent from the pinned corpus")
-contexts = row.get("supporting_context")
-if not isinstance(contexts, list):
-    raise SystemExit("fixed probe qid has no supporting_context list")
-doc_id = next(
-    (
-        value.get("doc_id")
-        for value in contexts
-        if isinstance(value, dict) and isinstance(value.get("doc_id"), str)
-    ),
-    None,
-)
-document_ids = json.loads(corpus.document_ids_path.read_text(encoding="utf-8"))
-if not isinstance(doc_id, str) or doc_id not in document_ids:
-    raise SystemExit("fixed probe qid has no supporting corpus document")
-pdf_path = corpus.pdf_path(doc_id)
-pages = convert_from_path(str(pdf_path), dpi=144, first_page=1, last_page=1)
-if len(pages) != 1:
-    raise SystemExit("deterministic probe render did not produce exactly one page")
-if not output.parent.is_dir():
-    raise SystemExit("gate root disappeared before probe render")
-pages[0].convert("RGB").save(output, format="PNG", dpi=(144, 144))
-PY
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
+  PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_probe_image.py" \
+  --corpus-root "$CORPUS_ROOT" \
+  --qid "a33985b1e8b2502fc18cc8147dc27db8" \
+  --run-config "$RUN_CONFIG" \
+  --output "$PROBE_IMAGE"
 test -f "$PROBE_IMAGE"
 
 CONTRACT="$GATE_ROOT/processor-contract.json"

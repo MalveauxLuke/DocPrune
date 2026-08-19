@@ -19,7 +19,7 @@ control checkout: /home/lmalveau/DocPrune-benchmark
 runtime checkout: /home/lmalveau/DocPrune-runtime-d5cefb3 (detached, clean)
 runtime commit: d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
 control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
-M3DocRAG checkout: /home/lmalveau/src/m3docrag-runtime-29e6ac2
+M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
 environment: /home/lmalveau/mamba-envs/docprune-sol
 corpus: /scratch/lmalveau/docprune/datasets/m3docvqa
@@ -30,8 +30,8 @@ Every launcher validates `CONTROL_RECORD` before doing work. The record binds
 the full reviewed control commit and its Git tree SHA, so a later commit cannot
 silently change the meaning of an already-created attempt. Every Python command
 runs from the detached runtime checkout with `PYTHONPATH=$RUNTIME_DIR/src`.
-The M3DocRAG checkout must be clean at its exact commit. The control checkout
-is used only to submit these wrappers.
+The M3DocRAG checkout must be a fresh, dedicated detached worktree, clean at
+its exact commit. The control checkout is used only to submit these wrappers.
 
 ## Seal the reviewed control checkout
 
@@ -75,33 +75,29 @@ test "$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")" = "$(python
 
 This is executable and preserves any pre-existing directory; it never removes
 user data. An absent runtime is created as a detached worktree at the exact
-runtime commit. Existing runtime and M3DocRAG directories must already be the
-same clean pinned checkouts. Git's `--untracked-files=all` check reports every
-non-ignored file. The upstream checkout has no ignore rule for Python bytecode,
-so the only permitted upstream residue is an untracked `__pycache__/*.pyc` or
-`.pyo`; every launcher and the config generator rejects all other changes and
-sets `PYTHONDONTWRITEBYTECODE=1` for new work.
+runtime commit. The upstream source checkout is used only to create a new,
+dedicated detached worktree; the new destination must not already exist. Git's
+`--untracked-files=all` check reports every file, and every launcher and the
+config generator require a strictly empty upstream status. All jobs set
+`PYTHONDONTWRITEBYTECODE=1` so the dedicated checkout remains clean.
 
 ```bash
 export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
 export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
-export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-runtime-29e6ac2
+export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
+export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 if [[ ! -e "$RUNTIME_DIR" ]]; then
   git -C "$PROJECT_DIR" worktree add --detach "$RUNTIME_DIR" "$EXPECTED_COMMIT"
 fi
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
+test -d "$M3DOCRAG_SOURCE"
+test "$(git -C "$M3DOCRAG_SOURCE" rev-parse "$M3DOCRAG_COMMIT^{commit}")" = "$M3DOCRAG_COMMIT"
+test ! -e "$M3DOCRAG_DIR"
+git -C "$M3DOCRAG_SOURCE" worktree add --detach "$M3DOCRAG_DIR" "$M3DOCRAG_COMMIT"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
-if [[ -n "$M3DOCRAG_DIRTY" ]]; then
-  while IFS= read -r status_line; do
-    case "$status_line" in
-      "?? "*__pycache__/*.py[co]) ;;
-      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
-    esac
-  done <<< "$M3DOCRAG_DIRTY"
-fi
+test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 ```
 
 ## Corpus identity
@@ -196,7 +192,7 @@ corpus identity shown in the Corpus section:
   "do_sample": false,
   "num_beams": 1,
   "prompt": "question: $question\noutput only answer.",
-  "m3docrag_root": "/home/lmalveau/src/m3docrag-runtime-29e6ac2",
+  "m3docrag_root": "/home/lmalveau/src/m3docrag-benchmark-29e6ac2",
   "gate_path": "/scratch/.../gate/gate.json",
   "gate_sha256": "canonical digest of the authenticated gate JSON",
   "semantic_samples_path": "/scratch/.../gate/semantic-samples.json",
@@ -258,7 +254,7 @@ export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
 export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
-export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-runtime-29e6ac2
+export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
 export DOCPRUNE_FACTORY=docprune.m3docvqa_factory:build_workload
@@ -361,9 +357,9 @@ test -z "$(git ls-files | rg 'DATASET_REVISION|(^|/)(weights?|checkpoints?|.*\\.
 ```
 
 Then run the pinned runtime/upstream preparation block above. Confirm the
-detached runtime is at the exact commit and clean; M3DocRAG is at its exact
-commit and either clean or has only the explicitly permitted untracked Python
-bytecode; and the control checkout contains only reviewed source/docs/launchers.
+detached runtime and the newly created dedicated M3DocRAG worktree are at their
+exact commits and strictly clean; and the control checkout contains only
+reviewed source/docs/launchers.
 
 The runtime remains pinned separately to
 `d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`; the reviewed control commit is

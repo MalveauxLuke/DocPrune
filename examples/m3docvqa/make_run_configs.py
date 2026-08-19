@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -47,6 +48,27 @@ def _sha256_json(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     ).hexdigest()
+
+
+def _raw_path_without_symlinks(value: object, *, label: str) -> Path:
+    """Return an absolute path after rejecting symlinked path components."""
+
+    if not isinstance(value, str | os.PathLike) or not value:
+        raise ValueError(f"{label} path must be a non-empty string")
+    path = Path(os.path.abspath(os.fspath(value)))
+    current = Path(path.anchor)
+    for component in path.parts[1:]:
+        current /= component
+        if current.is_symlink():
+            raise ValueError(f"{label} path contains a symlink: {path}")
+    return path
+
+
+def _regular_raw_path(value: object, *, label: str) -> Path:
+    path = _raw_path_without_symlinks(value, label=label)
+    if not path.is_file():
+        raise ValueError(f"{label} is missing or not regular: {path}")
+    return path
 
 
 def _corpus_payload(corpus: CorpusIdentity) -> dict[str, object]:
@@ -101,22 +123,20 @@ def _validate_m3docrag_checkout(path: Path) -> None:
         raise SystemExit(f"unable to inspect M3DocRAG checkout: {path}") from error
     if revision != M3DOCRAG_COMMIT:
         raise SystemExit(f"M3DocRAG checkout revision mismatch: {revision}")
-    unexpected = []
-    for line in dirty.splitlines():
-        relative = line[3:] if line.startswith("?? ") else ""
-        if not (line.startswith("?? ") and "__pycache__/" in relative and relative.endswith((".pyc", ".pyo"))):
-            unexpected.append(line)
-    if unexpected:
-        raise SystemExit(f"M3DocRAG checkout has non-bytecode changes: {unexpected[0]}")
+    if dirty:
+        raise SystemExit(f"M3DocRAG checkout is not clean: {dirty.splitlines()[0]}")
 
 
 def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, object]:
     """Authenticate the complete gate evidence before producing final configs."""
 
-    gate_path = Path(gate_path).resolve()
-    contract_path = Path(contract_path).resolve()
-    if gate_path.is_symlink() or not gate_path.is_file():
-        raise ValueError(f"gate JSON is missing or not regular: {gate_path}")
+    gate_path = _regular_raw_path(gate_path, label="gate JSON")
+    if gate_path.name != "gate.json":
+        raise ValueError(f"gate JSON must use the exact gate.json filename: {gate_path}")
+    gate_root = gate_path.parent
+    contract_path = _regular_raw_path(contract_path, label="processor contract")
+    if contract_path.name != "processor-contract.json" or contract_path.parent != gate_root:
+        raise ValueError("processor contract must be the direct gate child processor-contract.json")
     try:
         gate = json.loads(gate_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
@@ -138,22 +158,19 @@ def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, ob
         raise ValueError("gate page-count set is not exactly [1, 2, 4]")
     if gate.get("sample_ids") != list(FIXED_GATE_SAMPLE_IDS):
         raise ValueError("gate sample IDs are not the exact fixed source-order tuple")
-    declared_contract = Path(str(gate.get("processor_contract_path", ""))).resolve()
+    declared_contract = _raw_path_without_symlinks(
+        gate.get("processor_contract_path"), label="declared processor contract"
+    )
     if declared_contract != contract_path:
         raise ValueError("gate and processor contract paths differ")
-    if contract_path.is_symlink() or not contract_path.is_file():
-        raise ValueError("processor contract is missing or not regular")
     validate_processor_contract_file(contract_path)
     contract_sha = _sha256(contract_path)
     if gate.get("processor_contract_sha256") != contract_sha:
         raise ValueError("gate processor-contract digest is invalid")
 
-    semantic_path = Path(str(gate.get("semantic_samples_path", ""))).resolve()
-    gate_root = gate_path.parent
-    if gate_root not in semantic_path.parents or semantic_path == gate_root:
-        raise ValueError("semantic evidence is outside the gate root")
-    if semantic_path.is_symlink() or not semantic_path.is_file():
-        raise ValueError("semantic evidence is missing or not regular")
+    semantic_path = _regular_raw_path(gate.get("semantic_samples_path"), label="semantic evidence")
+    if semantic_path.name != "semantic-samples.json" or semantic_path.parent != gate_root:
+        raise ValueError("semantic evidence must be the direct gate child semantic-samples.json")
     if gate.get("semantic_samples_sha256") != _sha256(semantic_path):
         raise ValueError("semantic evidence digest is invalid")
     try:
@@ -169,7 +186,7 @@ def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, ob
     supporting = semantic.get("supporting_documents")
     if (
         not isinstance(supporting, dict)
-        or list(supporting) != list(FIXED_GATE_SAMPLE_IDS)
+        or set(supporting) != set(FIXED_GATE_SAMPLE_IDS)
         or any(not isinstance(value, str) or not value for value in supporting.values())
     ):
         raise ValueError("semantic evidence supporting documents are incomplete")
@@ -240,8 +257,9 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
-    contract = args.processor_contract.resolve()
-    gate = validate_gate_evidence(args.gate.resolve(), contract)
+    contract = _regular_raw_path(args.processor_contract, label="processor contract")
+    gate_path = _regular_raw_path(args.gate, label="gate JSON")
+    gate = validate_gate_evidence(gate_path, contract)
     contract_sha256 = _sha256(contract)
     corpus = CorpusIdentity.from_root(args.corpus_root.resolve())
     corpus.validate()
@@ -265,7 +283,7 @@ def main() -> int:
                 control_record=args.control_record,
                 control=control,
                 gate=gate,
-                gate_path=args.gate,
+                gate_path=gate_path,
             )
             resolved = _normalise_run_config_mapping(payload)
             if str(resolved.mode) != mode or int(resolved.page_count) != page_count:
@@ -274,14 +292,20 @@ def main() -> int:
             output = args.output_root / f"{mode}-top{page_count}.json"
             if output.exists():
                 raise SystemExit(f"refusing to overwrite existing run config: {output}")
-            output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            output.write_text(
+                json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
             # Re-read the exact bytes written and validate the production loader path.
             _validate_run_identity(
                 _normalise_run_config_mapping(json.loads(output.read_text(encoding="utf-8"))),
                 mode=mode,
                 page_count=page_count,
             )
-    print(json.dumps({"status": "passed", "configs": 6, "output_root": str(args.output_root.resolve())}))
+    print(
+        json.dumps(
+            {"status": "passed", "configs": 6, "output_root": str(args.output_root.resolve())}
+        )
+    )
     return 0
 
 

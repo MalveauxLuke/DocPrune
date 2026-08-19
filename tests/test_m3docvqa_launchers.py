@@ -9,10 +9,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "examples" / "m3docvqa"))
+from make_probe_image import render_probe_image  # noqa: E402
 from make_run_configs import (  # noqa: E402
     FIXED_GATE_SAMPLE_IDS,
     M3DOCRAG_COMMIT,
@@ -49,13 +51,23 @@ def test_embedded_python_heredocs_are_f821_clean() -> None:
         assert snippets, f"launcher has no embedded Python: {launcher}"
         for number, snippet in enumerate(snippets, start=1):
             result = subprocess.run(
-                [ruff, "check", "--select", "F821", "--stdin-filename", f"{launcher.name}.{number}.py", "-"],
+                [
+                    ruff,
+                    "check",
+                    "--select",
+                    "F821",
+                    "--stdin-filename",
+                    f"{launcher.name}.{number}.py",
+                    "-",
+                ],
                 input=snippet,
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            assert result.returncode == 0, f"{launcher} heredoc {number}: {result.stdout}{result.stderr}"
+            assert result.returncode == 0, (
+                f"{launcher} heredoc {number}: {result.stdout}{result.stderr}"
+            )
 
 
 def test_gate_binds_qids_to_supporting_documents_and_checks_fixed_set() -> None:
@@ -66,7 +78,7 @@ def test_gate_binds_qids_to_supporting_documents_and_checks_fixed_set() -> None:
     assert "insufficient pages" in text
     assert ",".join(FIXED_GATE_SAMPLE_IDS) in text
     assert 'test "$GATE_SAMPLE_IDS" = "$EXPECTED_GATE_SAMPLE_IDS"' in text
-    assert 'source_positions != sorted(source_positions)' in text
+    assert "source_positions != sorted(source_positions)" in text
 
 
 def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
@@ -74,21 +86,90 @@ def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
     assert 'test ! -e "$GATE_ROOT"' in text
     assert 'mkdir -p "$GATE_ROOT"' in text
     assert 'RUN_CONFIG="$GATE_ROOT/' not in text
-    assert 'RUN_CONFIG_ROOT' in text
-    assert 'export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT' in text
-    assert 'make_run_configs.py' in text
-    assert text.index('make_run_configs.py') < text.index('GATE_STATUS=passed')
-    assert 'GATE_STATUS=passed' in text
-    assert text.index('GATE_STATUS=passed') > text.index('python -m json.tool "$GATE_ROOT/gate.json"')
+    assert "RUN_CONFIG_ROOT" in text
+    assert "export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT" in text
+    assert "make_run_configs.py" in text
+    assert text.index("make_run_configs.py") < text.index("GATE_STATUS=passed")
+    assert "GATE_STATUS=passed" in text
+    assert text.index("GATE_STATUS=passed") > text.index(
+        'python -m json.tool "$GATE_ROOT/gate.json"'
+    )
 
 
 def test_gate_renders_probe_image_from_pinned_corpus_qid() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    helper = (ROOT / "examples" / "m3docvqa" / "make_probe_image.py").read_text(encoding="utf-8")
     assert 'PROBE_IMAGE="$GATE_ROOT/' in text
-    assert "convert_from_path" in text
-    assert "dpi=144" in text
+    assert "make_probe_image.py" in text
+    assert "convert_from_path" in helper
+    assert "dpi=144" in helper
     assert ': "${PROBE_IMAGE:' not in text
     assert ': "${CORPUS_ROOT:' in text
+
+
+def test_probe_helper_uses_first_pinned_supporting_pdf_and_no_pdf_path_method(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The helper must use CorpusIdentity.pdf_dir, not an invented pdf_path API."""
+
+    import make_probe_image
+
+    questions = tmp_path / "questions.jsonl"
+    questions.write_text(
+        json.dumps(
+            {
+                "qid": "fixed",
+                "supporting_context": [
+                    {"doc_id": "not-pinned"},
+                    {"doc_id": "doc-a"},
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    document_ids = tmp_path / "dev_doc_ids.json"
+    document_ids.write_text(json.dumps(["doc-a"]), encoding="utf-8")
+    pdf_dir = tmp_path / "pdfs_dev"
+    pdf_dir.mkdir()
+    pdf_path = pdf_dir / "doc-a.pdf"
+    pdf_path.write_bytes(b"pinned pdf")
+    corpus = SimpleNamespace(
+        questions_path=questions,
+        document_ids_path=document_ids,
+        pdf_dir=pdf_dir,
+        validate=lambda: None,
+    )
+    monkeypatch.setattr(make_probe_image.CorpusIdentity, "from_root", lambda _: corpus)
+    calls: dict[str, object] = {}
+
+    class FakePage:
+        def convert(self, mode: str) -> FakePage:
+            calls["convert_mode"] = mode
+            return self
+
+        def save(self, path: Path, *, format: str, dpi: tuple[int, int]) -> None:
+            calls["save"] = (Path(path), format, dpi)
+            Path(path).write_bytes(b"png")
+
+    def fake_convert(path: str, *, dpi: int, first_page: int, last_page: int) -> list[FakePage]:
+        calls["convert"] = (Path(path), dpi, first_page, last_page)
+        return [FakePage()]
+
+    monkeypatch.setattr(make_probe_image, "convert_from_path", fake_convert)
+    output = tmp_path / "gate" / "probe-page.png"
+    output.parent.mkdir()
+    run_config = tmp_path / "gate-top1.json"
+    run_config.write_text(json.dumps({"corpus": {"root": str(tmp_path)}}), encoding="utf-8")
+
+    assert render_probe_image(tmp_path, "fixed", output, run_config=run_config) == output
+    assert calls["convert"] == (pdf_path, 144, 1, 1)
+    assert calls["convert_mode"] == "RGB"
+    assert calls["save"] == (output, "PNG", (144, 144))
+    assert output.read_bytes() == b"png"
+
+    with pytest.raises(FileExistsError):
+        render_probe_image(tmp_path, "fixed", output)
 
 
 def test_eval_postcheck_uses_combined_summary_without_copy() -> None:
@@ -111,9 +192,9 @@ def test_index_seals_resume_and_uses_production_manifest_loader() -> None:
 def test_launchers_validate_sealed_control_record() -> None:
     for launcher in LAUNCHERS:
         text = launcher.read_text(encoding="utf-8")
-        assert 'CONTROL_RECORD' in text
-        assert 'control.json' in text
-        assert 'tree_sha' in text
+        assert "CONTROL_RECORD" in text
+        assert "control.json" in text
+        assert "tree_sha" in text
 
 
 def test_run_config_generator_is_executable_and_documented() -> None:
@@ -122,7 +203,32 @@ def test_run_config_generator_is_executable_and_documented() -> None:
     assert generator.stat().st_mode & 0o111
     handoff = HANDOFF.read_text(encoding="utf-8")
     assert "make_run_configs.py" in handoff
-    assert "--dependency=\"afterok:" in handoff
+    assert '--dependency="afterok:' in handoff
+
+
+def test_upstream_checkouts_require_strict_clean_status() -> None:
+    for name in (
+        "11_docprune_m3docvqa.sbatch",
+        "12_docprune_m3docvqa_gate.sbatch",
+        "13_docprune_m3docvqa_index.sbatch",
+    ):
+        text = (LAUNCHER_DIR / name).read_text(encoding="utf-8")
+        assert (
+            'test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"' in text
+        )
+        assert "__pycache__" not in text
+    generator = (ROOT / "examples" / "m3docvqa" / "make_run_configs.py").read_text(encoding="utf-8")
+    assert "if dirty:" in generator
+    assert "non-bytecode" not in generator
+
+
+def test_handoff_creates_fresh_dedicated_upstream_worktree() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    assert "M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2" in text
+    assert "M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2" in text
+    assert 'test ! -e "$M3DOCRAG_DIR"' in text
+    assert 'git -C "$M3DOCRAG_SOURCE" worktree add --detach' in text
+    assert "only the explicitly permitted untracked Python" not in text
 
 
 def test_submission_does_not_precreate_gate_or_run_final_generator() -> None:
@@ -134,16 +240,25 @@ def test_submission_does_not_precreate_gate_or_run_final_generator() -> None:
     assert 'mkdir -p "$SLURM_LOG_DIR" "$GATE_ROOT"' not in submission
     assert "make_run_configs.py" not in submission
     assert 'RUN_CONFIG="$INPUT_ROOT/gate-top1.json"' in submission
-    assert 'PROBE_IMAGE=' not in submission
+    assert "PROBE_IMAGE=" not in submission
 
 
 def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
     contract = {
         "schema_version": 2,
         "resources": {
-            "qwen": {"model": "Qwen/Qwen2-VL-7B-Instruct", "revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac"},
-            "colpali": {"model": "vidore/colpali-v1.2", "revision": "961b51745de3e9adb3468ac5c9ccca0ac626c217"},
-            "colpali_backbone": {"model": "vidore/colpaligemma-3b-pt-448-base", "revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a"},
+            "qwen": {
+                "model": "Qwen/Qwen2-VL-7B-Instruct",
+                "revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
+            },
+            "colpali": {
+                "model": "vidore/colpali-v1.2",
+                "revision": "961b51745de3e9adb3468ac5c9ccca0ac626c217",
+            },
+            "colpali_backbone": {
+                "model": "vidore/colpaligemma-3b-pt-448-base",
+                "revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a",
+            },
         },
         "mapping_checks": {
             "colpali_visual_grid_inferred": True,
@@ -161,7 +276,9 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "docprune_traces": {str(page): [100, 80, 60, 40] for page in (1, 2, 4)},
     }
     semantic_path = tmp_path / "semantic-samples.json"
-    semantic_path.write_text(json.dumps(semantic), encoding="utf-8")
+    # Gate production writes sort_keys=True; validator must not infer qid order
+    # from the resulting supporting_documents mapping order.
+    semantic_path.write_text(json.dumps(semantic, sort_keys=True), encoding="utf-8")
 
     gate = {
         "schema_version": 1,
@@ -184,7 +301,52 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
     return gate_path, contract_path
 
 
-@pytest.mark.parametrize("mutation", ["gate_sha256", "runtime_commit", "sample_ids", "semantic", "traces"])
+def test_gate_evidence_accepts_sort_key_reordered_supporting_documents(tmp_path: Path) -> None:
+    gate_path, contract_path = _gate_fixture(tmp_path)
+
+    evidence = validate_gate_evidence(gate_path, contract_path)
+
+    assert evidence["sample_ids"] == list(FIXED_GATE_SAMPLE_IDS)
+
+
+@pytest.mark.parametrize("kind", ["gate", "contract", "semantic"])
+def test_gate_evidence_rejects_symlinked_declared_paths(tmp_path: Path, kind: str) -> None:
+    gate_path, contract_path = _gate_fixture(tmp_path)
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    if kind == "gate":
+        target = tmp_path / "gate-real.json"
+        target.write_bytes(gate_path.read_bytes())
+        gate_path.unlink()
+        gate_path.symlink_to(target)
+        with pytest.raises(ValueError, match="regular|symlink"):
+            validate_gate_evidence(gate_path, contract_path)
+        return
+    if kind == "contract":
+        target = tmp_path / "contract-real.json"
+        target.write_bytes(contract_path.read_bytes())
+        contract_path.unlink()
+        contract_path.symlink_to(target)
+        gate["processor_contract_path"] = str(contract_path)
+    else:
+        semantic_path = Path(gate["semantic_samples_path"])
+        target = tmp_path / "semantic-real.json"
+        target.write_bytes(semantic_path.read_bytes())
+        semantic_path.unlink()
+        semantic_path.symlink_to(target)
+        gate["semantic_samples_path"] = str(semantic_path)
+    unsigned_gate = dict(gate)
+    unsigned_gate.pop("gate_sha256", None)
+    gate["gate_sha256"] = hashlib.sha256(
+        json.dumps(unsigned_gate, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    gate_path.write_text(json.dumps(gate), encoding="utf-8")
+    with pytest.raises(ValueError, match="regular|symlink"):
+        validate_gate_evidence(gate_path, contract_path)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["gate_sha256", "runtime_commit", "sample_ids", "semantic", "traces"]
+)
 def test_run_config_generator_rejects_tampered_gate_evidence(tmp_path: Path, mutation: str) -> None:
     gate_path, contract_path = _gate_fixture(tmp_path)
     import json
@@ -215,6 +377,6 @@ def test_handoff_has_absolute_log_submission_and_no_control_placeholder() -> Non
     assert "control.json" in text
     assert "rev-parse HEAD" in text
     assert "git rev-parse HEAD:" not in text
-    assert "--output=\"$SLURM_LOG_DIR/" in text
-    assert "--error=\"$SLURM_LOG_DIR/" in text
-    assert "--chdir=\"$SLURM_LOG_DIR\"" in text
+    assert '--output="$SLURM_LOG_DIR/' in text
+    assert '--error="$SLURM_LOG_DIR/' in text
+    assert '--chdir="$SLURM_LOG_DIR"' in text

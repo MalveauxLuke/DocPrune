@@ -676,7 +676,7 @@ def _validate_m3docrag_checkout(run_config: object) -> Path:
         or _value(run_config, "upstream_root")
         or os.environ.get("DOCPRUNE_M3DOCRAG_ROOT")
         or os.environ.get("M3DOCRAG_ROOT")
-        or "/home/lmalveau/src/m3docrag-runtime-29e6ac2"
+        or "/home/lmalveau/src/m3docrag-benchmark-29e6ac2"
     )
     root = Path(root_value)
     if not root.is_dir():
