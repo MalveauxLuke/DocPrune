@@ -703,8 +703,8 @@ def _make_dataset(run_config: object) -> object:
 def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
     if isinstance(value, IndexManifest):
         manifest = value
-    elif not isinstance(value, str | Path) and callable(getattr(value, "validate_files", None)):
-        manifest = value
+    elif not isinstance(value, str | Path):
+        raise TypeError("index manifest must be an IndexManifest or a manifest JSON path")
     else:
         path = Path(value)
         if path.is_symlink() or not path.is_file():
@@ -763,12 +763,25 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
         except (KeyError, TypeError, ValueError) as error:
             raise ValueError("index manifest is missing required immutable fields") from error
     manifest_payload = manifest.to_dict()
+    if not isinstance(value, IndexManifest) and payload != manifest_payload:
+        raise ValueError("index manifest payload does not exactly match IndexManifest")
     if manifest_payload.get("manifest_sha256") != _sha256_json(
         {key: value for key, value in manifest_payload.items() if key != "manifest_sha256"}
     ):
         raise ValueError("index manifest canonical SHA-256 is invalid")
     manifest.validate_files()
     return manifest
+
+
+def _require_source_order_sha256(dataset: object) -> str:
+    """Require a nonempty authoritative source-order hash from the dataset."""
+
+    source_order = getattr(dataset, "source_order_sha256", None)
+    if not isinstance(source_order, str) or len(source_order) != 64:
+        raise ValueError("dataset must provide an authoritative source_order_sha256")
+    if any(character not in "0123456789abcdefABCDEF" for character in source_order):
+        raise ValueError("dataset source_order_sha256 must be a SHA-256")
+    return source_order.lower()
 
 
 class _ColPaliQueryAdapter:
@@ -1014,6 +1027,7 @@ def build_workload(
             if isinstance(existing_manifest, Mapping) and "runtime_commit" in existing_manifest:
                 raise FileExistsError(f"evaluation output already exists: {output}")
     dataset = _make_dataset(resolved_run)
+    dataset_source_order = _require_source_order_sha256(dataset)
     samples = (
         filter_samples(dataset, limit=limit, sample_ids=sample_ids)
         if operation == "evaluate"
@@ -1074,8 +1088,7 @@ def build_workload(
     corpus = identity["corpus"]
     if manifest.corpus_integrity_sha256 != corpus["integrity_sha256"]:
         raise ValueError("index manifest corpus identity does not match the run configuration")
-    dataset_source_order = _value(dataset, "source_order_sha256")
-    if dataset_source_order is not None and manifest.source_order_sha256 != dataset_source_order:
+    if manifest.source_order_sha256 != dataset_source_order:
         raise ValueError("index manifest source order does not match the corpus")
 
     complete_manifest = _write_run_manifest(

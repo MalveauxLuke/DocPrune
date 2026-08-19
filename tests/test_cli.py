@@ -11,6 +11,7 @@ from docprune.cli import (
     _manifest_digest,
     _prepare_output,
     _validate_embed_result,
+    _validate_evaluation_workload_manifest,
     main,
 )
 from docprune.config import load_config
@@ -758,4 +759,290 @@ def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> N
     manifest.processor_contract_sha256 = __import__("hashlib").sha256(b"contract").hexdigest()
     manifest.mode = "docprune"
     with pytest.raises(ValueError, match="mode/page_count"):
+        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
+
+
+def test_evaluation_workload_cannot_inject_a_conflicting_command(tmp_path) -> None:
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    requested = _manifest(
+        "evaluate",
+        Path("configs/docprune-m3docvqa.toml"),
+        config,
+        1,
+        "fake:factory",
+        output=tmp_path,
+        mode="all-kept",
+        run_config=None,
+        index_manifest=None,
+        limit=None,
+        sample_ids=None,
+    )
+    identity = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": {
+            "enabled": False,
+            "page_settings": __import__("dataclasses").asdict(config.for_pages(1)),
+            "reconstruction_defaults": __import__("dataclasses").asdict(
+                config.reconstruction_defaults
+            ),
+            "siglip_patch_size": 14,
+        },
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [],
+            "count": 0,
+        },
+        "index_manifest": {},
+    }
+    workload = dict(identity)
+    workload["command"] = "embed"
+    workload["run_manifest_sha256"] = _manifest_digest(
+        {key: value for key, value in workload.items() if key != "run_manifest_sha256"}
+    )
+    with pytest.raises(ValueError, match="command"):
+        _validate_evaluation_workload_manifest(
+            workload,
+            existing=requested,
+            requested=requested,
+            config=config,
+            authoritative=identity,
+        )
+
+
+def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
+    tmp_path, monkeypatch
+) -> None:
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    config = load_config(config_path)
+    output = tmp_path / "embed"
+    source_order = "a" * 64
+    identity = {
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "b" * 40,
+        "m3docrag_commit": config.m3docrag_commit,
+        "resources": {},
+        "processor_contract_path": str((tmp_path / "contract.json").resolve()),
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "corpus": {"integrity_sha256": "d" * 64},
+        "generation": {},
+    }
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._resolve_run_config",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._validate_run_identity",
+        lambda *args, **kwargs: dict(identity),
+    )
+    monkeypatch.setattr("docprune.m3docvqa_factory._validate_m3docrag_checkout", lambda *args: None)
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._make_dataset",
+        lambda *args, **kwargs: SimpleNamespace(source_order_sha256=source_order),
+    )
+
+    def factory(**kwargs):
+        requested = _manifest(
+            "embed",
+            config_path,
+            config,
+            1,
+            "fake:factory",
+            output=output,
+            mode="all-kept",
+            run_config=None,
+            index_manifest=None,
+            limit=None,
+            sample_ids=None,
+        )
+        malicious = dict(requested)
+        malicious.update(
+            {
+                "command": "evaluate",
+                "config": str(tmp_path / "wrong.toml"),
+                "factory": "attacker:factory",
+                "output": str((tmp_path / "wrong-output").resolve()),
+            }
+        )
+        malicious["run_manifest_sha256"] = _manifest_digest(
+            {key: value for key, value in malicious.items() if key != "run_manifest_sha256"}
+        )
+        (output / "run_manifest.json").write_text(json.dumps(malicious))
+        result_manifest = SimpleNamespace(
+            to_dict=lambda: {"schema_version": 4, "manifest_sha256": "index"}
+        )
+        return IndexBuildResult(
+            manifest=result_manifest,
+            manifest_path=output / "manifest.json",
+            mode_root=output,
+            token2pageuid_path=output / "token2pageuid.json",
+            completion_ledger_path=output / "completion-ledger.json",
+            documents_built=0,
+            documents_resumed=0,
+        )
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    monkeypatch.setattr("docprune.cli._validate_embed_result", lambda *args, **kwargs: None)
+
+    assert (
+        main(
+            [
+                "embed",
+                "--config",
+                str(config_path),
+                "--pages",
+                "1",
+                "--output",
+                str(output),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 0
+    )
+    final = json.loads((output / "run_manifest.json").read_text())
+    assert final["command"] == "embed"
+    assert final["config"] == str(config_path.resolve())
+    assert final["factory"] == "fake:factory"
+    assert final["output"] == str(output.resolve())
+
+
+def test_embed_preflight_fails_closed_without_authoritative_source_order(
+    tmp_path, monkeypatch
+) -> None:
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    calls = []
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._resolve_run_config",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._validate_run_identity",
+        lambda *args, **kwargs: {"runtime_commit": "a" * 40},
+    )
+    monkeypatch.setattr("docprune.m3docvqa_factory._validate_m3docrag_checkout", lambda *args: None)
+    monkeypatch.setattr(
+        "docprune.m3docvqa_factory._make_dataset",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
+    monkeypatch.setattr(
+        "docprune.cli._load_factory", lambda spec: lambda **kwargs: calls.append(kwargs)
+    )
+    assert (
+        main(
+            [
+                "embed",
+                "--config",
+                str(config_path),
+                "--pages",
+                "1",
+                "--output",
+                str(tmp_path / "embed"),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 2
+    )
+    assert calls == []
+
+
+def test_embed_result_manifest_must_be_regular_json_with_exact_payload(tmp_path) -> None:
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    output = tmp_path / "output"
+    artifact_root = output / "all-kept"
+    artifact_root.mkdir(parents=True)
+    contract = tmp_path / "contract.json"
+    contract.write_text("contract")
+    payload = {"schema_version": 3, "manifest_sha256": "index"}
+    manifest = SimpleNamespace(
+        mode="all-kept",
+        page_count=1,
+        m3docrag_commit=config.m3docrag_commit,
+        qwen_model="Qwen/Qwen2-VL-7B-Instruct",
+        qwen_revision="eed13092ef92e448dd6875b2a00151bd3f7db0ac",
+        colpali_model="vidore/colpali-v1.2",
+        colpali_revision="961b51745de3e9adb3468ac5c9ccca0ac626c217",
+        colpali_backbone_model="vidore/colpaligemma-3b-pt-448-base",
+        colpali_backbone_revision="30ab955d073de4a91dc5a288e8c97226647e3e5a",
+        pruning_config={
+            "enabled": False,
+            "page_settings": __import__("dataclasses").asdict(config.for_pages(1)),
+            "reconstruction_defaults": __import__("dataclasses").asdict(
+                config.reconstruction_defaults
+            ),
+            "siglip_patch_size": 14,
+        },
+        artifact_root=artifact_root,
+        processor_contract_path=contract,
+        processor_contract_sha256=__import__("hashlib").sha256(b"contract").hexdigest(),
+        corpus_integrity_sha256="1" * 64,
+        source_order_sha256="2" * 64,
+        to_dict=lambda: payload,
+        validate_files=lambda: None,
+    )
+    result = IndexBuildResult(
+        manifest=manifest,
+        manifest_path=artifact_root / "manifest.json",
+        mode_root=artifact_root,
+        token2pageuid_path=artifact_root / "token2pageuid.json",
+        completion_ledger_path=artifact_root / "completion-ledger.json",
+        documents_built=0,
+        documents_resumed=0,
+    )
+    with pytest.raises(ValueError, match="source order"):
+        _validate_embed_result(
+            result,
+            config=config,
+            pages=1,
+            mode="all-kept",
+            output=output,
+            expected_source_order_sha256="3" * 64,
+        )
+    result.manifest_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="schema"):
+        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
+
+    target = tmp_path / "manifest-target.json"
+    target.write_text(json.dumps(payload))
+    result.manifest_path.unlink()
+    result.manifest_path.symlink_to(target)
+    with pytest.raises(ValueError, match="regular"):
+        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
+
+    valid_unsigned = {"schema_version": 4}
+    valid_payload = {
+        **valid_unsigned,
+        "manifest_sha256": _manifest_digest(valid_unsigned),
+    }
+    manifest.to_dict = lambda: valid_payload
+    persisted_with_extra = {
+        **valid_payload,
+        "unexpected": True,
+    }
+    persisted_with_extra["manifest_sha256"] = _manifest_digest(
+        {key: value for key, value in persisted_with_extra.items() if key != "manifest_sha256"}
+    )
+    result.manifest_path.unlink()
+    result.manifest_path.write_text(json.dumps(persisted_with_extra))
+    with pytest.raises(ValueError, match="equal"):
         _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)

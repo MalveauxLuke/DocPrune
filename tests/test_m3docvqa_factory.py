@@ -289,6 +289,15 @@ def test_index_manifest_schema_and_digest_are_checked_before_construction(tmp_pa
         _load_index_manifest(wrong_digest)
 
 
+def test_index_manifest_rejects_fake_objects_instead_of_trusting_validate_files() -> None:
+    class FakeManifest:
+        def validate_files(self):
+            return None
+
+    with pytest.raises(TypeError, match="IndexManifest"):
+        _load_index_manifest(FakeManifest())
+
+
 def test_completed_results_require_full_schema_and_regular_file(tmp_path: Path) -> None:
     path = tmp_path / "results.jsonl"
     path.write_text(json.dumps({"question_id": "q-1"}) + "\n")
