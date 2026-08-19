@@ -100,7 +100,16 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _is_cli_placeholder(existing: Mapping[str, object], payload: Mapping[str, object]) -> bool:
+def _is_cli_placeholder(
+    existing: Mapping[str, object],
+    payload: Mapping[str, object],
+    *,
+    invocation: Mapping[str, object] | None = None,
+) -> bool:
+    if invocation is None:
+        return False
+    if any(existing.get(key) != invocation.get(key) for key in _CLI_PLACEHOLDER_KEYS):
+        return False
     return (
         set(existing) == _CLI_PLACEHOLDER_KEYS
         and existing.get("schema_version") == 2
@@ -111,6 +120,16 @@ def _is_cli_placeholder(existing: Mapping[str, object], payload: Mapping[str, ob
         and existing.get("output") == payload.get("output")
         and "runtime_commit" not in existing
     )
+
+
+def _source_file_identity(value: str | Path | None, *, label: str) -> tuple[str | None, str | None]:
+    if value is None:
+        return None, None
+    path = Path(value)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"{label} must be a regular file: {path}")
+    resolved = path.resolve()
+    return str(resolved), sha256_file(resolved)
 
 
 def validate_processor_contract_file(path: Path) -> dict[str, object]:
@@ -826,6 +845,7 @@ def _write_run_manifest(
     payload: Mapping[str, object],
     *,
     resume: bool,
+    invocation_manifest: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Publish the complete identity before loading any model weights."""
 
@@ -859,6 +879,10 @@ def _write_run_manifest(
             "processor_contract_path",
             "processor_contract_sha256",
             "processor_contract",
+            "run_config_source_path",
+            "run_config_source_sha256",
+            "index_manifest_source_path",
+            "index_manifest_source_sha256",
             "corpus",
             "generation",
             "pruning_config",
@@ -866,6 +890,20 @@ def _write_run_manifest(
             "index_manifest",
         )
         if resume:
+            if existing.get("schema_version") != 2 or existing.get("status") != "configured":
+                raise ValueError("resume manifest is incomplete")
+            for path_key, digest_key, label in (
+                ("run_config_source_path", "run_config_source_sha256", "run configuration"),
+                ("index_manifest_source_path", "index_manifest_source_sha256", "index manifest"),
+            ):
+                source_path = existing.get(path_key)
+                source_digest = existing.get(digest_key)
+                if source_path is not None:
+                    current_path, current_digest = _source_file_identity(
+                        str(source_path), label=label
+                    )
+                    if current_path != source_path or current_digest != source_digest:
+                        raise ValueError(f"{label} source bytes changed since the recorded run")
             if any(key not in existing for key in identity_keys if key in payload):
                 raise ValueError("resume manifest is missing an immutable identity field")
             supplied_digest = existing.get("run_manifest_sha256")
@@ -873,7 +911,11 @@ def _write_run_manifest(
             unsigned_existing.pop("run_manifest_sha256", None)
             if supplied_digest != _sha256_json(unsigned_existing):
                 raise ValueError("resume manifest digest is invalid")
-        placeholder = _is_cli_placeholder(existing, payload)
+        placeholder = _is_cli_placeholder(
+            existing,
+            payload,
+            invocation=invocation_manifest,
+        )
         if not resume:
             if not placeholder:
                 label = "complete run" if "runtime_commit" in existing else "unrelated run"
@@ -919,6 +961,7 @@ def build_workload(
     limit: int | None = None,
     sample_ids: Sequence[str] | None = None,
     resume: bool = False,
+    invocation_manifest: Mapping[str, object] | None = None,
 ) -> EvaluationWorkload | IndexBuildResult:
     """Build the concrete index operation or lazy end-to-end evaluation workload."""
 
@@ -934,6 +977,21 @@ def build_workload(
     resolved_run = _resolve_run_config(run_config, mode=resolved_mode, page_count=page_count)
     identity = _validate_run_identity(resolved_run, mode=resolved_mode, page_count=page_count)
     _validate_m3docrag_checkout(resolved_run)
+    run_config_source_path, run_config_source_sha256 = _source_file_identity(
+        run_config if isinstance(run_config, str | Path) else None,
+        label="run configuration",
+    )
+    index_manifest_source_path, index_manifest_source_sha256 = _source_file_identity(
+        index_manifest if isinstance(index_manifest, str | Path) else None,
+        label="index manifest",
+    )
+    identity = {
+        **identity,
+        "run_config_source_path": run_config_source_path,
+        "run_config_source_sha256": run_config_source_sha256,
+        "index_manifest_source_path": index_manifest_source_path,
+        "index_manifest_source_sha256": index_manifest_source_sha256,
+    }
     output = Path(output)
     if output.is_symlink():
         raise ValueError("output must not be a symbolic link")
@@ -976,6 +1034,7 @@ def build_workload(
             output,
             _run_manifest(identity, operation=operation, output=output, index_manifest=None),
             resume=resume,
+            invocation_manifest=invocation_manifest,
         )
         model, processor = _load_colpali(resolved_run)
         result = build_index(
@@ -1023,6 +1082,7 @@ def build_workload(
         output,
         _run_manifest(identity, operation=operation, output=output, index_manifest=manifest),
         resume=resume,
+        invocation_manifest=invocation_manifest,
     )
 
     import faiss

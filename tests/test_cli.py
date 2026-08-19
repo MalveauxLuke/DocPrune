@@ -15,7 +15,7 @@ from docprune.cli import (
 )
 from docprune.config import load_config
 from docprune.indexing import IndexBuildResult
-from docprune.m3docrag import RetrievedPage, SampleResult, SampleTiming
+from docprune.m3docrag import RetrievedPage, SampleInput, SampleResult, SampleTiming
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -197,6 +197,228 @@ def test_evaluate_rejects_workload_without_manifest_before_results(tmp_path, mon
     assert not (output / "results.jsonl").exists()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("operation", "embed"),
+        ("output", "/tmp/wrong-output"),
+        ("mode", "docprune"),
+        ("page_count", 2),
+        ("selection", {"count": 999}),
+        ("schema_version", 99),
+        ("status", "tampered"),
+    ],
+)
+def test_evaluate_factory_manifest_cannot_change_invocation_identity(
+    tmp_path, monkeypatch, field, value
+) -> None:
+    output = tmp_path / "run"
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    from docprune.m3docvqa_factory import _expected_pruning_identity
+
+    baseline = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": _expected_pruning_identity(config, mode="all-kept", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [],
+            "count": 0,
+        },
+        "index_manifest": {},
+    }
+    baseline["run_manifest_sha256"] = _manifest_digest(baseline)
+    monkeypatch.setattr(
+        "docprune.cli._resolve_evaluate_authority",
+        lambda *args, **kwargs: dict(baseline),
+    )
+
+    def factory(**kwargs):
+        manifest = dict(baseline)
+        manifest[field] = value
+        return EvaluationWorkload(SimpleNamespace(run_sample=lambda sample: None), (), manifest)
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    assert (
+        main(
+            [
+                "evaluate",
+                "--config",
+                "configs/docprune-m3docvqa.toml",
+                "--pages",
+                "1",
+                "--output",
+                str(output),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 2
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("runtime_commit", "f" * 40),
+        ("resources", {"pinned": False}),
+        ("corpus", {"integrity_sha256": "0" * 64}),
+        ("index_manifest", {"manifest_sha256": "0" * 64}),
+    ],
+)
+def test_fresh_evaluate_factory_cannot_change_authoritative_identity(
+    tmp_path, monkeypatch, field, value
+) -> None:
+    output = tmp_path / "run"
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    from docprune.m3docvqa_factory import _expected_pruning_identity
+
+    authoritative = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {"pinned": True},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {"mapping": "pinned"},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {"integrity_sha256": "d" * 64},
+        "generation": {"do_sample": False},
+        "pruning_config": _expected_pruning_identity(config, mode="all-kept", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [],
+            "count": 0,
+        },
+        "index_manifest": {"manifest_sha256": "e" * 64},
+    }
+    authoritative["run_manifest_sha256"] = _manifest_digest(authoritative)
+    monkeypatch.setattr(
+        "docprune.cli._resolve_evaluate_authority",
+        lambda *args, **kwargs: dict(authoritative),
+    )
+
+    def factory(**kwargs):
+        wrong = dict(authoritative)
+        wrong[field] = value
+        return EvaluationWorkload(SimpleNamespace(run_sample=lambda sample: None), (), wrong)
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    assert (
+        main(
+            [
+                "evaluate",
+                "--config",
+                "configs/docprune-m3docvqa.toml",
+                "--pages",
+                "1",
+                "--output",
+                str(output),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 2
+    )
+    assert not (output / "results.jsonl").exists()
+
+
+def test_fresh_evaluate_factory_samples_bind_to_authoritative_rows(tmp_path, monkeypatch) -> None:
+    output = tmp_path / "run"
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    from docprune.m3docvqa_factory import _expected_pruning_identity
+
+    authoritative_sample = SampleInput("q-1", "authoritative question", ("gold",))
+    authoritative = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": _expected_pruning_identity(config, mode="all-kept", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": ["q-1"],
+            "count": 1,
+        },
+        "index_manifest": {},
+    }
+    authoritative["run_manifest_sha256"] = _manifest_digest(authoritative)
+    authority = dict(authoritative)
+    authority["_authoritative_samples"] = (authoritative_sample,)
+    monkeypatch.setattr(
+        "docprune.cli._resolve_evaluate_authority",
+        lambda *args, **kwargs: authority,
+    )
+
+    class Runner:
+        def run_sample(self, sample):
+            raise AssertionError("runner must not run for an untrusted sample")
+
+    def factory(**kwargs):
+        wrong_sample = SampleInput("q-1", "factory-controlled question", ("wrong",))
+        return EvaluationWorkload(Runner(), (wrong_sample,), dict(authoritative))
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    assert (
+        main(
+            [
+                "evaluate",
+                "--config",
+                "configs/docprune-m3docvqa.toml",
+                "--pages",
+                "1",
+                "--output",
+                str(output),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 2
+    )
+    assert not (output / "results.jsonl").exists()
+
+
 def test_resume_rejects_changed_run_config_content_at_same_path(tmp_path) -> None:
     output = tmp_path / "run"
     run_config = tmp_path / "run-config.json"
@@ -229,6 +451,10 @@ def test_resume_rejects_changed_run_config_content_at_same_path(tmp_path) -> Non
             "processor_contract_path": "contract.json",
             "processor_contract_sha256": "c" * 64,
             "processor_contract": {},
+            "run_config_source_path": None,
+            "run_config_source_sha256": None,
+            "index_manifest_source_path": None,
+            "index_manifest_source_sha256": None,
             "corpus": {},
             "generation": {},
             "pruning_config": {},
@@ -373,6 +599,42 @@ def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
 def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypatch) -> None:
     output = tmp_path / "run"
     calls = {"runs": 0, "answers": []}
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    from docprune.m3docvqa_factory import _expected_pruning_identity
+
+    workload_manifest = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": _expected_pruning_identity(config, mode="all-kept", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": ["q-1", "q-2", "q-3"],
+            "count": 3,
+        },
+        "index_manifest": {},
+    }
+    workload_manifest["run_manifest_sha256"] = _manifest_digest(workload_manifest)
+    monkeypatch.setattr(
+        "docprune.cli._resolve_evaluate_authority",
+        lambda *args, **kwargs: dict(workload_manifest),
+    )
 
     class Runner:
         def run_sample(self, sample):
@@ -400,21 +662,7 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
                 SampleInput("q-2", "two"),
                 SampleInput("q-3", "three"),
             ),
-            manifest={
-                "operation": "evaluate",
-                "output": str(output.resolve()),
-                "runtime_commit": "a" * 40,
-                "m3docrag_commit": "b" * 40,
-                "resources": {},
-                "processor_contract_path": "contract.json",
-                "processor_contract_sha256": "c" * 64,
-                "processor_contract": {},
-                "corpus": {},
-                "generation": {},
-                "pruning_config": {},
-                "selection": {},
-                "index_manifest": {},
-            },
+            manifest=dict(workload_manifest),
         )
 
     monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)

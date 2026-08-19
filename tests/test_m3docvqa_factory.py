@@ -15,6 +15,7 @@ from docprune.benchmark_config import (
 )
 from docprune.m3docrag import SampleInput
 from docprune.m3docvqa_factory import (
+    _is_cli_placeholder,
     _load_index_manifest,
     _write_run_manifest,
     build_workload,
@@ -142,6 +143,86 @@ def test_resume_requires_existing_output_and_incomplete_direct_manifests_collide
     )
     with pytest.raises(FileExistsError, match="unrelated"):
         _write_run_manifest(output, payload, resume=False)
+
+
+def test_direct_resume_binds_raw_run_and_index_source_bytes(tmp_path: Path) -> None:
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    output = tmp_path / "run"
+    run_config = sources / "run-config.json"
+    index_manifest = sources / "index-manifest.json"
+    run_config.write_bytes(b"run-v1")
+    index_manifest.write_bytes(b"index-v1")
+    payload = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "corpus": {},
+        "generation": {},
+        "pruning_config": {},
+        "selection": {},
+        "index_manifest": {"manifest_sha256": "d" * 64},
+        "run_config_source_path": str(run_config.resolve()),
+        "run_config_source_sha256": __import__("hashlib").sha256(b"run-v1").hexdigest(),
+        "index_manifest_source_path": str(index_manifest.resolve()),
+        "index_manifest_source_sha256": __import__("hashlib").sha256(b"index-v1").hexdigest(),
+    }
+    _write_run_manifest(output, payload, resume=False)
+    run_config.write_bytes(b"run-v2")
+    with pytest.raises(ValueError, match="source bytes changed"):
+        _write_run_manifest(output, payload, resume=True)
+    run_config.write_bytes(b"run-v1")
+    changed = dict(payload)
+    changed["run_config_source_sha256"] = __import__("hashlib").sha256(b"run-v2").hexdigest()
+    with pytest.raises(ValueError, match="exactly match"):
+        _write_run_manifest(output, changed, resume=True)
+
+
+def test_cli_placeholder_requires_exact_invocation_values(tmp_path: Path) -> None:
+    from docprune.cli import _manifest
+    from docprune.config import load_config
+
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    config = load_config(config_path)
+    placeholder = _manifest(
+        "evaluate",
+        config_path,
+        config,
+        1,
+        "fake:factory",
+        output=tmp_path,
+        mode="all-kept",
+        run_config=None,
+        index_manifest=None,
+        limit=2,
+        sample_ids=("q-1",),
+    )
+    payload = {
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+    }
+    assert _is_cli_placeholder(placeholder, payload, invocation=placeholder)
+    for field, value in (
+        ("config", "/tmp/stale.toml"),
+        ("factory", "stale:factory"),
+        ("limit", 3),
+        ("sample_ids", ["q-2"]),
+        ("output", str((tmp_path / "other").resolve())),
+    ):
+        stale = dict(placeholder)
+        stale[field] = value
+        assert not _is_cli_placeholder(stale, payload, invocation=placeholder)
 
 
 def test_json_run_config_is_authoritative_and_complete(tmp_path: Path, monkeypatch) -> None:
