@@ -15,6 +15,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
 : "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
@@ -31,17 +32,41 @@ case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
 test -d "$PROJECT_DIR"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
-test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+test -f "$CONTROL_RECORD"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if record.get("schema_version") != 1:
+    raise SystemExit("sealed control record schema mismatch")
+if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.argv[3]:
+    raise SystemExit("sealed control record does not match the reviewed checkout")
+if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
+    raise SystemExit("sealed control record project path mismatch")
+PY
 test -d "$RUNTIME_DIR"
 test -f "$RUN_CONFIG"
 test -f "$INDEX_MANIFEST"
 test -d "$M3DOCRAG_DIR"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
-test -z "$(git -C "$RUNTIME_DIR" status --porcelain)"
+test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
+M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+if [[ -n "$M3DOCRAG_DIRTY" ]]; then
+  while IFS= read -r status_line; do
+    case "$status_line" in
+      "?? "*__pycache__/*.py[co]) ;;
+      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
+    esac
+  done <<< "$M3DOCRAG_DIRTY"
+fi
 
 export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
 export PATH="$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
 export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -88,8 +113,14 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as stream:
     summary = json.load(stream)
-if not isinstance(summary, dict) or summary.get("count") != 2441:
-    raise SystemExit("summary does not contain exactly 2441 results")
+if not isinstance(summary, dict):
+    raise SystemExit("summary is not a JSON object")
+efficiency = summary.get("efficiency")
+if not isinstance(efficiency, dict) or efficiency["samples"] != 2441:
+    raise SystemExit("summary efficiency does not contain exactly 2441 samples")
+quality = summary.get("quality")
+if not isinstance(quality, dict):
+    raise SystemExit("summary is missing combined quality metrics")
+if "count" in quality and quality["count"] != 2441:
+    raise SystemExit("summary quality count is not exactly 2441")
 PY
-
-cp -- "$CELL_ROOT/run/summary.json" "$CELL_ROOT/summary.json"

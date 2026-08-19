@@ -18,7 +18,7 @@ control checkout after the local checks at the end of this document pass.
 control checkout: /home/lmalveau/DocPrune-benchmark
 runtime checkout: /home/lmalveau/DocPrune-runtime-d5cefb3 (detached, clean)
 runtime commit: d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
-control commit: the full Task 7 handoff commit recorded below
+control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-runtime-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
 environment: /home/lmalveau/mamba-envs/docprune-sol
@@ -26,10 +26,82 @@ corpus: /scratch/lmalveau/docprune/datasets/m3docvqa
 factory: docprune.m3docvqa_factory:build_workload
 ```
 
-Set `CONTROL_COMMIT` to the exact full control-checkout commit named below;
-every launcher verifies it before doing work. Every Python command runs from the detached runtime checkout with
-`PYTHONPATH=$RUNTIME_DIR/src`. The M3DocRAG checkout must be clean at its exact
-commit. The control checkout is used only to submit these wrappers.
+Every launcher validates `CONTROL_RECORD` before doing work. The record binds
+the full reviewed control commit and its Git tree SHA, so a later commit cannot
+silently change the meaning of an already-created attempt. Every Python command
+runs from the detached runtime checkout with `PYTHONPATH=$RUNTIME_DIR/src`.
+The M3DocRAG checkout must be clean at its exact commit. The control checkout
+is used only to submit these wrappers.
+
+## Seal the reviewed control checkout
+
+Run this after review, with no jobs submitted and before creating the gate
+configuration. It fails closed on dirty control state, writes outside the
+checkout, and makes the record read-only. Do not edit or overwrite this file;
+a failed attempt gets a new attempt root and a new record.
+
+```bash
+export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
+export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
+mkdir -p "$ATTEMPT_ROOT"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+CONTROL_COMMIT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+python - "$CONTROL_RECORD" "$PROJECT_DIR" "$CONTROL_COMMIT" "$CONTROL_TREE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+output = Path(sys.argv[1])
+payload = {
+    "schema_version": 1,
+    "project_dir": str(Path(sys.argv[2]).resolve()),
+    "control_commit": sys.argv[3],
+    "tree_sha": sys.argv[4],
+}
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+chmod 0444 "$CONTROL_RECORD"
+export CONTROL_COMMIT
+test "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")" = "$CONTROL_COMMIT"
+test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test "$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")" = "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["tree_sha"])' "$CONTROL_RECORD")"
+```
+
+## Prepare pinned runtime and upstream checkouts
+
+This is executable and preserves any pre-existing directory; it never removes
+user data. An absent runtime is created as a detached worktree at the exact
+runtime commit. Existing runtime and M3DocRAG directories must already be the
+same clean pinned checkouts. Git's `--untracked-files=all` check reports every
+non-ignored file. The upstream checkout has no ignore rule for Python bytecode,
+so the only permitted upstream residue is an untracked `__pycache__/*.pyc` or
+`.pyo`; every launcher and the config generator rejects all other changes and
+sets `PYTHONDONTWRITEBYTECODE=1` for new work.
+
+```bash
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
+export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
+export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-runtime-29e6ac2
+export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
+if [[ ! -e "$RUNTIME_DIR" ]]; then
+  git -C "$PROJECT_DIR" worktree add --detach "$RUNTIME_DIR" "$EXPECTED_COMMIT"
+fi
+test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
+test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
+M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+if [[ -n "$M3DOCRAG_DIRTY" ]]; then
+  while IFS= read -r status_line; do
+    case "$status_line" in
+      "?? "*__pycache__/*.py[co]) ;;
+      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
+    esac
+  done <<< "$M3DOCRAG_DIRTY"
+fi
+```
 
 ## Corpus identity
 
@@ -89,10 +161,29 @@ manifest from one mode/page count is never reused for another.
 ## Run-config construction
 
 The gate receives a provisional `gate-top1.json` whose
-`processor_contract_path` points at the not-yet-created gate contract and
-which omits `processor_contract_sha256`. After the gate writes the contract,
-create six final configs under `$RUN_CONFIG_ROOT` with the contract digest.
-Each final JSON must contain the following fields, plus the complete nested
+`processor_contract_path` points at `$ATTEMPT_ROOT/gate/processor-contract.json`
+and which omits `processor_contract_sha256`. After the gate writes the
+contract, the repository-native generator below creates exactly six final
+configs under `$RUN_CONFIG_ROOT`, validates each through the production
+run-config identity loader, and pins the actual contract digest. It refuses to
+overwrite an existing config.
+
+```bash
+export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
+export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
+export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
+export GATE_ROOT="$ATTEMPT_ROOT/gate"
+export PROCESSOR_CONTRACT="$GATE_ROOT/processor-contract.json"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
+  --corpus-root "$CORPUS_ROOT" \
+  --processor-contract "$PROCESSOR_CONTRACT" \
+  --gate "$GATE_ROOT/gate.json" \
+  --control-record "$CONTROL_RECORD" \
+  --m3docrag-root "$M3DOCRAG_DIR" \
+  --output-root "$RUN_CONFIG_ROOT"
+```
+
+Every final JSON contains the following fields, plus the complete nested
 corpus identity shown in the Corpus section:
 
 ```json
@@ -108,7 +199,7 @@ corpus identity shown in the Corpus section:
   "colpali_backbone_model": "vidore/colpaligemma-3b-pt-448-base",
   "colpali_backbone_revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a",
   "processor_contract_path": "/scratch/.../gate/processor-contract.json",
-  "processor_contract_sha256": "<sha256 of that regular file>",
+  "processor_contract_sha256": "actual SHA-256 of processor_contract_path",
   "max_new_tokens": 128,
   "do_sample": false,
   "num_beams": 1,
@@ -118,10 +209,9 @@ corpus identity shown in the Corpus section:
 }
 ```
 
-Construct these JSON files on a compute allocation with
-`CorpusIdentity.from_root`, the constants in `benchmark_config.py`, and the
-actual gate-contract SHA. Do not substitute fixture values or
-`DATASET_REVISION`.
+The generator uses `CorpusIdentity.from_root`, the constants in
+`benchmark_config.py`, and the actual gate-contract SHA. Do not substitute
+fixture values or `DATASET_REVISION`.
 
 ## Ordered submission
 
@@ -156,6 +246,88 @@ model resource/revision variables. The launchers are:
    runs `validate-run --expected-questions 2441` and preserves an independent
    summary.
 
+## Exact Slurm submission commands
+
+This block supplies every launcher variable and directs logs to an absolute
+artifact directory outside the control checkout. `--export=ALL` carries the
+explicitly exported values into each job; comma-separated sample IDs remain
+safe because they are exported through the environment rather than embedded in
+the Slurm export list. Use a fresh `attempt-N` and never reuse a failed root.
+
+```bash
+export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
+export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
+export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
+export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-runtime-29e6ac2
+export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
+export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
+export DOCPRUNE_FACTORY=docprune.m3docvqa_factory:build_workload
+export QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
+export QWEN_REVISION=eed13092ef92e448dd6875b2a00151bd3f7db0ac
+export COLPALI_MODEL=vidore/colpali-v1.2
+export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
+export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
+export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
+export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
+export CONTROL_COMMIT="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
+export GATE_ROOT="$ATTEMPT_ROOT/gate"
+export RUN_CONFIG="$GATE_ROOT/gate-top1.json"
+export PROBE_IMAGE=/scratch/lmalveau/docprune/probes/m3docvqa-144dpi.png
+export GATE_SAMPLE_IDS=a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8
+export SLURM_LOG_DIR="$ATTEMPT_ROOT/slurm-logs"
+export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
+mkdir -p "$SLURM_LOG_DIR" "$GATE_ROOT"
+
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_gate_config.py" \
+  --corpus-root "$CORPUS_ROOT" \
+  --processor-contract "$GATE_ROOT/processor-contract.json" \
+  --m3docrag-root "$M3DOCRAG_DIR" \
+  --output "$RUN_CONFIG"
+
+GATE_JOB="$(sbatch --parsable \
+  --chdir="$SLURM_LOG_DIR" \
+  --output="$SLURM_LOG_DIR/gate-%j.out" \
+  --error="$SLURM_LOG_DIR/gate-%j.err" \
+  --export=ALL \
+  "$PROJECT_DIR/examples/sbatch/12_docprune_m3docvqa_gate.sbatch")"
+
+ALL_KEPT_INDEX_ROOT="$ATTEMPT_ROOT/indexes/all-kept"
+DOCPRUNE_INDEX_ROOT="$ATTEMPT_ROOT/indexes/docprune"
+INDEX_JOB_IDS=()
+for MODE in all-kept docprune; do
+  for PAGES in 1 2 4; do
+    export MODE PAGES RESUME=0
+    export RUN_CONFIG="$RUN_CONFIG_ROOT/${MODE}-top${PAGES}.json"
+    export INDEX_ROOT="$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}"
+    INDEX_JOB_IDS+=("$(sbatch --parsable \
+      --dependency="afterok:$GATE_JOB" \
+      --chdir="$SLURM_LOG_DIR" \
+      --output="$SLURM_LOG_DIR/index-${MODE}-top${PAGES}-%j.out" \
+      --error="$SLURM_LOG_DIR/index-${MODE}-top${PAGES}-%j.err" \
+      --export=ALL \
+      "$PROJECT_DIR/examples/sbatch/13_docprune_m3docvqa_index.sbatch")")
+  done
+done
+
+export ALL_KEPT_INDEX_ROOT DOCPRUNE_INDEX_ROOT ATTEMPT_ROOT RUN_CONFIG_ROOT
+INDEX_DEPENDENCY="$(IFS=:; echo "${INDEX_JOB_IDS[*]}")"
+EVAL_JOB="$(sbatch --parsable \
+  --dependency="afterok:$GATE_JOB:$INDEX_DEPENDENCY" \
+  --chdir="$SLURM_LOG_DIR" \
+  --output="$SLURM_LOG_DIR/eval-%A_%a.out" \
+  --error="$SLURM_LOG_DIR/eval-%A_%a.err" \
+  --export=ALL \
+  "$PROJECT_DIR/examples/sbatch/14_docprune_m3docvqa_eval_array.sbatch")"
+printf 'gate=%s indexes=%s eval=%s\n' "$GATE_JOB" "${INDEX_JOB_IDS[*]}" "$EVAL_JOB"
+```
+
+The gate is the only job without a dependency. Each of the six index jobs is
+blocked by `afterok:$GATE_JOB`; the six-cell array is blocked by the gate and
+all six index jobs. No command in this handoff submits work before the seal,
+runtime/upstream checks, provisional config, and local preflight succeed.
+
 ## Pass conditions and recovery
 
 The gate must report schema 1 `status=passed`, exact runtime/upstream commits,
@@ -174,16 +346,26 @@ failed semantic gate stops all downstream jobs.
 ## Local preflight before submission
 
 From the control checkout, run `bash -n` on all four wrappers, the complete
-CPU pytest suite in `/home/lmalveau/mamba-envs/docprune-sol`, Ruff on `src/`
-and tests, `inspect` and CLI dry runs, Markdown link checks, `git diff --check`,
-and scans proving no weights, caches, datasets, indexes, predictions,
-profiles, secrets, or `DATASET_REVISION` are tracked. Confirm a fresh detached
-runtime checkout at the exact runtime commit is clean, M3DocRAG is clean, and
-the control checkout contains only reviewed source/docs/launchers.
+CPU pytest suite, Ruff on `src/`, tests, and the config generators, `inspect`
+and CLI dry runs, Markdown link checks, `git diff --check`, and scans proving
+no weights, caches, datasets, indexes, predictions, profiles, secrets, or
+`DATASET_REVISION` are tracked:
 
-## Control commit
+```bash
+for wrapper in examples/sbatch/{11,12,13,14}_docprune_m3docvqa*.sbatch; do bash -n "$wrapper"; done
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q
+/home/lmalveau/mamba-envs/docprune-sol/bin/ruff check src tests examples/m3docvqa
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml --pages 1
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q tests/test_cli.py -k dry_run
+git diff --check
+test -z "$(git ls-files | rg 'DATASET_REVISION|(^|/)(weights?|checkpoints?|.*\\.(safetensors|bin|pt|ckpt|gguf|onnx|npz|npy|faiss|parquet|arrow|sqlite|db))$' || true)"
+```
 
-After the handoff and state files are committed, replace this sentence with
-the resulting full commit hash and use that exact control checkout for every
-`sbatch` submission. The runtime remains pinned separately to
-`d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`.
+Then run the pinned runtime/upstream preparation block above. Confirm the
+detached runtime is at the exact commit and clean; M3DocRAG is at its exact
+commit and either clean or has only the explicitly permitted untracked Python
+bytecode; and the control checkout contains only reviewed source/docs/launchers.
+
+The runtime remains pinned separately to
+`d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`; the reviewed control commit is
+always the full SHA sealed in each attempt's `control.json`.

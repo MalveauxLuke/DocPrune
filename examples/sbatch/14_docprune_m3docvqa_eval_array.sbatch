@@ -18,6 +18,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
 : "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
@@ -33,6 +34,22 @@ set -euo pipefail
 test "$SLURM_ARRAY_TASK_ID" -ge 0
 test "$SLURM_ARRAY_TASK_ID" -le 5
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+test -f "$CONTROL_RECORD"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if record.get("schema_version") != 1:
+    raise SystemExit("sealed control record schema mismatch")
+if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.argv[3]:
+    raise SystemExit("sealed control record does not match the reviewed checkout")
+if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
+    raise SystemExit("sealed control record project path mismatch")
+PY
 case "$SLURM_ARRAY_TASK_ID" in
   0) MODE=all-kept; PAGES=1; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top1" ;;
   1) MODE=all-kept; PAGES=2; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top2" ;;

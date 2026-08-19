@@ -16,6 +16,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
 : "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
@@ -26,21 +27,51 @@ set -euo pipefail
 : "${PAGES:?set PAGES to 1, 2, or 4}"
 : "${INDEX_ROOT:?set INDEX_ROOT to a new attempt-specific index directory}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
+: "${RESUME:=0}"
 
 case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
-test ! -e "$INDEX_ROOT"
+case "$RESUME" in 0|1) ;; *) echo "RESUME must be 0 or 1" >&2; exit 2 ;; esac
+if [[ "$RESUME" == 0 ]]; then
+  test ! -e "$INDEX_ROOT"
+else
+  test -d "$INDEX_ROOT"
+fi
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
-test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+test -f "$CONTROL_RECORD"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if record.get("schema_version") != 1:
+    raise SystemExit("sealed control record schema mismatch")
+if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.argv[3]:
+    raise SystemExit("sealed control record does not match the reviewed checkout")
+if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
+    raise SystemExit("sealed control record project path mismatch")
+PY
 test -f "$RUN_CONFIG"
 test -d "$RUNTIME_DIR"
 test -d "$M3DOCRAG_DIR"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
-test -z "$(git -C "$RUNTIME_DIR" status --porcelain)"
+test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
+M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+if [[ -n "$M3DOCRAG_DIRTY" ]]; then
+  while IFS= read -r status_line; do
+    case "$status_line" in
+      "?? "*__pycache__/*.py[co]) ;;
+      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
+    esac
+  done <<< "$M3DOCRAG_DIRTY"
+fi
 
 export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
 export PATH="$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
 export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -51,13 +82,18 @@ export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
 mkdir -p "$(dirname "$INDEX_ROOT")"
 cd "$RUNTIME_DIR"
 
-docprune-m3docvqa embed \
-  --config configs/docprune-m3docvqa.toml \
-  --pages "$PAGES" \
-  --mode "$MODE" \
-  --run-config "$RUN_CONFIG" \
-  --output "$INDEX_ROOT" \
+EMBED_ARGS=(
+  --config configs/docprune-m3docvqa.toml
+  --pages "$PAGES"
+  --mode "$MODE"
+  --run-config "$RUN_CONFIG"
+  --output "$INDEX_ROOT"
   --factory "$DOCPRUNE_FACTORY"
+)
+if [[ "$RESUME" == 1 ]]; then
+  EMBED_ARGS+=(--resume)
+fi
+docprune-m3docvqa embed "${EMBED_ARGS[@]}"
 
 MANIFEST="$INDEX_ROOT/$MODE/manifest.json"
 test -f "$MANIFEST"
@@ -65,23 +101,17 @@ docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml \
   --pages "$PAGES" > "$INDEX_ROOT/inspection.json"
 
 python - "$MANIFEST" "$MODE" "$PAGES" <<'PY'
-import json
 import sys
 from pathlib import Path
+from docprune.m3docvqa_factory import _load_index_manifest
 
-manifest = Path(sys.argv[1])
 mode = sys.argv[2]
 pages = int(sys.argv[3])
-payload = json.loads(manifest.read_text(encoding="utf-8"))
-if payload.get("schema_version") != 4 or payload.get("mode") != mode or payload.get("page_count") != pages:
-    raise SystemExit("index manifest mode/page/schema mismatch")
-for key in ("manifest_sha256", "index_sha256", "embeddings_sha256", "token2pageuid_sha256", "completion_ledger_sha256"):
-    value = payload.get(key)
-    if not isinstance(value, str) or len(value) != 64:
-        raise SystemExit(f"index manifest lacks {key}")
-for key in ("index_path", "embeddings_path", "token2pageuid_path", "completion_ledger_path"):
-    path = Path(str(payload[key]))
-    if not path.is_file() or path.is_symlink():
-        raise SystemExit(f"index artifact missing: {path}")
-print(json.dumps({"status": "passed", "manifest": str(manifest.resolve())}, sort_keys=True))
+manifest_path = Path(sys.argv[1]).resolve()
+manifest = _load_index_manifest(manifest_path)
+if manifest.mode != mode or manifest.page_count != pages:
+    raise SystemExit("index manifest mode/page mismatch")
+if manifest_path.parent != manifest.artifact_root:
+    raise SystemExit("index manifest artifact root mismatch")
+print({"status": "passed", "manifest": str(manifest_path)})
 PY

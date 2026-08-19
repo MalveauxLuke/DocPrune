@@ -15,6 +15,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
 : "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
@@ -34,13 +35,36 @@ set -euo pipefail
 
 test ! -e "$GATE_ROOT"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
-test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+test -f "$CONTROL_RECORD"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if record.get("schema_version") != 1:
+    raise SystemExit("sealed control record schema mismatch")
+if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.argv[3]:
+    raise SystemExit("sealed control record does not match the reviewed checkout")
+if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
+    raise SystemExit("sealed control record project path mismatch")
+PY
 test -f "$PROBE_IMAGE"
 test -f "$RUN_CONFIG"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
-test -z "$(git -C "$RUNTIME_DIR" status --porcelain)"
+test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
-test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
+M3DOCRAG_DIRTY="$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+if [[ -n "$M3DOCRAG_DIRTY" ]]; then
+  while IFS= read -r status_line; do
+    case "$status_line" in
+      "?? "*__pycache__/*.py[co]) ;;
+      *) echo "M3DocRAG checkout has non-bytecode changes: $status_line" >&2; exit 2 ;;
+    esac
+  done <<< "$M3DOCRAG_DIRTY"
+fi
 case "$QWEN_MODEL:$QWEN_REVISION" in
   Qwen/Qwen2-VL-7B-Instruct:eed13092ef92e448dd6875b2a00151bd3f7db0ac) ;;
   *) echo "Qwen resource/revision is not pinned" >&2; exit 2 ;;
@@ -55,6 +79,7 @@ case "$COLPALI_BACKBONE_MODEL:$COLPALI_BACKBONE_REVISION" in
 esac
 
 export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
 export PATH="$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
 export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -150,8 +175,10 @@ done
 
 python - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
+from string import Template
 
 from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
 from docprune.benchmark_config import SHORT_ANSWER_TEMPLATE
@@ -162,32 +189,73 @@ sys.path.insert(0, str(Path(os.environ["M3DOCRAG_DIR"]) / "src"))
 from m3docrag.vqa.qwen2 import generate as official_qwen_generate
 
 run_config_path = Path(sys.argv[1])
-qids = tuple(value for value in sys.argv[2].split(",") if value)
+qids = tuple(value.strip() for value in sys.argv[2].split(",") if value.strip())
 out = Path(sys.argv[3])
 run = _resolve_run_config(run_config_path, mode="all-kept", page_count=1)
 dataset = _make_dataset(run)
 samples = {sample.question_id: sample for sample in dataset}
 if not qids or any(qid not in samples for qid in qids):
     raise SystemExit("fixed gate qids are not present in the corpus")
-sample = samples[qids[0]]
-images = dataset.load_pages(dataset.document_ids[0])
-if len(images) < 4:
-    raise SystemExit("fixed gate document has fewer than four pages")
+source_rows = {}
+with run.corpus.questions_path.open(encoding="utf-8") as stream:
+    for line in stream:
+        if line.strip():
+            row = json.loads(line)
+            source_rows[str(row["qid"])] = row
+if any(qid not in source_rows for qid in qids):
+    raise SystemExit("fixed gate qids are missing from source-order questions")
+source_positions = [
+    index for qid in qids for index, row in enumerate(source_rows.values()) if str(row["qid"]) == qid
+]
+if source_positions != sorted(source_positions):
+    raise SystemExit("fixed gate qids are not in source order")
+supporting_documents = {}
+images_by_qid = {}
+for qid in qids:
+    contexts = source_rows[qid].get("supporting_context")
+    if not isinstance(contexts, list):
+        raise SystemExit(f"source row {qid} has no supporting_context list")
+    candidates = []
+    for context in contexts:
+        doc_id = context.get("doc_id") if isinstance(context, dict) else None
+        if isinstance(doc_id, str) and doc_id in dataset.document_ids and doc_id not in candidates:
+            candidates.append(doc_id)
+    if not candidates:
+        raise SystemExit(f"source row {qid} has no supporting document in the corpus")
+    selected_doc = None
+    selected_images = None
+    for doc_id in candidates:
+        loaded = dataset.load_pages(doc_id)
+        if len(loaded) >= 4:
+            selected_doc = doc_id
+            selected_images = loaded
+            break
+    if selected_doc is None or selected_images is None:
+        raise SystemExit(f"supporting documents for {qid} have insufficient pages")
+    supporting_documents[qid] = selected_doc
+    images_by_qid[qid] = selected_images
 qwen_model, qwen_processor = _load_qwen(run)
 all_kept = AllKeptQwenAnswerer(qwen_model, qwen_processor)
-first = all_kept.answer(images[:1], sample.question)
-second = all_kept.answer(images[:1], sample.question)
-if first.answer != second.answer or first.trace.to_dict() != second.trace.to_dict():
-    raise SystemExit("all-kept repeated fixed-sample outputs differ")
-official_prompt = Template(SHORT_ANSWER_TEMPLATE).substitute(question=sample.question)
-official = official_qwen_generate(
-    model=qwen_model,
-    processor=qwen_processor,
-    question=official_prompt,
-    images=images[:1],
-)[0].strip()
-if first.answer != official:
-    raise SystemExit("official-versus-all-kept answer equivalence failed")
+equivalence = []
+for qid in qids:
+    sample = samples[qid]
+    images = images_by_qid[qid]
+    first = all_kept.answer(images[:1], sample.question)
+    second = all_kept.answer(images[:1], sample.question)
+    if first.answer != second.answer or first.trace.to_dict() != second.trace.to_dict():
+        raise SystemExit(f"all-kept repeated output differs for fixed sample {qid}")
+    official_prompt = Template(SHORT_ANSWER_TEMPLATE).substitute(question=sample.question)
+    official = official_qwen_generate(
+        model=qwen_model,
+        processor=qwen_processor,
+        question=official_prompt,
+        images=images[:1],
+    )[0].strip()
+    if first.answer != official:
+        raise SystemExit(f"official-versus-all-kept answer equivalence failed for {qid}")
+    equivalence.append(qid)
+sample = samples[qids[0]]
+images = images_by_qid[qids[0]]
 colpali_model, colpali_processor = _load_colpali(run)
 config = load_config(Path("configs/docprune-m3docvqa.toml"))
 traces = {}
@@ -205,7 +273,13 @@ for pages in (1, 2, 4):
     if counts[0] <= 0 or any(left < right or right <= 0 for left, right in zip(counts, counts[1:])):
         raise SystemExit(f"non-monotonic or empty DocPrune trace for top-{pages}")
     traces[str(pages)] = counts
-out.write_text(json.dumps({"status": "passed", "baseline_equivalence": True, "docprune_traces": traces}, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+out.write_text(json.dumps({
+    "status": "passed",
+    "baseline_equivalence": True,
+    "equivalence_qids": equivalence,
+    "supporting_documents": supporting_documents,
+    "docprune_traces": traces,
+}, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
 
 python - "$GATE_ROOT/semantic-samples.json" <<'PY'
