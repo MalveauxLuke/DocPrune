@@ -42,6 +42,7 @@ test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain)"
 export PYTHONNOUSERSITE=1
 export PATH="$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
+export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"
 export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
 export TOKENIZERS_PARALLELISM=false
