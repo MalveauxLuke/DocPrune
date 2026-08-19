@@ -701,7 +701,7 @@ def _make_dataset(run_config: object) -> object:
 
 
 def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
-    if isinstance(value, IndexManifest):
+    if type(value) is IndexManifest:
         manifest = value
     elif not isinstance(value, str | Path):
         raise TypeError("index manifest must be an IndexManifest or a manifest JSON path")

@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
+from copy import deepcopy
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -524,6 +525,11 @@ def _run_evaluate(
     requested_manifest: dict[str, object],
     authoritative_manifest: dict[str, object],
 ) -> None:
+    # Keep an invocation snapshot outside the factory's trust boundary.  The
+    # factory receives a separate deep copy so nested JSON values cannot be
+    # mutated in place and then reused as the authority for publication.
+    trusted_requested_manifest = deepcopy(requested_manifest)
+    factory_invocation_manifest = deepcopy(trusted_requested_manifest)
     workload = _invoke_factory(
         factory,
         operation="evaluate",
@@ -536,7 +542,7 @@ def _run_evaluate(
         limit=limit,
         sample_ids=sample_ids,
         resume=resume,
-        invocation_manifest=requested_manifest,
+        invocation_manifest=factory_invocation_manifest,
     )
     if not isinstance(workload, EvaluationWorkload):
         raise TypeError("evaluate factory must return EvaluationWorkload")
@@ -549,7 +555,7 @@ def _run_evaluate(
     _validate_evaluation_workload_manifest(
         workload.manifest,
         existing=existing_manifest,
-        requested=requested_manifest,
+        requested=trusted_requested_manifest,
         config=config,
         authoritative=authoritative_manifest,
     )
@@ -583,7 +589,10 @@ def _run_evaluate(
     existing_manifest.update(workload.manifest)
     existing_manifest.pop("run_manifest_sha256", None)
     existing_manifest["run_manifest_sha256"] = _manifest_digest(existing_manifest)
-    _validate_final_evaluation_manifest(existing_manifest, requested=requested_manifest)
+    _validate_final_evaluation_manifest(
+        existing_manifest,
+        requested=trusted_requested_manifest,
+    )
     _atomic_write_json(manifest_path, existing_manifest)
     results_path = output / "results.jsonl"
     completed: set[str] = set()
@@ -661,11 +670,14 @@ def _validate_embed_result(
     run_config: object | None = None,
     expected_source_order_sha256: str | None = None,
 ) -> None:
+    from docprune.artifacts import IndexManifest
     from docprune.indexing import IndexBuildResult
 
-    if not isinstance(result, IndexBuildResult):
+    if type(result) is not IndexBuildResult:
         raise TypeError("embed factory must return IndexBuildResult")
     manifest = result.manifest
+    if type(manifest) is not IndexManifest:
+        raise TypeError("embed result manifest must be an IndexManifest")
     if manifest.mode != mode or manifest.page_count != pages:
         raise ValueError("embed result mode/page_count does not match the requested run")
     if manifest.m3docrag_commit != M3DOCRAG_COMMIT:
@@ -737,21 +749,11 @@ def _validate_embed_result(
         raise ValueError("embed result manifest must be a regular file")
     if result_manifest_path.resolve() != artifact_root / "manifest.json":
         raise ValueError("embed result manifest path does not match its artifact root")
-    try:
-        persisted_manifest = json.loads(result_manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        raise ValueError("embed result manifest is not valid JSON") from error
-    if not isinstance(persisted_manifest, dict) or persisted_manifest.get("schema_version") != 4:
-        raise ValueError("embed result manifest schema is invalid")
-    supplied_digest = persisted_manifest.get("manifest_sha256")
-    unsigned_persisted = dict(persisted_manifest)
-    unsigned_persisted.pop("manifest_sha256", None)
-    if supplied_digest != _manifest_digest(unsigned_persisted):
-        raise ValueError("embed result manifest digest is invalid")
-    expected_persisted = manifest.to_dict()
-    if persisted_manifest != expected_persisted:
+    from docprune.m3docvqa_factory import _load_index_manifest
+
+    persisted_manifest = _load_index_manifest(result_manifest_path)
+    if persisted_manifest.to_dict() != manifest.to_dict():
         raise ValueError("embed result manifest does not equal its IndexManifest payload")
-    manifest.validate_files()
 
 
 def _run_external(command: str, args: argparse.Namespace) -> int:
@@ -855,6 +857,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             authoritative_manifest=resolved_evaluate_authority,
         )
     else:
+        trusted_manifest = deepcopy(manifest)
         result = _invoke_factory(
             factory,
             operation="embed",
@@ -865,7 +868,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             run_config=args.run_config,
             index_manifest=args.index_manifest,
             resume=args.resume,
-            invocation_manifest=manifest,
+            invocation_manifest=deepcopy(trusted_manifest),
         )
         _validate_embed_result(
             result,
@@ -880,7 +883,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
         manifest_path = args.output / "run_manifest.json"
         if resolved_embed_identity is None:
             raise ValueError("embed run identity was not resolved")
-        base = dict(manifest)
+        base = dict(trusted_manifest)
         trusted_identity_keys = (
             "mode",
             "page_count",
@@ -897,10 +900,10 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             if key not in resolved_embed_identity:
                 raise ValueError(f"embed identity is missing {key}")
             base[key] = resolved_embed_identity[key]
-        base["run_config_source_path"] = manifest.get("run_config")
-        base["run_config_source_sha256"] = manifest.get("run_config_sha256")
-        base["index_manifest_source_path"] = manifest.get("index_manifest")
-        base["index_manifest_source_sha256"] = manifest.get("index_manifest_sha256")
+        base["run_config_source_path"] = trusted_manifest.get("run_config")
+        base["run_config_source_sha256"] = trusted_manifest.get("run_config_sha256")
+        base["index_manifest_source_path"] = trusted_manifest.get("index_manifest")
+        base["index_manifest_source_sha256"] = trusted_manifest.get("index_manifest_sha256")
         base["operation"] = "embed"
         base["selection"] = {
             "requested_sample_ids": None,
@@ -935,19 +938,19 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             "paper_values",
             "reconstruction_defaults",
         ):
-            if base.get(key) != manifest.get(key):
+            if base.get(key) != trusted_manifest.get(key):
                 raise ValueError(f"final embed invocation field {key} changed")
         for source_key, selector_key in (
             ("run_config_source_path", "run_config"),
             ("index_manifest_source_path", "index_manifest"),
         ):
-            if base.get(source_key) != manifest.get(selector_key):
+            if base.get(source_key) != trusted_manifest.get(selector_key):
                 raise ValueError(f"final embed source field {source_key} changed")
         for source_key, digest_key in (
             ("run_config_source_sha256", "run_config_sha256"),
             ("index_manifest_source_sha256", "index_manifest_sha256"),
         ):
-            if base.get(source_key) != manifest.get(digest_key):
+            if base.get(source_key) != trusted_manifest.get(digest_key):
                 raise ValueError(f"final embed source field {source_key} changed")
         _validate_complete_run_manifest(base)
         _atomic_write_json(manifest_path, base)

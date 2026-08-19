@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import docprune.processor_probe
+from docprune.artifacts import IndexManifest
 from docprune.cli import (
     EvaluationWorkload,
     _manifest,
@@ -420,6 +421,112 @@ def test_fresh_evaluate_factory_samples_bind_to_authoritative_rows(tmp_path, mon
     assert not (output / "results.jsonl").exists()
 
 
+def test_evaluate_factory_cannot_mutate_nested_or_scalar_invocation_identity(
+    tmp_path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    config_path = Path("configs/docprune-m3docvqa.toml")
+    config = load_config(config_path)
+    from docprune.m3docvqa_factory import _expected_pruning_identity
+
+    sample = SampleInput("q-1", "authoritative question", ("gold",))
+    authoritative = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(output.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {"pinned": True},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {"mapping": "pinned"},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {"integrity_sha256": "d" * 64},
+        "generation": {"do_sample": False},
+        "pruning_config": _expected_pruning_identity(config, mode="all-kept", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [sample.question_id],
+            "count": 1,
+        },
+        "index_manifest": {},
+    }
+    authoritative["run_manifest_sha256"] = _manifest_digest(authoritative)
+    authority = dict(authoritative)
+    authority["_authoritative_samples"] = (sample,)
+    monkeypatch.setattr(
+        "docprune.cli._resolve_evaluate_authority",
+        lambda *args, **kwargs: authority,
+    )
+
+    class Runner:
+        def run_sample(self, item):
+            return SampleResult(
+                item.question_id,
+                item.question,
+                item.answers,
+                "answer",
+                (RetrievedPage("doc", 0, 1.0),),
+                PruningTrace(4, 3, 2, 1, None),
+                SampleTiming(0.1, 0.2),
+            )
+
+    def factory(**kwargs):
+        invocation = kwargs["invocation_manifest"]
+        invocation["factory"] = "attacker:factory"
+        invocation["paper_values"]["question_threshold"] = 999.0
+        malicious = dict(authoritative)
+        for key in (
+            "schema_version",
+            "status",
+            "command",
+            "config",
+            "factory",
+            "output",
+            "mode",
+            "run_config",
+            "run_config_sha256",
+            "limit",
+            "sample_ids",
+            "page_count",
+            "upstream",
+            "paper_values",
+            "reconstruction_defaults",
+        ):
+            malicious[key] = invocation[key]
+        malicious["run_manifest_sha256"] = _manifest_digest(
+            {key: value for key, value in malicious.items() if key != "run_manifest_sha256"}
+        )
+        (output / "run_manifest.json").write_text(json.dumps(malicious))
+        return EvaluationWorkload(Runner(), (sample,), malicious)
+
+    monkeypatch.setattr("docprune.cli._load_factory", lambda spec: factory)
+    assert (
+        main(
+            [
+                "evaluate",
+                "--config",
+                str(config_path),
+                "--pages",
+                "1",
+                "--output",
+                str(output),
+                "--factory",
+                "fake:factory",
+            ]
+        )
+        == 2
+    )
+    assert not (output / "results.jsonl").exists()
+
+
 def test_resume_rejects_changed_run_config_content_at_same_path(tmp_path) -> None:
     output = tmp_path / "run"
     run_config = tmp_path / "run-config.json"
@@ -754,12 +861,34 @@ def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> N
         documents_built=0,
         documents_resumed=0,
     )
-    with pytest.raises(ValueError, match="processor contract checksum"):
+    with pytest.raises(TypeError, match="IndexManifest"):
         _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
-    manifest.processor_contract_sha256 = __import__("hashlib").sha256(b"contract").hexdigest()
-    manifest.mode = "docprune"
-    with pytest.raises(ValueError, match="mode/page_count"):
-        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
+
+
+def test_embed_result_rejects_a_fake_inner_manifest(tmp_path) -> None:
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+
+    class FakeManifest(IndexManifest):
+        def validate_files(self):
+            return None
+
+    result = IndexBuildResult(
+        manifest=object.__new__(FakeManifest),
+        manifest_path=tmp_path / "manifest.json",
+        mode_root=tmp_path,
+        token2pageuid_path=tmp_path / "token2pageuid.json",
+        completion_ledger_path=tmp_path / "completion-ledger.json",
+        documents_built=0,
+        documents_resumed=0,
+    )
+    with pytest.raises(TypeError, match="IndexManifest"):
+        _validate_embed_result(
+            result,
+            config=config,
+            pages=1,
+            mode="all-kept",
+            output=tmp_path,
+        )
 
 
 def test_evaluation_workload_cannot_inject_a_conflicting_command(tmp_path) -> None:
@@ -861,19 +990,9 @@ def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
     )
 
     def factory(**kwargs):
-        requested = _manifest(
-            "embed",
-            config_path,
-            config,
-            1,
-            "fake:factory",
-            output=output,
-            mode="all-kept",
-            run_config=None,
-            index_manifest=None,
-            limit=None,
-            sample_ids=None,
-        )
+        requested = kwargs["invocation_manifest"]
+        requested["factory"] = "attacker:factory"
+        requested["paper_values"]["question_threshold"] = 999.0
         malicious = dict(requested)
         malicious.update(
             {
@@ -924,6 +1043,7 @@ def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
     assert final["config"] == str(config_path.resolve())
     assert final["factory"] == "fake:factory"
     assert final["output"] == str(output.resolve())
+    assert final["paper_values"]["question_threshold"] == config.for_pages(1).question_threshold
 
 
 def test_embed_preflight_fails_closed_without_authoritative_source_order(
@@ -966,14 +1086,13 @@ def test_embed_preflight_fails_closed_without_authoritative_source_order(
     assert calls == []
 
 
-def test_embed_result_manifest_must_be_regular_json_with_exact_payload(tmp_path) -> None:
+def test_embed_result_rejects_a_fake_manifest_before_file_validation(tmp_path) -> None:
     config = load_config(Path("configs/docprune-m3docvqa.toml"))
     output = tmp_path / "output"
     artifact_root = output / "all-kept"
     artifact_root.mkdir(parents=True)
     contract = tmp_path / "contract.json"
     contract.write_text("contract")
-    payload = {"schema_version": 3, "manifest_sha256": "index"}
     manifest = SimpleNamespace(
         mode="all-kept",
         page_count=1,
@@ -997,7 +1116,6 @@ def test_embed_result_manifest_must_be_regular_json_with_exact_payload(tmp_path)
         processor_contract_sha256=__import__("hashlib").sha256(b"contract").hexdigest(),
         corpus_integrity_sha256="1" * 64,
         source_order_sha256="2" * 64,
-        to_dict=lambda: payload,
         validate_files=lambda: None,
     )
     result = IndexBuildResult(
@@ -1009,40 +1127,5 @@ def test_embed_result_manifest_must_be_regular_json_with_exact_payload(tmp_path)
         documents_built=0,
         documents_resumed=0,
     )
-    with pytest.raises(ValueError, match="source order"):
-        _validate_embed_result(
-            result,
-            config=config,
-            pages=1,
-            mode="all-kept",
-            output=output,
-            expected_source_order_sha256="3" * 64,
-        )
-    result.manifest_path.write_text(json.dumps(payload))
-    with pytest.raises(ValueError, match="schema"):
-        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
-
-    target = tmp_path / "manifest-target.json"
-    target.write_text(json.dumps(payload))
-    result.manifest_path.unlink()
-    result.manifest_path.symlink_to(target)
-    with pytest.raises(ValueError, match="regular"):
-        _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)
-
-    valid_unsigned = {"schema_version": 4}
-    valid_payload = {
-        **valid_unsigned,
-        "manifest_sha256": _manifest_digest(valid_unsigned),
-    }
-    manifest.to_dict = lambda: valid_payload
-    persisted_with_extra = {
-        **valid_payload,
-        "unexpected": True,
-    }
-    persisted_with_extra["manifest_sha256"] = _manifest_digest(
-        {key: value for key, value in persisted_with_extra.items() if key != "manifest_sha256"}
-    )
-    result.manifest_path.unlink()
-    result.manifest_path.write_text(json.dumps(persisted_with_extra))
-    with pytest.raises(ValueError, match="equal"):
+    with pytest.raises(TypeError, match="IndexManifest"):
         _validate_embed_result(result, config=config, pages=1, mode="all-kept", output=output)

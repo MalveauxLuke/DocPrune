@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from docprune.artifacts import IndexManifest
 from docprune.benchmark_config import (
     COLPALI_BACKBONE_MODEL,
     COLPALI_BACKBONE_REVISION,
@@ -296,6 +297,16 @@ def test_index_manifest_rejects_fake_objects_instead_of_trusting_validate_files(
 
     with pytest.raises(TypeError, match="IndexManifest"):
         _load_index_manifest(FakeManifest())
+
+
+def test_index_manifest_rejects_a_malicious_index_manifest_subclass() -> None:
+    class FakeManifest(IndexManifest):
+        def validate_files(self):
+            return None
+
+    fake = object.__new__(FakeManifest)
+    with pytest.raises(TypeError, match="IndexManifest"):
+        _load_index_manifest(fake)
 
 
 def test_completed_results_require_full_schema_and_regular_file(tmp_path: Path) -> None:
