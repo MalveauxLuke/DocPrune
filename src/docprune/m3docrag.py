@@ -39,10 +39,30 @@ class SampleInput:
 class SampleTiming:
     retrieval_seconds: float
     qa_seconds: float
+    peak_allocated_gpu_bytes: int = 0
+    warmup_excluded: bool = False
+    profiler_enabled: bool = False
+    profiler_definition: str | None = None
+    flops: float | None = None
 
     @property
     def total_seconds(self) -> float:
         return self.retrieval_seconds + self.qa_seconds
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize measured fields without publishing disabled profiler data."""
+
+        payload: dict[str, object] = {
+            "retrieval_seconds": self.retrieval_seconds,
+            "qa_seconds": self.qa_seconds,
+            "peak_allocated_gpu_bytes": self.peak_allocated_gpu_bytes,
+            "warmup_excluded": self.warmup_excluded,
+            "profiler_enabled": self.profiler_enabled,
+        }
+        if self.profiler_enabled:
+            payload["profiler_definition"] = self.profiler_definition
+            payload["flops"] = self.flops
+        return payload
 
 
 @dataclass(frozen=True)
@@ -50,6 +70,11 @@ class AnswerOutput:
     answer: str
     trace: PruningTrace
     qa_seconds: float
+    peak_allocated_gpu_bytes: int = 0
+    warmup_excluded: bool = False
+    profiler_enabled: bool = False
+    profiler_definition: str | None = None
+    flops: float | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +95,7 @@ class SampleResult:
             "predicted_answer": self.predicted_answer,
             "retrieved_pages": [asdict(page) for page in self.retrieved_pages],
             "trace": self.trace.to_dict(),
-            "timing": asdict(self.timing),
+            "timing": self.timing.to_dict(),
         }
 
 
@@ -103,6 +128,7 @@ class DocPruneM3DocRAG:
         self.page_loader = page_loader
         self.answerer = answerer
         self.top_k = top_k
+        self._warmup_complete = False
 
     def run_sample(self, sample: SampleInput | Mapping[str, Any]) -> SampleResult:
         item = sample if isinstance(sample, SampleInput) else SampleInput.from_mapping(sample)
@@ -122,8 +148,24 @@ class DocPruneM3DocRAG:
             predicted_answer=answer.answer,
             retrieved_pages=pages,
             trace=answer.trace,
-            timing=SampleTiming(retrieval_seconds, answer.qa_seconds),
+            timing=SampleTiming(
+                retrieval_seconds,
+                answer.qa_seconds,
+                answer.peak_allocated_gpu_bytes,
+                self._warmup_complete,
+                answer.profiler_enabled,
+                answer.profiler_definition,
+                answer.flops,
+            ),
         )
+
+    def warmup(self, sample: SampleInput | Mapping[str, Any]) -> None:
+        """Execute one unrecorded end-to-end sample before measured rows."""
+
+        if self._warmup_complete:
+            return
+        self.run_sample(sample)
+        self._warmup_complete = True
 
 
 class OfficialM3DocRAGBoundary:

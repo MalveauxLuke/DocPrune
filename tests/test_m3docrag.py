@@ -54,6 +54,17 @@ def test_adapter_preserves_official_retrieval_order_and_trace() -> None:
     assert result.to_dict()["answers"] == ["42", "forty two"]
 
 
+def test_runner_marks_rows_warmup_excluded_only_after_explicit_warmup() -> None:
+    runner = DocPruneM3DocRAG(FakeRetriever(), FakePages(), FakeAnswerer(), top_k=2)
+    sample = SampleInput("q-1", "Which value is largest?")
+
+    assert runner.run_sample(sample).timing.warmup_excluded is False
+    runner = DocPruneM3DocRAG(FakeRetriever(), FakePages(), FakeAnswerer(), top_k=2)
+    runner.warmup(sample)
+
+    assert runner.run_sample(sample).timing.warmup_excluded is True
+
+
 @dataclass
 class FakeOfficialRAG:
     calls: int = 0

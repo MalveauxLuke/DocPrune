@@ -3,7 +3,12 @@ import json
 import pytest
 
 from docprune.m3docrag import SampleTiming
-from docprune.metrics import StageMetrics, append_result_jsonl, summarize_jsonl
+from docprune.metrics import (
+    MEASUREMENT_DEFINITION,
+    StageMetrics,
+    append_result_jsonl,
+    summarize_jsonl,
+)
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -21,7 +26,12 @@ def test_metrics_report_literal_drop_rates_and_throughput() -> None:
     got = metrics.to_dict()
 
     assert got["samples"] == 2
-    assert got["visual_tokens"] == {"original": 200, "post_btp": 140, "post_qtp": 90, "post_ctp": 45}
+    assert got["visual_tokens"] == {
+        "original": 200,
+        "post_btp": 140,
+        "post_qtp": 90,
+        "post_ctp": 45,
+    }
     assert got["drop_rates"] == pytest.approx({"btp": 0.3, "qtp": 0.55, "ctp": 0.775})
     assert got["timing_seconds"] == {"retrieval": 2.0, "qa": 8.0, "total": 10.0}
     assert got["original_visual_tokens_per_second"] == pytest.approx(20.0)
@@ -51,3 +61,57 @@ def test_jsonl_writer_refuses_overwrite_and_summary_is_reproducible(tmp_path) ->
     assert got["visual_tokens"]["post_ctp"] == 8
     assert len(path.read_text().splitlines()) == 2
     assert json.loads(path.read_text().splitlines()[0]) == record
+
+
+def test_measurement_aggregate_requires_warmup_flag_and_peak_gpu_bytes() -> None:
+    metrics = StageMetrics()
+    metrics.update(
+        PruningTrace(10, 8, 6, 4, None),
+        SampleTiming(
+            1.0,
+            2.0,
+            peak_allocated_gpu_bytes=4096,
+            warmup_excluded=True,
+        ),
+    )
+    metrics.update(
+        PruningTrace(10, 7, 5, 3, None),
+        SampleTiming(
+            1.0,
+            2.0,
+            peak_allocated_gpu_bytes=8192,
+            warmup_excluded=True,
+        ),
+    )
+
+    assert metrics.to_dict()["measurement"] == {
+        "definition": MEASUREMENT_DEFINITION,
+        "peak_allocated_gpu_bytes": 8192,
+        "warmup_excluded": True,
+        "profiler_enabled": False,
+    }
+
+
+def test_profiler_fields_are_serialized_only_when_enabled() -> None:
+    metrics = StageMetrics()
+    metrics.update(
+        PruningTrace(10, 8, 6, 4, None),
+        SampleTiming(
+            1.0,
+            2.0,
+            peak_allocated_gpu_bytes=4096,
+            warmup_excluded=True,
+            profiler_enabled=True,
+            profiler_definition="torch.profiler total FLOPs",
+            flops=10.5,
+        ),
+    )
+
+    assert metrics.to_dict()["measurement"] == {
+        "definition": MEASUREMENT_DEFINITION,
+        "peak_allocated_gpu_bytes": 4096,
+        "warmup_excluded": True,
+        "profiler_enabled": True,
+        "profiler_definition": "torch.profiler total FLOPs",
+        "flops": 10.5,
+    }

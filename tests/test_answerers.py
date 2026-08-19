@@ -65,6 +65,8 @@ def test_all_kept_answerer_uses_exact_prompt_greedy_settings_and_new_tokens() ->
     assert output.trace.post_btp_visual_tokens == 4
     assert output.trace.post_qtp_visual_tokens == 4
     assert output.trace.post_ctp_visual_tokens == 4
+    assert output.warmup_excluded is False
+    assert output.peak_allocated_gpu_bytes >= 0
     call = model.calls[0]
     assert call["max_new_tokens"] == 128
     assert call["do_sample"] is False

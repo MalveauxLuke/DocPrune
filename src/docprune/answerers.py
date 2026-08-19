@@ -44,6 +44,24 @@ def _model_device(model: object) -> torch.device | None:
         return None
 
 
+def _begin_gpu_measurement(model: object) -> torch.device | None:
+    """Reset the CUDA peak counter immediately before the measured model call."""
+
+    device = _model_device(model)
+    if device is None or device.type != "cuda" or not torch.cuda.is_available():
+        return None
+    torch.cuda.synchronize(device)
+    torch.cuda.reset_peak_memory_stats(device)
+    return device
+
+
+def _end_gpu_measurement(device: torch.device | None) -> int:
+    if device is None:
+        return 0
+    torch.cuda.synchronize(device)
+    return int(torch.cuda.max_memory_allocated(device))
+
+
 def _move_batch(batch: object, device: torch.device | None) -> dict[str, object]:
     if not isinstance(batch, Mapping):
         raise ValueError("Qwen processor must return a mapping")
@@ -216,6 +234,7 @@ class AllKeptQwenAnswerer:
 
     def answer(self, images: Sequence[object], question: str) -> AnswerOutput:
         started = time.perf_counter()
+        measurement_device = _begin_gpu_measurement(self.model)
         batch = _prepare_batch(self.processor, images, question)
         input_ids = torch.as_tensor(_value(batch, "input_ids"), dtype=torch.long)
         grid = _grid(batch)
@@ -228,8 +247,15 @@ class AllKeptQwenAnswerer:
                 do_sample=False,
                 num_beams=1,
             )
+        peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
         answer = _decode_new_tokens(self.processor, torch.as_tensor(generated), input_ids.shape[1])
-        return AnswerOutput(answer, _all_kept_trace(grid), time.perf_counter() - started)
+        return AnswerOutput(
+            answer,
+            _all_kept_trace(grid),
+            time.perf_counter() - started,
+            peak_allocated_gpu_bytes,
+            False,
+        )
 
 
 class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
@@ -386,6 +412,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
 
     def answer(self, images: Sequence[object], question: str) -> AnswerOutput:
         started = time.perf_counter()
+        measurement_device = _begin_gpu_measurement(self.model)
         prepared = [prepare_qwen_page(self.processor, image) for image in images]
         qwen_images = [prepared_raster_image(page) for page in prepared]
         batch = _prepare_batch(self.processor, qwen_images, question)
@@ -429,7 +456,14 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 max_new_tokens=self.max_new_tokens,
                 eos_token_ids=eos,
             )
+        peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
         # The adapter intentionally returns only generated IDs; stock Qwen
         # returns the prompt plus its generated suffix.
         answer = _decode_new_tokens(self.processor, result.generated_ids, 0)
-        return AnswerOutput(answer, result.trace, time.perf_counter() - started)
+        return AnswerOutput(
+            answer,
+            result.trace,
+            time.perf_counter() - started,
+            peak_allocated_gpu_bytes,
+            False,
+        )

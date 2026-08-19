@@ -55,6 +55,17 @@ def test_summarize_prints_aggregate_json(tmp_path, capsys) -> None:
     assert json.loads(capsys.readouterr().out)["samples"] == 1
 
 
+def test_validate_run_prints_report_and_returns_nonzero_for_invalid_run(tmp_path, capsys) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "run_manifest.json").write_text("{}")
+
+    exit_code = main(["validate-run", "--run", str(run), "--expected-questions", "2"])
+
+    assert exit_code == 2
+    assert json.loads(capsys.readouterr().out)["valid"] is False
+
+
 def test_evaluate_dry_run_refuses_existing_output(tmp_path, capsys) -> None:
     output = tmp_path / "run"
     output.mkdir()
@@ -706,7 +717,7 @@ def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
 
 def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypatch) -> None:
     output = tmp_path / "run"
-    calls = {"runs": 0, "answers": []}
+    calls = {"runs": 0, "answers": [], "warmups": []}
     config = load_config(Path("configs/docprune-m3docvqa.toml"))
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
@@ -745,6 +756,9 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     )
 
     class Runner:
+        def warmup(self, sample):
+            calls["warmups"].append(sample.question_id)
+
         def run_sample(self, sample):
             calls["answers"].append(sample.question_id)
             if calls["runs"] == 1 and sample.question_id == "q-2":
@@ -788,10 +802,12 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     with pytest.raises(RuntimeError, match="interrupted"):
         main(args)
     assert calls["answers"] == ["q-1", "q-2"]
+    assert calls["warmups"] == ["q-1"]
 
     calls["answers"] = []
     assert main(args + ["--resume"]) == 0
     assert calls["answers"] == ["q-2", "q-3"]
+    assert calls["warmups"] == ["q-1", "q-2"]
     records = [json.loads(line) for line in (output / "results.jsonl").read_text().splitlines()]
     assert [record["question_id"] for record in records] == ["q-1", "q-2", "q-3"]
     manifest = json.loads((output / "run_manifest.json").read_text())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,11 @@ from typing import Any
 
 from docprune.m3docrag import SampleTiming
 from docprune.qwen2vl.model import PruningTrace
+
+MEASUREMENT_DEFINITION = (
+    "peak_allocated_gpu_bytes is torch.cuda.max_memory_allocated after a synchronized "
+    "counter reset at the start of the complete QA path and synchronization after generation"
+)
 
 
 @dataclass
@@ -21,6 +27,11 @@ class StageMetrics:
     post_ctp: int = 0
     retrieval_seconds: float = 0.0
     qa_seconds: float = 0.0
+    peak_allocated_gpu_bytes: int = 0
+    warmup_excluded: bool = False
+    profiler_enabled: bool = False
+    profiler_definition: str | None = None
+    flops: float | None = None
 
     def update(self, trace: PruningTrace, timing: SampleTiming) -> None:
         counts = (
@@ -37,6 +48,39 @@ class StageMetrics:
             )
         if timing.retrieval_seconds < 0 or timing.qa_seconds < 0:
             raise ValueError("timings must be nonnegative")
+        peak = getattr(timing, "peak_allocated_gpu_bytes", 0)
+        warmup_excluded = getattr(timing, "warmup_excluded", False)
+        profiler_enabled = getattr(timing, "profiler_enabled", False)
+        profiler_definition = getattr(timing, "profiler_definition", None)
+        flops = getattr(timing, "flops", None)
+        if (
+            not isinstance(peak, int)
+            or isinstance(peak, bool)
+            or peak < 0
+            or not isinstance(warmup_excluded, bool)
+            or not isinstance(profiler_enabled, bool)
+        ):
+            raise ValueError("measurement fields are invalid")
+        if profiler_enabled:
+            if not isinstance(profiler_definition, str) or not profiler_definition:
+                raise ValueError("enabled profiler requires a definition")
+            if (
+                not isinstance(flops, int | float)
+                or isinstance(flops, bool)
+                or not math.isfinite(float(flops))
+                or float(flops) < 0
+            ):
+                raise ValueError("enabled profiler requires finite nonnegative FLOPs")
+            if (
+                self.profiler_definition is not None
+                and self.profiler_definition != profiler_definition
+            ):
+                raise ValueError("profiler definition changed across samples")
+            self.profiler_definition = profiler_definition
+            self.flops = (self.flops or 0.0) + float(flops)
+            self.profiler_enabled = True
+        elif profiler_definition is not None or flops is not None:
+            raise ValueError("profiler definition and FLOPs require profiling")
         self.samples += 1
         self.original += counts[0]
         self.post_btp += counts[1]
@@ -44,6 +88,11 @@ class StageMetrics:
         self.post_ctp += counts[3]
         self.retrieval_seconds += timing.retrieval_seconds
         self.qa_seconds += timing.qa_seconds
+        self.peak_allocated_gpu_bytes = max(self.peak_allocated_gpu_bytes, peak)
+        if self.samples == 1:
+            self.warmup_excluded = warmup_excluded
+        else:
+            self.warmup_excluded = self.warmup_excluded and warmup_excluded
 
     def to_dict(self) -> dict[str, object]:
         total_seconds = self.retrieval_seconds + self.qa_seconds
@@ -51,7 +100,7 @@ class StageMetrics:
         def drop(retained: int) -> float:
             return 0.0 if self.original == 0 else 1.0 - retained / self.original
 
-        return {
+        payload: dict[str, object] = {
             "samples": self.samples,
             "visual_tokens": {
                 "original": self.original,
@@ -72,7 +121,20 @@ class StageMetrics:
             "original_visual_tokens_per_second": (
                 0.0 if total_seconds == 0 else self.original / total_seconds
             ),
+            "measurement": {
+                "definition": MEASUREMENT_DEFINITION,
+                "peak_allocated_gpu_bytes": self.peak_allocated_gpu_bytes,
+                "warmup_excluded": self.warmup_excluded,
+                "profiler_enabled": self.profiler_enabled,
+            },
         }
+        if self.profiler_enabled:
+            measurement = payload["measurement"]
+            if not isinstance(measurement, dict):
+                raise AssertionError("measurement aggregate must be a dictionary")
+            measurement["profiler_definition"] = self.profiler_definition
+            measurement["flops"] = self.flops
+        return payload
 
 
 def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = False) -> None:

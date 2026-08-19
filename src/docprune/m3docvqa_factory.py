@@ -70,6 +70,7 @@ _CLI_PLACEHOLDER_KEYS = frozenset(
         "upstream",
         "paper_values",
         "reconstruction_defaults",
+        "measurement",
     }
 )
 
@@ -347,7 +348,17 @@ def _validate_result_record(
     ):
         raise ValueError(f"results JSONL record {line_number} has invalid ctp_layer")
     timing = record["timing"]
-    if not isinstance(timing, Mapping) or set(timing) != {"retrieval_seconds", "qa_seconds"}:
+    timing_fields = {"retrieval_seconds", "qa_seconds"}
+    optional_timing_fields = {
+        "peak_allocated_gpu_bytes",
+        "warmup_excluded",
+        "profiler_enabled",
+        "profiler_definition",
+        "flops",
+    }
+    if not isinstance(timing, Mapping) or not timing_fields <= set(timing):
+        raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
+    if set(timing) - timing_fields - optional_timing_fields:
         raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
     if any(
         not isinstance(timing[name], int | float)
@@ -357,6 +368,33 @@ def _validate_result_record(
         for name in ("retrieval_seconds", "qa_seconds")
     ):
         raise ValueError(f"results JSONL record {line_number} has invalid timings")
+    if "peak_allocated_gpu_bytes" in timing and (
+        not isinstance(timing["peak_allocated_gpu_bytes"], int)
+        or isinstance(timing["peak_allocated_gpu_bytes"], bool)
+        or timing["peak_allocated_gpu_bytes"] < 0
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid peak GPU bytes")
+    if "warmup_excluded" in timing and not isinstance(timing["warmup_excluded"], bool):
+        raise ValueError(f"results JSONL record {line_number} has invalid warmup flag")
+    profiler_enabled = timing.get("profiler_enabled", False)
+    if not isinstance(profiler_enabled, bool):
+        raise ValueError(f"results JSONL record {line_number} has invalid profiler flag")
+    if profiler_enabled:
+        definition = timing.get("profiler_definition")
+        flops = timing.get("flops")
+        if not isinstance(definition, str) or not definition:
+            raise ValueError(f"results JSONL record {line_number} has invalid profiler definition")
+        if (
+            not isinstance(flops, int | float)
+            or isinstance(flops, bool)
+            or not math.isfinite(float(flops))
+            or float(flops) < 0
+        ):
+            raise ValueError(f"results JSONL record {line_number} has invalid profiler FLOPs")
+    elif "profiler_definition" in timing or "flops" in timing:
+        raise ValueError(
+            f"results JSONL record {line_number} records profiler data while profiling is disabled"
+        )
 
 
 def _resolve_mode(mode: str | None, run_config: object | None) -> str:

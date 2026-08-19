@@ -28,7 +28,7 @@ from docprune.benchmark_config import (
 )
 from docprune.config import DocPruneConfig, load_config
 from docprune.m3docrag import DocPruneM3DocRAG, SampleInput
-from docprune.metrics import append_result_jsonl, summarize_jsonl
+from docprune.metrics import MEASUREMENT_DEFINITION, append_result_jsonl, summarize_jsonl
 
 DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
 
@@ -300,6 +300,12 @@ def _parser() -> argparse.ArgumentParser:
     summarize = subparsers.add_parser("summarize", help="aggregate an immutable result JSONL")
     summarize.add_argument("--results", type=Path, required=True)
 
+    validate_run = subparsers.add_parser(
+        "validate-run", help="independently validate a completed benchmark run"
+    )
+    validate_run.add_argument("--run", type=Path, required=True)
+    validate_run.add_argument("--expected-questions", type=int, default=2441)
+
     probe = subparsers.add_parser(
         "probe-processors", help="record the pinned Qwen and ColPali processor contract"
     )
@@ -383,6 +389,11 @@ def _manifest(
         ),
         "limit": limit,
         "sample_ids": None if sample_ids is None else list(sample_ids),
+        "measurement": {
+            "definition": MEASUREMENT_DEFINITION,
+            "warmup_required": True,
+            "profiler_enabled": False,
+        },
         **_resolved_config(config, pages),
     }
 
@@ -621,6 +632,11 @@ def _run_evaluate(
         if tuple(existing_order) != qids[: len(existing_order)]:
             raise ValueError("resume results must be an exact source-order prefix")
     append_mode = resume and results_path.exists()
+    pending_samples = tuple(sample for sample in samples if sample.question_id not in completed)
+    if pending_samples:
+        warmup = getattr(workload.runner, "warmup", None)
+        if callable(warmup):
+            warmup(pending_samples[0])
     for sample in samples:
         if sample.question_id in completed:
             continue
@@ -641,7 +657,13 @@ def _run_evaluate(
             raise ValueError(f"result does not match source sample {sample.question_id}")
         append_result_jsonl(results_path, record, resume=append_mode)
         append_mode = True
-    _atomic_write_json(output / "summary.json", summarize_jsonl(results_path))
+    from docprune.evaluation import source_rows_from_manifest, summarize_benchmark_run
+
+    source_rows = source_rows_from_manifest(existing_manifest, output)
+    _atomic_write_json(
+        output / "summary.json",
+        summarize_benchmark_run(results_path, source_rows),
+    )
 
 
 def _invoke_factory(factory: Callable[..., object], **kwargs: object) -> object:
@@ -967,6 +989,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "summarize":
             print(json.dumps(summarize_jsonl(args.results), indent=2, sort_keys=True))
             return 0
+        if args.command == "validate-run":
+            from docprune.evaluation import validate_benchmark_run
+
+            report = validate_benchmark_run(args.run, args.expected_questions)
+            print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+            return 0 if report.valid else 2
         if args.command == "probe-processors":
             from docprune import processor_probe
 
