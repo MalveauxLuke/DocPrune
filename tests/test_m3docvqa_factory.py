@@ -387,6 +387,51 @@ def test_json_run_config_is_authoritative_and_complete(tmp_path: Path, monkeypat
     assert resolved.corpus.root == corpus_root
 
 
+@pytest.mark.parametrize("value", [1, 0, "true", "false"])
+def test_json_run_config_rejects_non_boolean_corpus_fixture_flag(value) -> None:
+    from docprune.m3docvqa_factory import _normalise_run_config_mapping
+
+    corpus = {
+        "root": "/corpus",
+        "questions_path": "/corpus/questions.jsonl",
+        "document_ids_path": "/corpus/doc_ids.json",
+        "pdf_dir": "/corpus/pdfs",
+        "integrity_report_path": "/corpus/integrity.json",
+        "archive_checksum_manifest_path": "/corpus/archives.sha256",
+        "integrity_sha256": "a" * 64,
+        "archive_checksum_manifest_sha256": "b" * 64,
+        "questions_sha256": "c" * 64,
+        "document_ids_sha256": "d" * 64,
+        "expected_question_count": 1,
+        "expected_pdf_count": 1,
+        "expected_page_count": 1,
+        "archive_hashes": {},
+        "is_fixture": value,
+    }
+    payload = {
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "e" * 40,
+        "m3docrag_commit": "f" * 40,
+        "resources": {
+            "qwen": {"model": "qwen", "revision": "1" * 40},
+            "colpali": {"model": "colpali", "revision": "2" * 40},
+            "colpali_backbone": {"model": "backbone", "revision": "3" * 40},
+        },
+        "processor_contract_path": "/contract.json",
+        "corpus": corpus,
+        "generation": {
+            "max_new_tokens": 128,
+            "do_sample": False,
+            "num_beams": 1,
+            "prompt": "question: $question\noutput only answer.",
+        },
+    }
+
+    with pytest.raises(ValueError, match="is_fixture"):
+        _normalise_run_config_mapping(payload)
+
+
 def test_index_manifest_schema_and_digest_are_checked_before_construction(tmp_path: Path) -> None:
     wrong_schema = tmp_path / "wrong-schema.json"
     wrong_schema.write_text(json.dumps({"schema_version": 3, "manifest_sha256": "0" * 64}))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -73,9 +74,7 @@ def make_corpus(root: Path) -> CorpusIdentity:
     archives.parent.mkdir()
     archive_hashes = write_archive_fixture(questions.parent)
     archives.write_text(
-        "".join(
-            f"{digest}  {questions.parent / name}\n" for name, digest in archive_hashes.items()
-        )
+        "".join(f"{digest}  {questions.parent / name}\n" for name, digest in archive_hashes.items())
     )
     return CorpusIdentity.fixture(
         root=root,
@@ -103,6 +102,14 @@ def test_corpus_identity_requires_verified_files_and_integrity_hash(tmp_path: Pa
     corpus.integrity_report_path.write_text("changed")
     with pytest.raises(ValueError, match="integrity SHA-256 mismatch"):
         corpus.validate()
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", "false", None])
+def test_corpus_identity_rejects_non_boolean_fixture_flag(tmp_path: Path, value: object) -> None:
+    corpus = make_corpus(tmp_path / "corpus")
+
+    with pytest.raises((TypeError, ValueError), match="is_fixture"):
+        replace(corpus, is_fixture=value)
 
 
 def test_production_corpus_identity_uses_fixed_acquisition_identities(tmp_path: Path) -> None:
@@ -159,7 +166,9 @@ def test_corpus_identity_requires_exact_archive_manifest_and_preserved_archives(
         )
     elif mutation == "extra":
         with corpus.archive_checksum_manifest_path.open("a") as stream:
-            stream.write("a" * 64 + "  " + str(corpus.questions_path.parent / "extra.jsonl.gz") + "\n")
+            stream.write(
+                "a" * 64 + "  " + str(corpus.questions_path.parent / "extra.jsonl.gz") + "\n"
+            )
         object.__setattr__(
             corpus,
             "archive_checksum_manifest_sha256",
@@ -203,11 +212,18 @@ def test_run_config_binds_exact_resources_and_renders_upstream_prompt(tmp_path: 
     contract = tmp_path / "processor-contract.json"
     contract.write_text("{}")
     config = BenchmarkRunConfig(
-        mode="docprune", page_count=4, corpus=corpus, runtime_commit="a" * 40,
-        m3docrag_commit=M3DOCRAG_COMMIT, qwen_model=QWEN_MODEL, qwen_revision=QWEN_REVISION,
-        colpali_model=COLPALI_MODEL, colpali_revision=COLPALI_REVISION,
+        mode="docprune",
+        page_count=4,
+        corpus=corpus,
+        runtime_commit="a" * 40,
+        m3docrag_commit=M3DOCRAG_COMMIT,
+        qwen_model=QWEN_MODEL,
+        qwen_revision=QWEN_REVISION,
+        colpali_model=COLPALI_MODEL,
+        colpali_revision=COLPALI_REVISION,
         colpali_backbone_model=COLPALI_BACKBONE_MODEL,
-        colpali_backbone_revision=COLPALI_BACKBONE_REVISION, processor_contract_path=contract,
+        colpali_backbone_revision=COLPALI_BACKBONE_REVISION,
+        processor_contract_path=contract,
     )
 
     assert config.mode == "docprune"
@@ -238,11 +254,16 @@ def test_run_config_rejects_unknown_mode_or_page_count(
     contract = tmp_path / "contract.json"
     contract.write_text("{}")
     for name, value in {
-        "DOCPRUNE_CORPUS_ROOT": str(corpus.root), "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
-        "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT, "QWEN_MODEL": QWEN_MODEL,
-        "QWEN_REVISION": QWEN_REVISION, "COLPALI_MODEL": COLPALI_MODEL,
-        "COLPALI_REVISION": COLPALI_REVISION, "COLPALI_BACKBONE_MODEL": COLPALI_BACKBONE_MODEL,
-        "COLPALI_BACKBONE_REVISION": COLPALI_BACKBONE_REVISION, "DOCPRUNE_PROCESSOR_CONTRACT": str(contract),
+        "DOCPRUNE_CORPUS_ROOT": str(corpus.root),
+        "DOCPRUNE_RUNTIME_COMMIT": "a" * 40,
+        "M3DOCRAG_COMMIT": M3DOCRAG_COMMIT,
+        "QWEN_MODEL": QWEN_MODEL,
+        "QWEN_REVISION": QWEN_REVISION,
+        "COLPALI_MODEL": COLPALI_MODEL,
+        "COLPALI_REVISION": COLPALI_REVISION,
+        "COLPALI_BACKBONE_MODEL": COLPALI_BACKBONE_MODEL,
+        "COLPALI_BACKBONE_REVISION": COLPALI_BACKBONE_REVISION,
+        "DOCPRUNE_PROCESSOR_CONTRACT": str(contract),
     }.items():
         monkeypatch.setenv(name, value)
 

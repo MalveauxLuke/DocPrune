@@ -52,6 +52,17 @@
   trace counts are strictly positive, and every result must explicitly carry
   a boolean `profiler_enabled` state matching the run declaration.
 
+## Hardening round 3
+
+- `CorpusIdentity` now requires `is_fixture` to be an exact boolean, and JSON
+  run-config normalization rejects integer/string fixture flags instead of
+  accepting or coercing them.
+- Manifest validation preserves the distinction between production (`False`)
+  and explicit fixture (`True`) identities, rejects every non-boolean value,
+  and no longer uses permissive boolean conversion when serializing identities.
+- Added direct corpus, run-config, and public-validator regressions for JSON
+  `is_fixture` values `1`, `0`, and strings.
+
 ## TDD evidence
 
 The required focused command initially failed during collection because the
@@ -70,17 +81,17 @@ source-integrity, profiler, and warmup tests.
 
 ```text
 PYTHONPATH=src .../python -m pytest -q
-252 passed, 1 skipped (opt-in cached real-model probe)
+265 passed, 1 skipped (opt-in cached real-model probe)
 
 PYTHONPATH=src .../python -m pytest \
   tests/test_evaluation.py tests/test_metrics.py tests/test_cli.py -q
-59 passed
+59 passed (focused baseline; round-3 boundary regressions are included in the full suite)
 
 .../ruff check [all Task-6 changed source/tests]
 All checks passed!
 
 .../ruff format --check [all Task-6 changed source/tests]
-5 files already formatted
+6 files already formatted
 
 git diff --check
 clean

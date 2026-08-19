@@ -448,6 +448,26 @@ def test_fixture_marker_cannot_bypass_default_production_validation(tmp_path):
     assert any("run configuration" in error for error in report.errors)
 
 
+@pytest.mark.parametrize("value", [1, 0, "true", "false"])
+def test_validator_rejects_non_boolean_fixture_flag(tmp_path, value):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest_path = run / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["corpus"]["is_fixture"] = value
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
+
+    assert report.valid is False
+    assert any("is_fixture" in error for error in report.errors)
+
+
 def test_production_records_reject_zero_peak_gpu_measurement(tmp_path):
     run = tmp_path / "run"
     _write_valid_run(run)

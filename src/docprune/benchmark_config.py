@@ -104,12 +104,16 @@ class CorpusIdentity:
     archive_hashes: Mapping[str, str] = MappingProxyType({})
 
     def __post_init__(self) -> None:
+        if type(self.is_fixture) is not bool:
+            raise TypeError("is_fixture must be a boolean")
         object.__setattr__(self, "root", Path(self.root))
         object.__setattr__(self, "questions_path", Path(self.questions_path))
         object.__setattr__(self, "document_ids_path", Path(self.document_ids_path))
         object.__setattr__(self, "pdf_dir", Path(self.pdf_dir))
         object.__setattr__(self, "integrity_report_path", Path(self.integrity_report_path))
-        object.__setattr__(self, "archive_checksum_manifest_path", Path(self.archive_checksum_manifest_path))
+        object.__setattr__(
+            self, "archive_checksum_manifest_path", Path(self.archive_checksum_manifest_path)
+        )
         for name in (
             "integrity_sha256",
             "archive_checksum_manifest_sha256",
@@ -122,7 +126,11 @@ class CorpusIdentity:
             for name, digest in self.archive_hashes.items()
         }
         object.__setattr__(self, "archive_hashes", MappingProxyType(archive_hashes))
-        if self.expected_question_count < 1 or self.expected_pdf_count < 1 or self.expected_page_count < 1:
+        if (
+            self.expected_question_count < 1
+            or self.expected_pdf_count < 1
+            or self.expected_page_count < 1
+        ):
             raise ValueError("expected corpus counts must be positive")
         if not self.is_fixture and (
             self.integrity_sha256 != FINAL_INTEGRITY_SHA256
@@ -173,18 +181,26 @@ class CorpusIdentity:
                 raise FileNotFoundError(f"required corpus {label} is missing: {path}")
         for path, expected, label in (
             (self.integrity_report_path, self.integrity_sha256, "integrity"),
-            (self.archive_checksum_manifest_path, self.archive_checksum_manifest_sha256, "archive manifest"),
+            (
+                self.archive_checksum_manifest_path,
+                self.archive_checksum_manifest_sha256,
+                "archive manifest",
+            ),
             (self.questions_path, self.questions_sha256, "MMQA_dev.jsonl"),
             (self.document_ids_path, self.document_ids_sha256, "dev_doc_ids.json"),
         ):
             actual = sha256_file(path)
             if actual != expected:
-                raise ValueError(f"corpus {label} SHA-256 mismatch: expected {expected}, got {actual}")
+                raise ValueError(
+                    f"corpus {label} SHA-256 mismatch: expected {expected}, got {actual}"
+                )
         self._validate_archives()
         try:
             report = json.loads(self.integrity_report_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
-            raise ValueError(f"corpus integrity report is not JSON: {self.integrity_report_path}") from error
+            raise ValueError(
+                f"corpus integrity report is not JSON: {self.integrity_report_path}"
+            ) from error
         if not isinstance(report, dict):
             raise ValueError("corpus integrity report must be a JSON object")
         expected = {
@@ -209,7 +225,9 @@ class CorpusIdentity:
             return
         archive_root = self.questions_path.parent
         observed: dict[str, tuple[str, Path]] = {}
-        for raw_line in self.archive_checksum_manifest_path.read_text(encoding="utf-8").splitlines():
+        for raw_line in self.archive_checksum_manifest_path.read_text(
+            encoding="utf-8"
+        ).splitlines():
             if not raw_line.strip():
                 continue
             parts = raw_line.split(maxsplit=1)
@@ -221,7 +239,9 @@ class CorpusIdentity:
                 raise ValueError("archive checksum manifest has duplicate entries")
             observed[path.name] = (digest.lower(), path)
         if set(observed) != set(self.archive_hashes):
-            raise ValueError("archive checksum manifest entries do not match the pinned archive set")
+            raise ValueError(
+                "archive checksum manifest entries do not match the pinned archive set"
+            )
         actual_paths = {path.name for path in archive_root.glob("*.jsonl.gz")}
         if actual_paths != set(self.archive_hashes):
             raise ValueError("preserved MMQA archive files do not match the pinned archive set")

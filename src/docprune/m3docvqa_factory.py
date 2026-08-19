@@ -543,7 +543,10 @@ def _normalise_run_config_mapping(
         if not isinstance(archive_hashes, Mapping):
             raise ValueError("run configuration corpus archive_hashes must be a mapping")
         corpus_values["archive_hashes"] = dict(archive_hashes)
-        corpus_values.setdefault("is_fixture", False)
+        if "is_fixture" not in corpus_values:
+            corpus_values["is_fixture"] = False
+        elif type(corpus_values["is_fixture"]) is not bool:
+            raise ValueError("run configuration corpus is_fixture must be a boolean")
         try:
             corpus = CorpusIdentity(**corpus_values)
         except (TypeError, ValueError) as error:
@@ -568,6 +571,9 @@ def _corpus_identity_payload(corpus: object) -> dict[str, object]:
     payload: dict[str, object] = {
         name: str(Path(_required(corpus, name)).resolve()) for name in path_fields
     }
+    is_fixture = _value(corpus, "is_fixture", False)
+    if type(is_fixture) is not bool:
+        raise TypeError("corpus is_fixture must be a boolean")
     payload.update(
         {
             "integrity_sha256": str(_required(corpus, "integrity_sha256")),
@@ -579,7 +585,7 @@ def _corpus_identity_payload(corpus: object) -> dict[str, object]:
             "expected_question_count": int(_required(corpus, "expected_question_count")),
             "expected_pdf_count": int(_required(corpus, "expected_pdf_count")),
             "expected_page_count": int(_required(corpus, "expected_page_count")),
-            "is_fixture": bool(_value(corpus, "is_fixture", False)),
+            "is_fixture": is_fixture,
             "archive_hashes": dict(_value(corpus, "archive_hashes", {})),
         }
     )

@@ -608,17 +608,22 @@ def _validate_source_questions(
 def _manifest_is_fixture(manifest: Mapping[str, object]) -> bool:
     corpus = manifest.get("corpus")
     return (
-        manifest.get("fixture_mode") is True
+        type(manifest.get("fixture_mode")) is bool
+        and manifest.get("fixture_mode") is True
         and isinstance(corpus, Mapping)
+        and type(corpus.get("is_fixture")) is bool
         and corpus.get("is_fixture") is True
     )
 
 
 def _manifest_declares_fixture(manifest: Mapping[str, object]) -> bool:
     corpus = manifest.get("corpus")
-    return manifest.get("fixture_mode") is True or (
-        isinstance(corpus, Mapping) and corpus.get("is_fixture") is True
-    )
+    if type(manifest.get("fixture_mode")) is bool and manifest.get("fixture_mode") is True:
+        return True
+    if not isinstance(corpus, Mapping) or "is_fixture" not in corpus:
+        return False
+    value = corpus["is_fixture"]
+    return type(value) is not bool or value is True
 
 
 def _fixture_identity_complete(manifest: Mapping[str, object]) -> bool:
@@ -655,7 +660,9 @@ def _manifest_path(value: object, run_dir: Path) -> Path | None:
     return path if path.is_absolute() else run_dir / path
 
 
-def _validate_production_corpus(manifest: Mapping[str, object], errors: list[str]) -> str | None:
+def _validate_production_corpus(
+    manifest: Mapping[str, object], errors: list[str], *, production: bool = True
+) -> str | None:
     corpus = manifest.get("corpus")
     if not isinstance(corpus, Mapping):
         errors.append("production run manifest is missing complete corpus identity")
@@ -681,12 +688,22 @@ def _validate_production_corpus(manifest: Mapping[str, object], errors: list[str
     if missing:
         errors.append(f"production corpus identity is missing fields: {missing!r}")
         return None
+    is_fixture = corpus["is_fixture"]
+    if type(is_fixture) is not bool:
+        errors.append("corpus is_fixture must be a boolean")
+        return None
+    if production and is_fixture is not False:
+        errors.append("production corpus is_fixture must be exactly false")
+        return None
+    if not production and is_fixture is not True:
+        errors.append("fixture corpus is_fixture must be exactly true")
+        return None
     try:
         from docprune.benchmark_config import CorpusIdentity
 
         identity = CorpusIdentity(
             **{key: corpus[key] for key in required if key != "is_fixture"},
-            is_fixture=bool(corpus["is_fixture"]),
+            is_fixture=is_fixture,
         )
         identity.validate()
         from docprune.m3docvqa_dataset import M3DocVQADevDataset
@@ -933,7 +950,7 @@ def validate_benchmark_run(
         _validate_production_run_config(manifest, run_dir, errors)
         _validate_production_index(manifest, run_dir, errors, source_order_sha256)
     elif fixture_relaxation:
-        _validate_production_corpus(manifest, errors)
+        _validate_production_corpus(manifest, errors, production=False)
 
     expected_qids: tuple[str, ...] = ()
     selection = manifest.get("selection")
