@@ -21,9 +21,10 @@ set -euo pipefail
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
-: "${PROBE_IMAGE:?set PROBE_IMAGE to the deterministic 144-DPI probe page}"
+: "${CORPUS_ROOT:?set CORPUS_ROOT to the pinned M3DocVQA corpus}"
 : "${GATE_ROOT:?set GATE_ROOT to a new immutable gate-attempt directory}"
 : "${RUN_CONFIG:?set RUN_CONFIG to the complete immutable run-config JSON}"
+: "${RUN_CONFIG_ROOT:?set RUN_CONFIG_ROOT to the final six run-config directory}"
 : "${GATE_SAMPLE_IDS:?set GATE_SAMPLE_IDS to comma-separated fixed qids}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${QWEN_MODEL:?set QWEN_MODEL to the pinned Qwen resource}"
@@ -32,8 +33,18 @@ set -euo pipefail
 : "${COLPALI_REVISION:?set COLPALI_REVISION to the pinned ColPali revision}"
 : "${COLPALI_BACKBONE_MODEL:?set COLPALI_BACKBONE_MODEL to the pinned backbone resource}"
 : "${COLPALI_BACKBONE_REVISION:?set COLPALI_BACKBONE_REVISION to the pinned backbone revision}"
+export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT
 
+EXPECTED_GATE_SAMPLE_IDS="a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8"
+test "$GATE_SAMPLE_IDS" = "$EXPECTED_GATE_SAMPLE_IDS"
+case "$RUN_CONFIG" in
+  "$GATE_ROOT"|"$GATE_ROOT"/*) echo "provisional config must be outside GATE_ROOT" >&2; exit 2 ;;
+esac
+case "$RUN_CONFIG_ROOT" in
+  "$GATE_ROOT"|"$GATE_ROOT"/*) echo "final config root must be outside GATE_ROOT" >&2; exit 2 ;;
+esac
 test ! -e "$GATE_ROOT"
+test ! -e "$RUN_CONFIG_ROOT"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
@@ -51,7 +62,6 @@ if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.
 if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
     raise SystemExit("sealed control record project path mismatch")
 PY
-test -f "$PROBE_IMAGE"
 test -f "$RUN_CONFIG"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
@@ -91,6 +101,59 @@ mkdir -p "$GATE_ROOT"
 GATE_STATUS=failed
 trap 'printf "{\"status\":\"%s\"}\n" "$GATE_STATUS" > "$GATE_ROOT/gate-status.json"' EXIT
 cd "$RUNTIME_DIR"
+
+PROBE_IMAGE="$GATE_ROOT/probe-page.png"
+export PROBE_IMAGE
+python - "$PROBE_IMAGE" "$CORPUS_ROOT" "$RUN_CONFIG" "a33985b1e8b2502fc18cc8147dc27db8" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from pdf2image import convert_from_path
+
+from docprune.benchmark_config import CorpusIdentity
+
+output = Path(sys.argv[1]).resolve()
+corpus_root = Path(sys.argv[2]).resolve()
+run_config_path = Path(sys.argv[3]).resolve()
+expected_qid = sys.argv[4]
+run_config = json.loads(run_config_path.read_text(encoding="utf-8"))
+if Path(str(run_config.get("corpus", {}).get("root", ""))).resolve() != corpus_root:
+    raise SystemExit("gate input config is not bound to CORPUS_ROOT")
+corpus = CorpusIdentity.from_root(corpus_root)
+corpus.validate()
+rows = {}
+with corpus.questions_path.open(encoding="utf-8") as stream:
+    for line in stream:
+        if line.strip():
+            row = json.loads(line)
+            rows[str(row["qid"])] = row
+row = rows.get(expected_qid)
+if row is None:
+    raise SystemExit("fixed probe qid is absent from the pinned corpus")
+contexts = row.get("supporting_context")
+if not isinstance(contexts, list):
+    raise SystemExit("fixed probe qid has no supporting_context list")
+doc_id = next(
+    (
+        value.get("doc_id")
+        for value in contexts
+        if isinstance(value, dict) and isinstance(value.get("doc_id"), str)
+    ),
+    None,
+)
+document_ids = json.loads(corpus.document_ids_path.read_text(encoding="utf-8"))
+if not isinstance(doc_id, str) or doc_id not in document_ids:
+    raise SystemExit("fixed probe qid has no supporting corpus document")
+pdf_path = corpus.pdf_path(doc_id)
+pages = convert_from_path(str(pdf_path), dpi=144, first_page=1, last_page=1)
+if len(pages) != 1:
+    raise SystemExit("deterministic probe render did not produce exactly one page")
+if not output.parent.is_dir():
+    raise SystemExit("gate root disappeared before probe render")
+pages[0].convert("RGB").save(output, format="PNG", dpi=(144, 144))
+PY
+test -f "$PROBE_IMAGE"
 
 CONTRACT="$GATE_ROOT/processor-contract.json"
 docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml --pages 1 \
@@ -190,6 +253,15 @@ from m3docrag.vqa.qwen2 import generate as official_qwen_generate
 
 run_config_path = Path(sys.argv[1])
 qids = tuple(value.strip() for value in sys.argv[2].split(",") if value.strip())
+expected_qids = (
+    "a33985b1e8b2502fc18cc8147dc27db8",
+    "710a6d2254076ea58756c6c7cc211f1e",
+    "0d8f2779137fb47db953c4af5247ffe5",
+    "e240f5fe65b39eee70d3576cff88fe5a",
+    "18ecd2ac6c0ac69993b92dc4b30137e8",
+)
+if qids != expected_qids or len(set(qids)) != len(qids):
+    raise SystemExit("gate sample IDs do not equal the exact fixed tuple")
 out = Path(sys.argv[3])
 run = _resolve_run_config(run_config_path, mode="all-kept", page_count=1)
 dataset = _make_dataset(run)
@@ -319,9 +391,22 @@ payload = {
     "sample_ids": os.environ["GATE_SAMPLE_IDS"].split(","),
     "page_counts": [1, 2, 4],
     "semantic_samples_path": str((out.parent / "semantic-samples.json").resolve()),
+    "semantic_samples_sha256": hashlib.sha256((out.parent / "semantic-samples.json").read_bytes()).hexdigest(),
 }
 payload["gate_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 python -m json.tool "$GATE_ROOT/gate.json" >/dev/null
+PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
+  --corpus-root "$CORPUS_ROOT" \
+  --processor-contract "$CONTRACT" \
+  --gate "$GATE_ROOT/gate.json" \
+  --control-record "$CONTROL_RECORD" \
+  --m3docrag-root "$M3DOCRAG_DIR" \
+  --output-root "$RUN_CONFIG_ROOT"
+for mode in all-kept docprune; do
+  for pages in 1 2 4; do
+    test -f "$RUN_CONFIG_ROOT/${mode}-top${pages}.json"
+  done
+done
 GATE_STATUS=passed

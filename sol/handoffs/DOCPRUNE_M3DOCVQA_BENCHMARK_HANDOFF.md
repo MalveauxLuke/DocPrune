@@ -44,7 +44,8 @@ a failed attempt gets a new attempt root and a new record.
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
 export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
-mkdir -p "$ATTEMPT_ROOT"
+test ! -e "$ATTEMPT_ROOT"
+mkdir "$ATTEMPT_ROOT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 CONTROL_COMMIT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
@@ -148,8 +149,11 @@ Use `/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N/` for each new
 attempt; never reuse a failed attempt root.
 
 ```text
+$ATTEMPT_ROOT/inputs/gate-top1.json
 $ATTEMPT_ROOT/gate/gate.json
+$ATTEMPT_ROOT/gate/probe-page.png
 $ATTEMPT_ROOT/gate/processor-contract.json
+$ATTEMPT_ROOT/run-configs/{all-kept,docprune}-top{1,2,4}.json
 $ATTEMPT_ROOT/indexes/all-kept/top{1,2,4}/all-kept/manifest.json
 $ATTEMPT_ROOT/indexes/docprune/top{1,2,4}/docprune/manifest.json
 $ATTEMPT_ROOT/eval/{all-kept,docprune}/top{1,2,4}/run/
@@ -160,28 +164,16 @@ manifest from one mode/page count is never reused for another.
 
 ## Run-config construction
 
-The gate receives a provisional `gate-top1.json` whose
-`processor_contract_path` points at `$ATTEMPT_ROOT/gate/processor-contract.json`
-and which omits `processor_contract_sha256`. After the gate writes the
-contract, the repository-native generator below creates exactly six final
-configs under `$RUN_CONFIG_ROOT`, validates each through the production
-run-config identity loader, and pins the actual contract digest. It refuses to
-overwrite an existing config.
-
-```bash
-export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
-export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
-export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
-export GATE_ROOT="$ATTEMPT_ROOT/gate"
-export PROCESSOR_CONTRACT="$GATE_ROOT/processor-contract.json"
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
-  --corpus-root "$CORPUS_ROOT" \
-  --processor-contract "$PROCESSOR_CONTRACT" \
-  --gate "$GATE_ROOT/gate.json" \
-  --control-record "$CONTROL_RECORD" \
-  --m3docrag-root "$M3DOCRAG_DIR" \
-  --output-root "$RUN_CONFIG_ROOT"
-```
+The gate receives a provisional `inputs/gate-top1.json` whose
+`processor_contract_path` points at the not-yet-created
+`$ATTEMPT_ROOT/gate/processor-contract.json` and which omits
+`processor_contract_sha256`. After the gate writes and authenticates
+`gate.json`, it invokes the repository-native generator before reporting
+`GATE_STATUS=passed`. The generator creates exactly six final configs under
+`$RUN_CONFIG_ROOT`, validates each through the production run-config identity
+loader, authenticates all gate evidence, and pins the actual contract digest.
+The executable is `examples/m3docvqa/make_run_configs.py`.
+Operators do not run this generator as a separate pre-gate step.
 
 Every final JSON contains the following fields, plus the complete nested
 corpus identity shown in the Corpus section:
@@ -205,6 +197,11 @@ corpus identity shown in the Corpus section:
   "num_beams": 1,
   "prompt": "question: $question\noutput only answer.",
   "m3docrag_root": "/home/lmalveau/src/m3docrag-runtime-29e6ac2",
+  "gate_path": "/scratch/.../gate/gate.json",
+  "gate_sha256": "canonical digest of the authenticated gate JSON",
+  "semantic_samples_path": "/scratch/.../gate/semantic-samples.json",
+  "semantic_samples_sha256": "digest of the authenticated semantic evidence",
+  "gate_sample_ids": ["the exact fixed five-qid tuple"],
   "corpus": {"...": "the exact pinned identity and archive_hashes"}
 }
 ```
@@ -218,12 +215,14 @@ fixture values or `DATASET_REVISION`.
 Set the common environment from the exact values above, including all six
 model resource/revision variables. The launchers are:
 
-1. `12_docprune_m3docvqa_gate.sbatch`, with a new `GATE_ROOT`, provisional
-   `RUN_CONFIG`, deterministic 144-DPI `PROBE_IMAGE`, and fixed comma-separated
-   `GATE_SAMPLE_IDS`. It runs the pinned processor probe, exact span/grid/raster
-   checks, all six deterministic dry-run selectors, repeated all-kept fixed
-   answers, and one real DocPrune answer at pages 1/2/4. It writes
-   `gate.json` with `status=passed`; every failed invariant exits nonzero.
+1. `12_docprune_m3docvqa_gate.sbatch`, with an absent `GATE_ROOT`, a
+   provisional input config outside that root, and the exact fixed
+   comma-separated `GATE_SAMPLE_IDS`. It renders the deterministic 144-DPI
+   `PROBE_IMAGE` inside the gate from the pinned corpus/supporting document,
+   runs the pinned processor probe, exact span/grid/raster checks, all six
+   deterministic dry-run selectors, repeated all-kept fixed answers, and one
+   real DocPrune answer at pages 1/2/4. It writes/authenticates `gate.json`,
+   produces the six final configs, and only then reports `status=passed`.
 
 2. `13_docprune_m3docvqa_index.sbatch`, submitted six times with
    `--dependency=afterok:$GATE_JOB`, one mode/page-specific config, and a new
@@ -273,12 +272,12 @@ export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
-export RUN_CONFIG="$GATE_ROOT/gate-top1.json"
-export PROBE_IMAGE=/scratch/lmalveau/docprune/probes/m3docvqa-144dpi.png
+export INPUT_ROOT="$ATTEMPT_ROOT/inputs"
+export RUN_CONFIG="$INPUT_ROOT/gate-top1.json"
 export GATE_SAMPLE_IDS=a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8
 export SLURM_LOG_DIR="$ATTEMPT_ROOT/slurm-logs"
 export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
-mkdir -p "$SLURM_LOG_DIR" "$GATE_ROOT"
+mkdir -p "$SLURM_LOG_DIR" "$INPUT_ROOT"
 
 PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_gate_config.py" \
   --corpus-root "$CORPUS_ROOT" \

@@ -22,15 +22,31 @@ from docprune.benchmark_config import (
     SHORT_ANSWER_TEMPLATE,
     CorpusIdentity,
 )
-from docprune.m3docvqa_factory import _normalise_run_config_mapping, _validate_run_identity
-from docprune.processor_probe import validate_processor_contract
+from docprune.m3docvqa_factory import (
+    _normalise_run_config_mapping,
+    _validate_run_identity,
+    validate_processor_contract_file,
+)
 
 RUNTIME_COMMIT = "d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761"
 MODES = ("all-kept", "docprune")
+FIXED_GATE_SAMPLE_IDS = (
+    "a33985b1e8b2502fc18cc8147dc27db8",
+    "710a6d2254076ea58756c6c7cc211f1e",
+    "0d8f2779137fb47db953c4af5247ffe5",
+    "e240f5fe65b39eee70d3576cff88fe5a",
+    "18ecd2ac6c0ac69993b92dc4b30137e8",
+)
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sha256_json(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
 
 
 def _corpus_payload(corpus: CorpusIdentity) -> dict[str, object]:
@@ -94,6 +110,83 @@ def _validate_m3docrag_checkout(path: Path) -> None:
         raise SystemExit(f"M3DocRAG checkout has non-bytecode changes: {unexpected[0]}")
 
 
+def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, object]:
+    """Authenticate the complete gate evidence before producing final configs."""
+
+    gate_path = Path(gate_path).resolve()
+    contract_path = Path(contract_path).resolve()
+    if gate_path.is_symlink() or not gate_path.is_file():
+        raise ValueError(f"gate JSON is missing or not regular: {gate_path}")
+    try:
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError("gate JSON is invalid") from error
+    if not isinstance(gate, dict):
+        raise ValueError("gate JSON must be an object")
+    supplied_gate_sha = gate.get("gate_sha256")
+    unsigned_gate = dict(gate)
+    unsigned_gate.pop("gate_sha256", None)
+    if supplied_gate_sha != _sha256_json(unsigned_gate):
+        raise ValueError("gate canonical SHA-256 is invalid")
+    if gate.get("schema_version") != 1 or gate.get("status") != "passed":
+        raise ValueError("gate schema/status is not passed")
+    if gate.get("runtime_commit") != RUNTIME_COMMIT:
+        raise ValueError("gate runtime commit is not pinned")
+    if gate.get("m3docrag_commit") != M3DOCRAG_COMMIT:
+        raise ValueError("gate M3DocRAG commit is not pinned")
+    if gate.get("page_counts") != [1, 2, 4]:
+        raise ValueError("gate page-count set is not exactly [1, 2, 4]")
+    if gate.get("sample_ids") != list(FIXED_GATE_SAMPLE_IDS):
+        raise ValueError("gate sample IDs are not the exact fixed source-order tuple")
+    declared_contract = Path(str(gate.get("processor_contract_path", ""))).resolve()
+    if declared_contract != contract_path:
+        raise ValueError("gate and processor contract paths differ")
+    if contract_path.is_symlink() or not contract_path.is_file():
+        raise ValueError("processor contract is missing or not regular")
+    validate_processor_contract_file(contract_path)
+    contract_sha = _sha256(contract_path)
+    if gate.get("processor_contract_sha256") != contract_sha:
+        raise ValueError("gate processor-contract digest is invalid")
+
+    semantic_path = Path(str(gate.get("semantic_samples_path", ""))).resolve()
+    gate_root = gate_path.parent
+    if gate_root not in semantic_path.parents or semantic_path == gate_root:
+        raise ValueError("semantic evidence is outside the gate root")
+    if semantic_path.is_symlink() or not semantic_path.is_file():
+        raise ValueError("semantic evidence is missing or not regular")
+    if gate.get("semantic_samples_sha256") != _sha256(semantic_path):
+        raise ValueError("semantic evidence digest is invalid")
+    try:
+        semantic = json.loads(semantic_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError("semantic evidence is invalid JSON") from error
+    if not isinstance(semantic, dict):
+        raise ValueError("semantic evidence must be an object")
+    if semantic.get("status") != "passed" or semantic.get("baseline_equivalence") is not True:
+        raise ValueError("semantic evidence did not pass baseline equivalence")
+    if semantic.get("equivalence_qids") != list(FIXED_GATE_SAMPLE_IDS):
+        raise ValueError("semantic evidence qids are not the exact fixed tuple")
+    supporting = semantic.get("supporting_documents")
+    if (
+        not isinstance(supporting, dict)
+        or list(supporting) != list(FIXED_GATE_SAMPLE_IDS)
+        or any(not isinstance(value, str) or not value for value in supporting.values())
+    ):
+        raise ValueError("semantic evidence supporting documents are incomplete")
+    traces = semantic.get("docprune_traces")
+    if not isinstance(traces, dict) or set(traces) != {"1", "2", "4"}:
+        raise ValueError("semantic evidence lacks the exact page traces")
+    for counts in traces.values():
+        if (
+            not isinstance(counts, list)
+            or len(counts) != 4
+            or any(type(value) is not int or value <= 0 for value in counts)
+            or any(left < right for left, right in zip(counts, counts[1:]))
+        ):
+            raise ValueError("semantic evidence has invalid or non-monotonic traces")
+    return gate
+
+
 def _payload(
     *,
     mode: str,
@@ -104,6 +197,8 @@ def _payload(
     m3docrag_root: Path,
     control_record: Path,
     control: dict[str, object],
+    gate: dict[str, object],
+    gate_path: Path,
 ) -> dict[str, object]:
     return {
         "mode": mode,
@@ -127,6 +222,11 @@ def _payload(
         "control_record": str(control_record.resolve()),
         "control_commit": control["control_commit"],
         "control_tree_sha": control["tree_sha"],
+        "gate_path": str(gate_path.resolve()),
+        "gate_sha256": gate["gate_sha256"],
+        "semantic_samples_path": gate["semantic_samples_path"],
+        "semantic_samples_sha256": gate["semantic_samples_sha256"],
+        "gate_sample_ids": list(FIXED_GATE_SAMPLE_IDS),
     }
 
 
@@ -140,29 +240,19 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
 
+    contract = args.processor_contract.resolve()
+    gate = validate_gate_evidence(args.gate.resolve(), contract)
+    contract_sha256 = _sha256(contract)
     corpus = CorpusIdentity.from_root(args.corpus_root.resolve())
     corpus.validate()
-    contract = args.processor_contract.resolve()
-    contract_payload = json.loads(contract.read_text(encoding="utf-8"))
-    if not isinstance(contract_payload, dict):
-        raise SystemExit("processor contract must be a JSON object")
-    validate_processor_contract(contract_payload)
-    contract_sha256 = _sha256(contract)
-    gate = json.loads(args.gate.read_text(encoding="utf-8"))
-    if not isinstance(gate, dict) or gate.get("status") != "passed":
-        raise SystemExit("run configs require a passed semantic gate")
-    if Path(str(gate.get("processor_contract_path", ""))).resolve() != contract:
-        raise SystemExit("gate and processor contract paths differ")
-    if gate.get("processor_contract_sha256") != contract_sha256:
-        raise SystemExit("gate and processor contract digests differ")
-    if contract_payload.get("schema_version") != 2:
-        raise SystemExit("processor contract schema is not 2")
     control = _control_record(args.control_record.resolve())
     if not args.m3docrag_root.is_dir():
         raise SystemExit(f"M3DocRAG checkout is missing: {args.m3docrag_root}")
     _validate_m3docrag_checkout(args.m3docrag_root.resolve())
 
-    args.output_root.mkdir(parents=True, exist_ok=True)
+    if args.output_root.exists():
+        raise SystemExit(f"refusing to overwrite existing run-config root: {args.output_root}")
+    args.output_root.mkdir(parents=True)
     for mode in MODES:
         for page_count in PAGE_COUNTS:
             payload = _payload(
@@ -174,6 +264,8 @@ def main() -> int:
                 m3docrag_root=args.m3docrag_root,
                 control_record=args.control_record,
                 control=control,
+                gate=gate,
+                gate_path=args.gate,
             )
             resolved = _normalise_run_config_mapping(payload)
             if str(resolved.mode) != mode or int(resolved.page_count) != page_count:
