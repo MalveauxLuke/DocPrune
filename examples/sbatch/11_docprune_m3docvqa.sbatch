@@ -31,6 +31,7 @@ case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
 test -d "$PROJECT_DIR"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
 test -d "$RUNTIME_DIR"
 test -f "$RUN_CONFIG"
 test -f "$INDEX_MANIFEST"

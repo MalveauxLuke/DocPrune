@@ -34,6 +34,7 @@ set -euo pipefail
 
 test ! -e "$GATE_ROOT"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain)"
 test -f "$PROBE_IMAGE"
 test -f "$RUN_CONFIG"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
