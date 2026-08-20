@@ -71,17 +71,41 @@
 
 **Interfaces:**
 - `_load_qwen` supplies `attn_implementation="flash_attention_2"` and bfloat16 vision configuration.
-- `GenerationResult`, `AnswerOutput`, and `SampleTiming` carry positive `encoder_seconds` and `decoder_seconds` for production rows.
-- Summary timing includes `encoder`, `decoder`, `qa`, and `retrieval`, plus `encoder_samples_per_second` and `decoder_samples_per_second`.
+- `GenerationResult`, `AnswerOutput`, and `SampleTiming` carry positive `encoder_seconds` and `decoder_seconds` for production rows; orchestration also records page-loading and total sample wall time.
+- Summary timing includes `encoder`, `decoder`, `qa`, `page_load`, `retrieval`, and total, plus `encoder_samples_per_second` and `decoder_samples_per_second`.
+- Run measurement identity freezes GPU/software/precision/backend/allocator/timer boundaries and warmup count/sample identity.
+- Paper visual-token drop is the arithmetic mean of per-sample drop proportions; token-weighted drop, if retained, is separately labeled.
 
-- [ ] **Step 1: Add failing tests.** A fake loader must observe the exact FlashAttention arguments; CTP final-query attention must project one query row, never allocate an `N x N` causal mask for recomputation, and remain numerically equivalent to the existing literal fixture; both answerers must emit separate stage timings; production validation must reject missing, nonfinite, or nonpositive stage times.
+- [ ] **Step 1: Add failing tests.** A fake loader must observe the exact FlashAttention arguments; CTP final-query attention must project one query row, never allocate an `N x N` causal mask for recomputation, and remain numerically equivalent to the existing literal fixture; both answerers must emit separate stage timings; orchestration must cover page loading and total sample wall time; paper token-drop aggregation must average literal per-sample ratios; production validation must reject missing, nonfinite, or nonpositive stage times and incomplete measurement/warmup identity.
 - [ ] **Step 2: Run `python -m pytest tests/qwen2vl/test_decoder.py tests/qwen2vl/test_model.py tests/test_answerers.py tests/test_metrics.py tests/test_evaluation.py tests/test_m3docvqa_factory.py -v` and record the expected failures.**
 - [ ] **Step 3: Load the pinned Qwen backend exactly and implement reduced-query CTP attention.** Project only `hidden[:, -1:, :]` for Q, project the full sequence for K, apply the corresponding final rotary row to Q, and return only `[batch, heads, 1, keys]` attention.
-- [ ] **Step 4: Add synchronized stage timers.** Time only the Qwen vision encoder as encoder time and language-model prefill/decode as decoder time; retain complete QA wall time and whole-QA peak allocated memory. Ensure the stock all-kept and sparse DocPrune paths use the same definitions.
-- [ ] **Step 5: Extend canonical records, summaries, manifests, and independent validation with exact stage-timing fields and derived samples/second.** Keep profiler fields absent when disabled and label A100 results as reconstruction measurements.
+- [ ] **Step 4: Add synchronized stage timers.** Time only the Qwen vision encoder as encoder time and language-model prefill/decode as decoder time; retain complete QA wall time and whole-QA peak allocated memory; record page-load and total sample wall time at orchestration level. Ensure the stock all-kept and sparse DocPrune paths use the same definitions.
+- [ ] **Step 5: Extend canonical records, summaries, manifests, and independent validation with exact stage-timing fields, derived samples/second, per-sample-mean token drop, and complete hardware/software/precision/backend/allocator/timer/warmup identity.** Keep profiler fields absent when disabled and label A100 results as reconstruction measurements.
 - [ ] **Step 6: Run focused tests, full CPU tests, the cached real-model all-kept probe, Ruff, and `git diff --check`; commit `fix: align Qwen backend and efficiency timing`.**
 
-### Task 3: Re-seal and execute the corrected benchmark
+### Task 3: Independent six-cell comparison validation and reporting
+
+**Files:**
+- Create: `src/docprune/comparison.py`
+- Modify: `src/docprune/cli.py`
+- Modify: `src/docprune/evaluation.py`
+- Create: `tests/test_comparison.py`
+- Modify: `tests/test_cli.py`
+- Modify: `tests/test_evaluation.py`
+
+**Interfaces:**
+- Produce a fail-closed matrix validator that accepts exactly all-kept and DocPrune at top-1, top-2, and top-4 after independently validating each run.
+- Require identical 2,441-QID source order and shared corpus/runtime/upstream/model/processor/generation/hardware/precision/backend/warmup/measurement identity within every pair.
+- Validate every retrieved document and page against the pinned corpus and actual PDF page count.
+- Produce signed machine-readable comparison JSON plus a human-readable six-cell absolute-and-delta table.
+
+- [ ] **Step 1: Add literal failing tests.** Reject an incomplete matrix, duplicate cell, reordered/missing QID, mismatched shared identity, fabricated document, out-of-range page, and altered summary; prove a complete sealed fixture produces the expected six absolute rows and three paired deltas.
+- [ ] **Step 2: Run `python -m pytest tests/test_comparison.py tests/test_cli.py tests/test_evaluation.py -v` and record the expected failures.**
+- [ ] **Step 3: Implement independent corpus/page validation and the exact six-cell pairing contract.** Reuse the existing single-run validator, but never trust its signed claims as proof of cross-run comparability.
+- [ ] **Step 4: Implement canonical signed JSON and Markdown report generation.** Report EM/F1, modality/hop F1, retrieval recall, per-sample stage token drop/retention, retrieval/page-load/QA/total timing, encoder/decoder throughput, and peak allocated GPU memory; report TFLOPs only when profiling is explicitly present and valid.
+- [ ] **Step 5: Add the CLI boundary, run the focused suite, full CPU suite, Ruff, and `git diff --check`; commit `feat: validate and report paired benchmark matrix`.**
+
+### Task 4: Re-seal and execute the corrected benchmark
 
 **Files:**
 - Modify: `docs/reproduction/DOCPRUNE.md`
@@ -98,5 +122,5 @@
 - [ ] **Step 2: Run focused launcher tests, full CPU tests, Ruff, shell syntax, Markdown links, artifact scans, and clean-checkout checks; obtain independent Luna-high spec and quality review.**
 - [ ] **Step 3: Submit a fresh SOL semantic gate.** Require exact runtime/upstream/model/backend identity, complete ColPali all-kept equivalence, exact upstream fixed-sample retrieval ordering, QTP no-recompute evidence, baseline Qwen equivalence, positive 1/2/4 pruning traces, and positive encoder/decoder timing probes.
 - [ ] **Step 4: Build and independently validate six fresh schema-5 indexes, then submit the six-cell evaluation array with strict `afterok` dependencies.**
-- [ ] **Step 5: Validate all six 2,441-row runs and report EM/F1, modality/hop F1, retrieval recall, stage token reductions, end-to-end timing, encoder/decoder throughput, and peak allocated GPU memory.** Report TFLOPs only if profiling was explicitly enabled, and do not claim A6000 hardware parity.
+- [ ] **Step 5: Independently validate all six 2,441-row runs, pass the paired matrix validator, and generate the signed JSON plus Markdown comparison report for EM/F1, modality/hop F1, retrieval recall, stage token reductions, retrieval/page-load/QA/total timing, encoder/decoder throughput, and peak allocated GPU memory.** Report TFLOPs only if profiling was explicitly enabled, and do not claim A6000 hardware parity.
 - [ ] **Step 6: Complete a requirement-by-requirement final audit and commit only small provenance/report files.**

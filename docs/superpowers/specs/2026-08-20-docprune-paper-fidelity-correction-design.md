@@ -59,10 +59,40 @@ Every measured row retains end-to-end retrieval and QA wall time and adds
 positive synchronized `encoder_seconds` and `decoder_seconds`. Encoder timing
 covers the Qwen vision encoder. Decoder timing covers the language-model
 prefill and greedy decode. BTP/QTP preparation remains visible in end-to-end QA
-time but is not mislabeled as encoder or decoder execution. Aggregates report
-samples per encoder second and samples per decoder second. Peak allocated GPU
+time but is not mislabeled as encoder or decoder execution. Page loading is
+recorded explicitly, and a total sample wall time spans retrieval, loading, and
+QA so no pipeline interval is mislabeled as end-to-end. Aggregates report
+samples per encoder second and samples per decoder second. Visual-token drop is
+the arithmetic mean of per-sample drop proportions, matching section 4.2; any
+token-weighted aggregate is secondary and labeled as such. Peak allocated GPU
 memory remains a whole-QA-path measurement. TFLOPs remain unreported unless a
 profiler definition and values are actually recorded.
+
+Each run manifest freezes the measurement identity needed for paired claims:
+GPU model and compute capability, CUDA/PyTorch/Transformers versions, dtype,
+attention backend, allocator/peak-memory definition, timer synchronization and
+stage-boundary definitions, and warmup count and sample identity. Production
+validation rejects absent, nonfinite, or nonpositive stage timings and missing
+or inconsistent measurement identity.
+
+## Six-cell comparison contract
+
+Final reporting is generated only from a complete matrix containing all-kept
+and DocPrune at one, two, and four retrieved pages. Every input run first passes
+the independent single-run validator. The matrix validator then requires the
+same 2,441 question IDs in source order and exact shared corpus, runtime,
+upstream, model, processor, generation, hardware, precision, backend, warmup,
+and measurement identities within every paired page-count cell. Mode and index
+artifact identities are expected to differ; all other comparison-defining
+fields fail closed on disagreement.
+
+For every result row, retrieved document IDs must belong to the pinned corpus
+and page indices must be within the actual corresponding PDF page count. A
+signed final JSON comparison artifact and human-readable table report the six
+absolute cells plus paired deltas for EM/F1, modality/hop F1, retrieval recall,
+stage token retention/drop, total and component timing, encoder/decoder
+throughput, and peak allocated GPU memory. No aggregate is published from an
+incomplete or incomparable matrix.
 
 Because SOL uses A100 80 GB rather than the paper's RTX A6000, absolute
 throughput and memory values are observed reconstruction results, not direct
@@ -82,7 +112,9 @@ the requested six-cell benchmark.
 
 Tests must fail first for visual-only indexing, repeated ColPali inference in
 QA, over-fetching, a non-FlashAttention model load, full-query CTP projection,
-and missing stage timings. Corrected CPU tests, the opt-in cached real-model
-equivalence probe, Ruff, shell checks, a fresh semantic gate, six fresh indexes,
-six 2,441-row evaluations, and independent validation are all required before
-completion.
+missing stage timings, token-weighted paper drop rates, fabricated retrieved
+pages, incomplete six-cell matrices, and mismatched paired identities.
+Corrected CPU tests, the opt-in cached real-model equivalence probe, Ruff, shell
+checks, a fresh semantic gate, six fresh indexes, six 2,441-row evaluations,
+independent single-run and paired validation, and signed final reporting are all
+required before completion.
