@@ -323,3 +323,70 @@ This is an explicit environmental skip because `torch.cuda.is_available()` is fa
 - CUDA/FlashAttention execution and cached real-model equivalence remain unobserved in this CPU-only environment.
 
 Round-2 implementation/test commit: `cc10336`.
+
+## Fix Round 3
+
+Round 3 preserves measured-total provenance during result serialization.
+
+### Changes and regressions covered
+
+- `SampleTiming.to_dict()` now omits `total_sample_seconds` when no explicit measured total was supplied. Its `total_seconds` property remains a convenience fallback for trusted fixture/non-strict aggregation.
+- Explicit totals, including fractional positive values, serialize exactly unchanged.
+- Production result validation receives the raw serialized mapping and rejects omitted synthesized totals before any dataclass/default fallback; explicit positive totals remain accepted.
+- Added literal coverage in `tests/test_metrics.py` and `tests/test_m3docvqa_factory.py`, while preserving the existing non-strict fixture aggregate fallback coverage.
+
+### TDD RED
+
+The intended RED command was:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_metrics.py::test_sample_timing_omits_unmeasured_total_but_keeps_fixture_fallback tests/test_metrics.py::test_sample_timing_serializes_explicit_positive_total_exactly tests/test_m3docvqa_factory.py::test_production_record_rejects_synthesized_total_but_accepts_explicit_total -v
+```
+
+Literal RED output:
+
+```text
+tests/test_metrics.py::test_sample_timing_omits_unmeasured_total_but_keeps_fixture_fallback FAILED
+  AssertionError: assert "total_sample_seconds" not in timing.to_dict()
+tests/test_metrics.py::test_sample_timing_serializes_explicit_positive_total_exactly PASSED
+tests/test_m3docvqa_factory.py::test_production_record_rejects_synthesized_total_but_accepts_explicit_total FAILED
+  Failed: DID NOT RAISE ValueError
+========================= 2 failed, 1 passed in ... =========================
+```
+
+The failures showed that omission was being converted into a synthesized serialized total and consequently accepted by strict production record validation.
+
+### GREEN and verification
+
+Affected validation/aggregation suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_metrics.py tests/test_m3docvqa_factory.py tests/test_evaluation.py tests/test_m3docrag.py -q
+96 passed in 3.18s
+```
+
+Full CPU suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
+351 passed, 1 skipped in 9.87s
+```
+
+Ruff and diff checks:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m ruff check src tests
+All checks passed!
+
+git diff --check
+exit 0 (no output)
+```
+
+### Self-review and concerns
+
+- Explicit production runner totals continue to serialize through `SampleResult.to_dict()` unchanged; only absent totals are omitted.
+- Non-strict `StageMetrics` and `SampleTiming.total_seconds` retain the trusted fixture convenience fallback, while strict raw JSON validation remains fail-closed.
+- Round-1 and round-2 behavior remains covered by the full CPU suite, including CTP rotary equivalence, schema-5 loading, strict identity/classification, event timing, and sparse boundaries.
+- CUDA and cached real-model execution remain unavailable in this environment; the existing explicit probe skip is unchanged.
+
+Round-3 implementation/test commit: `834edd7`.
