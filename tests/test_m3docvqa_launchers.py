@@ -241,6 +241,20 @@ def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     assert "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N" in handoff
 
 
+def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
+    """Active reproduction commands must target the pinned absolute artifact root."""
+
+    text = (ROOT / "docs" / "reproduction" / "DOCPRUNE.md").read_text(encoding="utf-8")
+    command_lines = tuple(
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith("--") and "benchmark-3755812" in line
+    )
+    assert len(command_lines) == 5
+    assert all("/scratch/lmalveau/docprune/benchmark-3755812/" in line for line in command_lines)
+    assert all("/scratch/$USER/docprune/benchmark-3755812/" not in line for line in command_lines)
+
+
 def test_upstream_checkouts_require_strict_clean_status() -> None:
     for name in (
         "11_docprune_m3docvqa.sbatch",
