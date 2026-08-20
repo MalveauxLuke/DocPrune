@@ -16,8 +16,8 @@ control checkout after the local checks at the end of this document pass.
 
 ```text
 control checkout: /home/lmalveau/DocPrune-benchmark
-runtime checkout: /home/lmalveau/DocPrune-runtime-d5cefb3 (detached, clean)
-runtime commit: d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
+runtime checkout: /home/lmalveau/DocPrune-runtime-bd16c04 (detached, clean)
+runtime commit: bd16c045e99162b62e55c1961f2e15a011dbb4e7
 control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -54,7 +54,7 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
 mkdir "$ATTEMPT_ROOT"
@@ -94,8 +94,8 @@ config generator require a strictly empty upstream status. All jobs set
 `PYTHONDONTWRITEBYTECODE=1` so the dedicated checkout remains clean.
 
 ```bash
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
-export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-bd16c04
+export EXPECTED_COMMIT=bd16c045e99162b62e55c1961f2e15a011dbb4e7
 export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -153,7 +153,7 @@ SHA-256.
 ## Resources and artifacts
 
 Every job requests one A100 80 GB, 8 CPUs, and 128 GB RAM on `public`/`public`.
-Use `/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N/` for each new
+Use `/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N/` for each new
 attempt; never reuse a failed attempt root.
 
 ```text
@@ -190,7 +190,7 @@ corpus identity shown in the Corpus section:
 {
   "mode": "all-kept",
   "page_count": 1,
-  "runtime_commit": "d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761",
+  "runtime_commit": "bd16c045e99162b62e55c1961f2e15a011dbb4e7",
   "m3docrag_commit": "29e6ac2294d6b87075a1d45b8a8df175b214248a",
   "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
   "qwen_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
@@ -263,10 +263,10 @@ the Slurm export list. Use a fresh `attempt-N` and never reuse a failed root.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-bd16c04
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
-export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
+export EXPECTED_COMMIT=bd16c045e99162b62e55c1961f2e15a011dbb4e7
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
@@ -277,7 +277,7 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
@@ -346,6 +346,21 @@ exactly 2,441 unique source-ordered qids, valid monotonic traces, finite
 measurements, positive production GPU peak allocation, warmup excluded from
 recorded rows, and a summary reproducible from immutable JSONL.
 
+### Historical failed operational attempts
+
+The prior attempt root is retained as immutable recovery history. Do not
+rewrite, delete, or resume these artifacts:
+
+| attempt | Slurm gate job | preserved evidence | failure |
+|---|---:|---|---|
+| `benchmark-d5cefb3/attempt-1` | `61785247` | `slurm-logs/gate-61785247.{out,err}` | interpreter shadow: the old runtime lacked `tomli` (`ModuleNotFoundError`) |
+| `benchmark-d5cefb3/attempt-2` | `61786419` | `slurm-logs/gate-61786419.{out,err}` | numeric answer: the dataset loader rejected MMQA row 54's answer before benchmarking |
+
+These failed attempts remain under
+`/scratch/lmalveau/docprune/benchmark-d5cefb3/`; all new benchmark work uses
+`/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N/` and the runtime
+commit pinned at the top of this handoff.
+
 On preemption or time limit, use `--resume` only when the run/index manifest,
 source files, runtime, model revisions, mode, page count, and output root are
 identical. On corruption or any identity mismatch, preserve the failed
@@ -383,5 +398,5 @@ exact commits and strictly clean; and the control checkout contains only
 reviewed source/docs/launchers.
 
 The runtime remains pinned separately to
-`d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`; the reviewed control commit is
+`bd16c045e99162b62e55c1961f2e15a011dbb4e7`; the reviewed control commit is
 always the full SHA sealed in each attempt's `control.json`.

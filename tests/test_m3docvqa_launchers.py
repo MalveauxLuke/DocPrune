@@ -34,6 +34,7 @@ LAUNCHERS = tuple(
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
+ACTIVE_RUNTIME_COMMIT = "bd16c045e99162b62e55c1961f2e15a011dbb4e7"
 
 
 def _python_heredocs(path: Path) -> tuple[str, ...]:
@@ -218,6 +219,20 @@ def test_run_config_generator_is_executable_and_documented() -> None:
     handoff = HANDOFF.read_text(encoding="utf-8")
     assert "make_run_configs.py" in handoff
     assert '--dependency="afterok:' in handoff
+
+
+def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
+    """The generators and handoff must agree on the detached runtime pin."""
+
+    assert RUNTIME_COMMIT == ACTIVE_RUNTIME_COMMIT
+    gate_config = (ROOT / "examples" / "m3docvqa" / "make_gate_config.py").read_text(
+        encoding="utf-8"
+    )
+    handoff = HANDOFF.read_text(encoding="utf-8")
+    assert ACTIVE_RUNTIME_COMMIT in gate_config
+    assert ACTIVE_RUNTIME_COMMIT in handoff
+    assert "/home/lmalveau/DocPrune-runtime-bd16c04" in handoff
+    assert "/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N" in handoff
 
 
 def test_upstream_checkouts_require_strict_clean_status() -> None:

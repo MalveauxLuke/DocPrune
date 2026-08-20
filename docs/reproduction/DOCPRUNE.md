@@ -92,13 +92,13 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/$USER/docprune/benchmark-d5cefb3/run-configs/docprune-top4.json \
-  --index-manifest /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/eval/docprune/top4/run \
+  --run-config /scratch/$USER/docprune/benchmark-bd16c04/run-configs/docprune-top4.json \
+  --index-manifest /scratch/$USER/docprune/benchmark-bd16c04/attempt-1/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/$USER/docprune/benchmark-bd16c04/attempt-1/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/$USER/docprune/benchmark-d5cefb3/attempt-1/eval/docprune/top4/run \
+  --run /scratch/$USER/docprune/benchmark-bd16c04/attempt-1/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \

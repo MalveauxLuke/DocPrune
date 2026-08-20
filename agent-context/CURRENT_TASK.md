@@ -8,7 +8,7 @@ grounded in the CVPR 2026 paper and supplement.
 ## State
 
 The benchmark implementation is complete through the hardened Task-6 runtime
-commit `d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761`. Task 7 supplies the active
+commit `bd16c045e99162b62e55c1961f2e15a011dbb4e7`. Task 7 supplies the active
 SOL gate, six page-specific index launchers, six evaluation cells, and the
 commit-pinned benchmark handoff. No benchmark job has been submitted and no
 benchmark result is claimed.
