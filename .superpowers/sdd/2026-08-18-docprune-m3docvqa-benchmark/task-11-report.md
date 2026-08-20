@@ -72,7 +72,7 @@ All checks passed!
 
 ## Commit
 
-Commit SHA is recorded after the implementation and report are committed.
+Implementation commit SHA: `6c19bfc`.
 
 ## Concerns
 
