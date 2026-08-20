@@ -487,14 +487,14 @@ def _require_mode_artifact_paths(mode: str, artifact_root: Path, paths: tuple[Pa
     """Require mode-scoped artifacts to remain under one resolved root."""
 
     other = "docprune" if mode == "all-kept" else "all-kept"
-    if mode not in artifact_root.parts or other in artifact_root.parts:
+    if artifact_root.name != mode:
         raise ValueError(f"manifest mode/path mismatch for {mode}")
     for path in paths:
         try:
-            path.relative_to(artifact_root)
+            relative = path.relative_to(artifact_root)
         except ValueError as error:
             raise ValueError(
                 f"artifact path must be contained under artifact root: {artifact_root}"
             ) from error
-    if any(mode not in path.parts or other in path.parts for path in paths):
-        raise ValueError(f"manifest mode/path mismatch for {mode}")
+        if other in relative.parts:
+            raise ValueError(f"manifest mode/path mismatch for {mode}")

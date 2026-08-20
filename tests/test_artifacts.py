@@ -27,9 +27,11 @@ from docprune.benchmark_config import (
 )
 
 
-def make_manifest(tmp_path: Path, *, mode: str = "docprune") -> IndexManifest:
-    root = tmp_path / mode
-    root.mkdir()
+def make_manifest(
+    tmp_path: Path, *, mode: str = "docprune", artifact_root: Path | None = None
+) -> IndexManifest:
+    root = artifact_root if artifact_root is not None else tmp_path / mode
+    root.mkdir(parents=True)
     embeddings = root / "embeddings.safetensors"
     save_file(
         {
@@ -336,6 +338,48 @@ def test_manifest_pair_requires_distinct_mode_bound_artifacts(tmp_path: Path) ->
     object.__setattr__(docprune, "embeddings_path", all_kept.embeddings_path)
     with pytest.raises(ValueError, match="embedding roots"):
         validate_index_manifest_pair(all_kept, docprune)
+
+
+def test_manifest_accepts_all_kept_root_below_unrelated_docprune_ancestor(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "docprune" / "benchmark-3755812" / "indexes" / "all-kept"
+
+    manifest = make_manifest(tmp_path, mode="all-kept", artifact_root=root)
+
+    manifest.validate_files()
+
+
+def test_manifest_accepts_docprune_root_below_unrelated_all_kept_ancestor(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "all-kept" / "benchmark-3755812" / "indexes" / "docprune"
+
+    manifest = make_manifest(tmp_path, mode="docprune", artifact_root=root)
+
+    manifest.validate_files()
+
+
+@pytest.mark.parametrize(
+    ("mode", "wrong_leaf"),
+    [("all-kept", "docprune"), ("docprune", "all-kept")],
+)
+def test_manifest_rejects_wrong_mode_artifact_root(
+    tmp_path: Path, mode: str, wrong_leaf: str
+) -> None:
+    root = tmp_path / "benchmark-3755812" / "indexes" / wrong_leaf
+
+    with pytest.raises(ValueError, match=f"manifest mode/path mismatch for {mode}"):
+        make_manifest(tmp_path, mode=mode, artifact_root=root)
+
+
+def test_manifest_rejects_nested_cross_mode_artifact_path(tmp_path: Path) -> None:
+    manifest = make_manifest(tmp_path, mode="docprune")
+    arguments = dict(manifest.__dict__)
+    arguments["index_path"] = manifest.artifact_root / "all-kept" / "index.faiss"
+
+    with pytest.raises(ValueError, match="manifest mode/path mismatch for docprune"):
+        IndexManifest(**arguments)
 
 
 def test_manifest_pair_rejects_mode_path_mismatch(tmp_path: Path) -> None:
