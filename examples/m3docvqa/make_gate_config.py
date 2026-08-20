@@ -37,7 +37,7 @@ def main() -> int:
     payload = {
         "mode": "all-kept",
         "page_count": 1,
-        "runtime_commit": "bd16c045e99162b62e55c1961f2e15a011dbb4e7",
+        "runtime_commit": "3755812cc3dc1a6205671202894cdf7915bc95a9",
         "m3docrag_commit": M3DOCRAG_COMMIT,
         "m3docrag_root": str(args.m3docrag_root.resolve()),
         "qwen_model": QWEN_MODEL,

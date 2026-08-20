@@ -34,7 +34,7 @@ LAUNCHERS = tuple(
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
-ACTIVE_RUNTIME_COMMIT = "bd16c045e99162b62e55c1961f2e15a011dbb4e7"
+ACTIVE_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
 
 
 def _python_heredocs(path: Path) -> tuple[str, ...]:
@@ -237,8 +237,8 @@ def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     handoff = HANDOFF.read_text(encoding="utf-8")
     assert ACTIVE_RUNTIME_COMMIT in gate_config
     assert ACTIVE_RUNTIME_COMMIT in handoff
-    assert "/home/lmalveau/DocPrune-runtime-bd16c04" in handoff
-    assert "/scratch/lmalveau/docprune/benchmark-bd16c04/attempt-N" in handoff
+    assert "/home/lmalveau/DocPrune-runtime-3755812" in handoff
+    assert "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N" in handoff
 
 
 def test_upstream_checkouts_require_strict_clean_status() -> None:
