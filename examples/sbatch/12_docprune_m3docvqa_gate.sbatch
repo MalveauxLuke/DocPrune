@@ -298,7 +298,7 @@ for pages in (1, 2, 4):
     trace = result.trace.to_dict()
     counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]
     if counts[0] <= 0 or any(left < right or right <= 0 for left, right in zip(counts, counts[1:])):
-        raise SystemExit(f"non-monotonic or empty DocPrune trace for top-{pages}")
+        raise SystemExit(f"non-monotonic or empty DocPrune trace for top-{pages}: counts={counts}")
     traces[str(pages)] = counts
 out.write_text(json.dumps({
     "status": "passed",

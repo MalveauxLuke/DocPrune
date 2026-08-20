@@ -82,6 +82,12 @@ def test_gate_binds_qids_to_supporting_documents_and_checks_fixed_set() -> None:
     assert "source_positions != sorted(source_positions)" in text
 
 
+def test_gate_trace_failure_reports_all_four_token_counts() -> None:
+    text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    assert 'counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]' in text
+    assert 'f"non-monotonic or empty DocPrune trace for top-{pages}: counts={counts}"' in text
+
+
 def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     assert 'test ! -e "$GATE_ROOT"' in text

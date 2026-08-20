@@ -67,10 +67,12 @@ def visual_attention_scores(
         raise ValueError("visual_indices are outside the attention key range")
     selected = weights[0, :, -1, indices]
     if head_aggregation == "mean":
-        return selected.mean(dim=0)
-    if head_aggregation == "max":
-        return selected.max(dim=0).values
-    raise ValueError("head_aggregation must be mean or max")
+        aggregated = selected.mean(dim=0)
+    elif head_aggregation == "max":
+        aggregated = selected.max(dim=0).values
+    else:
+        raise ValueError("head_aggregation must be mean or max")
+    return aggregated * indices.numel()
 
 
 def ctp_keep_indices(

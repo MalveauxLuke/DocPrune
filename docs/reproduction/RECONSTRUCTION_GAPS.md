@@ -12,6 +12,7 @@ prevents local choices from being misreported as author-provided details.
 | Qwen resized pixels used by BTP | Not specified | Caller supplies the exact post-resize uint8 image and patch size | Verify against pinned processor pixels and `grid_thw` |
 | 2-by-2 group aggregation | Group pruning specified; reduction rule absent | Keep group if any member passes | Ablate any/all/mean |
 | Attention head aggregation | Not specified | Arithmetic mean | Compare mean and max |
+| CTP attention-score scale | Not specified by the authors | Author-unspecified `reconstruction_default`: aggregate heads, then multiply by the current visual-token count | Validate with real-gate token traces and paper drop-rate/parity comparison |
 | CTP generation timing | Last/output token named; exact step absent | Last prompt token during prefill | Compare documented alternatives if parity misses |
 | CTP cache compaction | Not specified | Full cache through selected layer, compact deeper caches | GPU decode equivalence and memory trace |
 | Model and dataset revisions | IDs given; revisions absent | Run must supply immutable revisions | Record HF commit hashes before any benchmark |
