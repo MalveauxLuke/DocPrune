@@ -81,6 +81,26 @@ def test_visual_attention_scores_preserves_empty_visual_vector() -> None:
     assert got.dtype == attention.dtype
 
 
+def test_visual_attention_scores_preserves_empty_visual_vector_for_max_aggregation() -> None:
+    attention = torch.tensor(
+        [
+            [
+                [[0.0, 0.2, 0.0, 0.8, 0.0]],
+                [[0.0, 0.4, 0.0, 0.2, 0.0]],
+            ]
+        ]
+    )
+
+    got = visual_attention_scores(
+        attention,
+        torch.tensor([], dtype=torch.long),
+        head_aggregation="max",
+    )
+
+    assert got.shape == (0,)
+    assert got.dtype == attention.dtype
+
+
 def test_ctp_retains_nonvisual_tokens_and_attention_threshold_equality() -> None:
     got = ctp_keep_indices(
         token_count=6,
