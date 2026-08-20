@@ -46,6 +46,19 @@ def test_metrics_report_literal_drop_rates_and_throughput() -> None:
     assert got["original_visual_tokens_per_second"] == pytest.approx(20.0)
 
 
+def test_sample_timing_omits_unmeasured_total_but_keeps_fixture_fallback() -> None:
+    timing = SampleTiming(retrieval_seconds=1.0, qa_seconds=2.0)
+
+    assert timing.total_seconds == pytest.approx(3.0)
+    assert "total_sample_seconds" not in timing.to_dict()
+
+
+def test_sample_timing_serializes_explicit_positive_total_exactly() -> None:
+    timing = SampleTiming(retrieval_seconds=1.0, qa_seconds=2.0, total_sample_seconds=7.25)
+
+    assert timing.to_dict()["total_sample_seconds"] == 7.25
+
+
 def test_paper_drop_rates_are_arithmetic_mean_of_per_sample_ratios() -> None:
     metrics = StageMetrics()
     metrics.update(

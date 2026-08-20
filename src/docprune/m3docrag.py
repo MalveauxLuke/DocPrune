@@ -106,11 +106,12 @@ class SampleTiming:
             "qa_seconds": self.qa_seconds,
             "encoder_seconds": self.encoder_seconds,
             "decoder_seconds": self.decoder_seconds,
-            "total_sample_seconds": self.total_seconds,
             "peak_allocated_gpu_bytes": self.peak_allocated_gpu_bytes,
             "warmup_excluded": self.warmup_excluded,
             "profiler_enabled": self.profiler_enabled,
         }
+        if self.total_sample_seconds is not None:
+            payload["total_sample_seconds"] = self.total_sample_seconds
         if self.profiler_enabled:
             payload["profiler_definition"] = self.profiler_definition
             payload["flops"] = self.flops

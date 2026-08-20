@@ -15,7 +15,7 @@ from docprune.benchmark_config import (
     COLPALI_REVISION,
     QWEN_MODEL,
 )
-from docprune.m3docrag import SampleInput
+from docprune.m3docrag import SampleInput, SampleTiming
 from docprune.m3docvqa_factory import (
     _is_cli_placeholder,
     _load_index_manifest,
@@ -147,6 +147,22 @@ def test_production_resume_validation_requires_raw_total_sample_seconds(tmp_path
 
     with pytest.raises(ValueError, match="production timing"):
         load_completed_qids(path, expected_qids=("q-1",), production=True)
+
+
+def test_production_record_rejects_synthesized_total_but_accepts_explicit_total() -> None:
+    record = result_record("q-1")
+    record["timing"] = SampleTiming(
+        retrieval_seconds=0.1,
+        qa_seconds=0.2,
+        page_load_seconds=0.1,
+        encoder_seconds=0.1,
+        decoder_seconds=0.1,
+    ).to_dict()
+    with pytest.raises(ValueError, match="stage boundaries"):
+        _validate_result_record(record, line_number=1, production=True)
+
+    record["timing"]["total_sample_seconds"] = 0.5
+    _validate_result_record(record, line_number=1, production=True)
 
 
 def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -> None:
