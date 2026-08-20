@@ -119,3 +119,108 @@ This is an environmental skip, not a silent omission: `torch.cuda.is_available()
 
 - CUDA and the cached Qwen checkpoint are unavailable in this environment, so real-model numerical equivalence and production FlashAttention kernel execution remain unobserved here; the CPU suite and deterministic fake coverage pass.
 - The benchmark’s absolute throughput/memory values remain reconstruction measurements on the configured hardware, as required by the design.
+
+## Fix Round 1
+
+Round 1 addressed all open Critical/Important/spec findings from review.
+
+### Changes and files
+
+- Corrected CTP rotary application in `src/docprune/qwen2vl/decoder.py`: the final query row receives only the final rotary row, while the full key sequence receives all rotary rows. Added a literal attention-equivalence regression in `tests/qwen2vl/test_decoder.py`.
+- Updated `src/docprune/evaluation.py` production index validation to require schema 5 before invoking the canonical `_load_index_manifest` loader. Added schema-5 acceptance/schema-4 rejection coverage in `tests/test_evaluation.py`.
+- Made production measurement identity require a non-null, exact two-integer compute capability, with missing, short, string, and boolean cases covered in `tests/test_evaluation.py`.
+- Made production timing validation require finite, strictly positive retrieval, page-load, QA, total-sample, encoder, and decoder fields. `src/docprune/m3docvqa_factory.py` exposes strict validation for production callers; canonical evaluation and aggregate reproduction enforce the same rule. `tests/test_m3docvqa_factory.py`, `tests/test_metrics.py`, and `tests/test_evaluation.py` cover missing, zero, and nonfinite values.
+- Aligned stock and sparse timing boundaries in `src/docprune/answerers.py` and `src/docprune/qwen2vl/model.py`: synchronized hooks observe only visual encoder modules and language-model prefill/greedy-decode modules (including the LM head), while preparation/compaction remains in QA and sample wall time. CUDA paths fail closed when the stage hooks observe no execution; CPU fakes retain deterministic fallback timing. `tests/test_answerers.py` covers observable stock stage execution.
+- Added canonical hardware/result classification to `src/docprune/metrics.py`, measurement identity, summaries, and production validation. A100/non-A6000 hardware is classified as `reconstruction_measurement`; actual RTX A6000 hardware is classified as `paper_hardware_parity`. Exact classification presence and values are covered in `tests/test_metrics.py` and `tests/test_evaluation.py`.
+- Removed the remaining stale schema-4 conditional in the secondary evaluation artifact check and kept disabled TFLOPs absent.
+
+Modified implementation/test files:
+
+```text
+src/docprune/answerers.py
+src/docprune/evaluation.py
+src/docprune/m3docvqa_factory.py
+src/docprune/metrics.py
+src/docprune/qwen2vl/decoder.py
+src/docprune/qwen2vl/model.py
+tests/qwen2vl/test_decoder.py
+tests/test_answerers.py
+tests/test_evaluation.py
+tests/test_m3docvqa_factory.py
+tests/test_metrics.py
+```
+
+### TDD RED evidence
+
+The intended round-1 RED command was run before the production fixes:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_decoder.py::test_ctp_attention_matches_literal_final_query_full_key_rotary_fixture tests/test_evaluation.py::test_production_measurement_identity_requires_compute_capability tests/test_evaluation.py::test_production_index_validation_accepts_schema_five_and_rejects_schema_four tests/test_metrics.py::test_production_summary_rejects_missing_or_zero_stage_timings -v
+```
+
+Literal RED result before production edits:
+
+```text
+test_ctp_attention_matches_literal_final_query_full_key_rotary_fixture FAILED
+  numerical mismatch: 24/24 values mismatched; greatest absolute difference 0.002968...
+test_production_measurement_identity_requires_compute_capability FAILED
+  expected an invalid production report, but the report was valid
+test_production_index_validation_accepts_schema_five_and_rejects_schema_four FAILED
+  schema-5 input was rejected with "index manifest schema_version must equal 4"
+test_production_summary_rejects_missing_or_zero_stage_timings FAILED
+  summarize_jsonl() did not yet accept the strict require_positive argument
+============================== 4 failed in ... ==============================
+```
+
+These failures demonstrated the rotary-row mismatch, missing compute-capability fail-closed behavior, stale schema-4 production gate, and absent strict aggregate timing validation. Additional RED assertions covered the six required stage fields, boundary timing hooks, and hardware classification before their corresponding production changes.
+
+### GREEN and verification
+
+Required focused suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_decoder.py tests/qwen2vl/test_model.py tests/test_answerers.py tests/test_metrics.py tests/test_evaluation.py tests/test_m3docvqa_factory.py tests/test_m3docrag.py -q
+109 passed, 1 skipped in 4.46s
+```
+
+Full CPU suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
+344 passed, 1 skipped in 7.91s
+```
+
+Ruff and diff checks:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m ruff check src tests
+All checks passed!
+
+git diff --check
+exit 0 (no output)
+```
+
+### Cached real-model probe
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src DOCPRUNE_REAL_MODEL_TEST=1 /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_model.py::test_real_model_all_kept_matches_stock_first_step_logits_without_download -q
+```
+
+Result:
+
+```text
+SKIPPED [1] tests/qwen2vl/test_model.py:153: real-model probe requires CUDA; CPU tests never load the 7B checkpoint
+1 skipped in 1.60s
+```
+
+This is an environmental skip: `torch.cuda.is_available()` is false, so the cached CUDA/FlashAttention probe cannot execute. No model download was attempted and the skip is explicit in the test output.
+
+### Self-review and concerns
+
+- The corrected CTP path now has a literal numerical equivalence regression in addition to shape/mask assertions; tiny eager all-kept generation and first-step-logit equivalence remain green.
+- Production validation now fails closed on schema, compute capability, hardware classification, timing presence, timing finiteness, and strict positivity, while fixture relaxation remains explicit and isolated.
+- Stock and sparse stage timers use synchronized module boundaries and preserve complete QA/sample wall timing; GPU hook absence fails closed rather than silently labeling preparation as model execution.
+- Classification is derived from the observed hardware string; A100 is explicitly a reconstruction measurement and is never labeled RTX A6000 parity.
+- CUDA kernel execution and cached real-model numerical equivalence remain unobserved because this environment has no CUDA device; deterministic CPU fakes and the full CPU suite pass.
+
+Round-1 implementation/test commit: `e9316b7`.
