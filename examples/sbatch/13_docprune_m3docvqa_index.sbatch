@@ -30,20 +30,6 @@ set -euo pipefail
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${RESUME:=0}"
 
-source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
-pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
-pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
-test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
-test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
-
-case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
-case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
-case "$RESUME" in 0|1) ;; *) echo "RESUME must be 0 or 1" >&2; exit 2 ;; esac
-if [[ "$RESUME" == 0 ]]; then
-  test ! -e "$INDEX_ROOT"
-else
-  test -d "$INDEX_ROOT"
-fi
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
@@ -61,6 +47,20 @@ if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.
 if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
     raise SystemExit("sealed control record project path mismatch")
 PY
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
+
+case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
+case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
+case "$RESUME" in 0|1) ;; *) echo "RESUME must be 0 or 1" >&2; exit 2 ;; esac
+if [[ "$RESUME" == 0 ]]; then
+  test ! -e "$INDEX_ROOT"
+else
+  test -d "$INDEX_ROOT"
+fi
 test -f "$RUN_CONFIG"
 test -d "$RUNTIME_DIR"
 test -d "$M3DOCRAG_DIR"

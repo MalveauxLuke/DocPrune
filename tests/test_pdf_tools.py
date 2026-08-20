@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -10,14 +11,27 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "examples" / "m3docvqa"))
+ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "examples" / "m3docvqa"))
 from pdf_tools import validate_pdf_tools  # noqa: E402
 
-ROOT = Path(__file__).parents[1]
 PDFTOOLS_DIR = Path("/home/lmalveau/mamba-envs/m3docvqa-acquisition")
 CORPUS_ROOT = Path("/scratch/lmalveau/docprune/datasets/m3docvqa")
 PDFINFO_SHA256 = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
 PDFTOPPM_SHA256 = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
+
+
+def _load_probe_image_module():
+    """Load the helper by file path; tests must not require ``examples`` as a package."""
+
+    path = ROOT / "examples" / "m3docvqa" / "make_probe_image.py"
+    spec = importlib.util.spec_from_file_location("docprune_test_make_probe_image", path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"could not load probe helper: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_validate_pdf_tools_accepts_the_pinned_acquisition_toolchain() -> None:
@@ -75,7 +89,7 @@ def test_shell_pdf_tool_preflight_requires_the_directory() -> None:
 
 
 def test_probe_helper_requires_pinned_pdf_tools(monkeypatch: pytest.MonkeyPatch) -> None:
-    from examples.m3docvqa import make_probe_image
+    make_probe_image = _load_probe_image_module()
 
     monkeypatch.delenv("PDFTOOLS_DIR", raising=False)
     with pytest.raises(ValueError, match="PDFTOOLS_DIR"):

@@ -34,11 +34,6 @@ set -euo pipefail
 : "${COLPALI_REVISION:?set COLPALI_REVISION to the pinned ColPali revision}"
 : "${COLPALI_BACKBONE_MODEL:?set COLPALI_BACKBONE_MODEL to the pinned backbone resource}"
 : "${COLPALI_BACKBONE_REVISION:?set COLPALI_BACKBONE_REVISION to the pinned backbone revision}"
-source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
-pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
-pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
-test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
-test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT
 
 EXPECTED_GATE_SAMPLE_IDS="a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8"
@@ -68,6 +63,11 @@ if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.
 if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
     raise SystemExit("sealed control record project path mismatch")
 PY
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 test -f "$RUN_CONFIG"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"

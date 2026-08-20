@@ -32,15 +32,6 @@ set -euo pipefail
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${SLURM_ARRAY_TASK_ID:?submit this wrapper as a Slurm array}"
 
-source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
-export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"
-pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
-pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
-test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
-test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
-
-test "$SLURM_ARRAY_TASK_ID" -ge 0
-test "$SLURM_ARRAY_TASK_ID" -le 5
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
@@ -58,6 +49,15 @@ if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.
 if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
     raise SystemExit("sealed control record project path mismatch")
 PY
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
+
+test "$SLURM_ARRAY_TASK_ID" -ge 0
+test "$SLURM_ARRAY_TASK_ID" -le 5
 case "$SLURM_ARRAY_TASK_ID" in
   0) MODE=all-kept; PAGES=1; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top1" ;;
   1) MODE=all-kept; PAGES=2; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top2" ;;

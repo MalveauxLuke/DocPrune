@@ -198,6 +198,19 @@ def test_launchers_validate_sealed_control_record() -> None:
         assert "tree_sha" in text
 
 
+def test_launchers_validate_control_checkout_before_loading_helpers() -> None:
+    """A mutable control checkout cannot supply code until its seal is verified."""
+
+    for launcher in LAUNCHERS:
+        text = launcher.read_text(encoding="utf-8")
+        preflight = text.index('source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"')
+        assert text.index('test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"') < preflight
+        assert text.index('test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"') < preflight
+        assert text.index('CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse') < preflight
+        assert text.index("sealed control record schema mismatch") < preflight
+        assert text.index("sealed control record project path mismatch") < preflight
+
+
 def test_run_config_generator_is_executable_and_documented() -> None:
     generator = ROOT / "examples" / "m3docvqa" / "make_run_configs.py"
     assert generator.is_file()

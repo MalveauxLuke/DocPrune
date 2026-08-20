@@ -365,6 +365,9 @@ export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
 source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
 for wrapper in examples/sbatch/{11,12,13,14}_docprune_m3docvqa*.sbatch; do bash -n "$wrapper"; done
+# Use the environment's interpreter as the canonical form; keep the direct
+# pytest executable check as an equivalent invocation for the sealed handoff.
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
 PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q
 /home/lmalveau/mamba-envs/docprune-sol/bin/ruff check src tests examples/m3docvqa
 PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml --pages 1
