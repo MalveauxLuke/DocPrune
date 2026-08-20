@@ -11,6 +11,30 @@ def test_flash_prefill_uses_unpadded_varlen_mask_contract(tiny_qwen2vl) -> None:
     )
 
 
+def test_flash_ctp_recomputes_final_query_without_square_causal_mask(tiny_qwen2vl, monkeypatch) -> None:
+    tiny_qwen2vl.model.config._attn_implementation = "flash_attention_2"
+
+    def fail_if_square_mask(*args, **kwargs):
+        raise AssertionError("FlashAttention CTP must not allocate a square causal mask")
+
+    monkeypatch.setattr("docprune.qwen2vl.decoder._causal_mask", fail_if_square_mask)
+    input_ids = torch.tensor([[10, 102, 100, 100, 103, 11]])
+    hidden = tiny_qwen2vl.model.embed_tokens(input_ids)
+    positions = torch.arange(6).view(1, 1, 6).expand(3, 1, 6)
+
+    with torch.no_grad():
+        got = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3]),
+            comprehension_threshold=0.0,
+            attention_threshold=1.0,
+        )
+
+    assert got.decision is not None
+
+
 def test_eager_prefill_uses_explicit_causal_mask(tiny_qwen2vl) -> None:
     mask = _prefill_attention_mask(tiny_qwen2vl.model, 3, torch.float32, torch.device("cpu"))
 

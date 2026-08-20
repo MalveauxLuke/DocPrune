@@ -12,7 +12,13 @@ from docprune.benchmark_config import MAX_NEW_TOKENS, SHORT_ANSWER_TEMPLATE
 from docprune.config import DocPruneConfig, PagePruningConfig, ReconstructionDefaults
 from docprune.m3docrag import AnswerOutput, RetrievalOutput
 from docprune.pipeline import prepare_qa_pruning_masks
-from docprune.qwen2vl.model import DocPruneQwen2VL, PruningTrace, VisionPruningMasks
+from docprune.qwen2vl.model import (
+    DocPruneQwen2VL,
+    PruningTrace,
+    VisionPruningMasks,
+    _begin_synchronized_timer,
+    _end_synchronized_timer,
+)
 from docprune.qwen2vl.preprocessing import (
     PreparedQwenPage,
     prepare_qwen_page,
@@ -56,6 +62,35 @@ def _end_gpu_measurement(device: torch.device | None) -> int:
         return 0
     torch.cuda.synchronize(device)
     return int(torch.cuda.max_memory_allocated(device))
+
+
+def _encoder_timer_hooks(model: object) -> tuple[list[float], list[object]]:
+    """Time only calls to Qwen's vision module during stock generation."""
+
+    visual = getattr(model, "visual", None)
+    register_pre = getattr(visual, "register_forward_pre_hook", None)
+    register_post = getattr(visual, "register_forward_hook", None)
+    if not callable(register_pre) or not callable(register_post):
+        return [], []
+    elapsed: list[float] = []
+    started: list[tuple[float, torch.device | None]] = []
+
+    def before(*_args: object, **_kwargs: object) -> None:
+        started.append(_begin_synchronized_timer(model))
+
+    def after(*_args: object, **_kwargs: object) -> None:
+        if started:
+            start, device = started.pop()
+            elapsed.append(_end_synchronized_timer(start, device))
+
+    return elapsed, [register_pre(before), register_post(after)]
+
+
+def _remove_hooks(handles: Sequence[object]) -> None:
+    for handle in handles:
+        remove = getattr(handle, "remove", None)
+        if callable(remove):
+            remove()
 
 
 def _move_batch(batch: object, device: torch.device | None) -> dict[str, object]:
@@ -218,21 +253,42 @@ class AllKeptQwenAnswerer:
         grid = _grid(batch)
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         batch = _move_batch(batch, _model_device(self.model))
+        generation_started, generation_device = _begin_synchronized_timer(self.model)
+        encoder_times, hooks = _encoder_timer_hooks(self.model)
         with torch.no_grad():
-            generated = self.model.generate(
-                **batch,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                num_beams=1,
-            )
+            try:
+                generated = self.model.generate(
+                    **batch,
+                    max_new_tokens=self.max_new_tokens,
+                    do_sample=False,
+                    num_beams=1,
+                )
+            finally:
+                _remove_hooks(hooks)
+        generation_elapsed = _end_synchronized_timer(generation_started, generation_device)
+        encoder_seconds = sum(encoder_times)
+        if not encoder_seconds:
+            # CPU fakes do not expose Qwen's visual module.  Keep their
+            # stage fields deterministic while production CUDA models use
+            # the forward-hook measurement above.
+            if generation_device is not None and generation_device.type == "cuda":
+                raise RuntimeError("Qwen vision encoder timing hook did not observe execution")
+            encoder_seconds = max(generation_elapsed / 2.0, 1e-12)
+        decoder_seconds = max(generation_elapsed - encoder_seconds, 1e-12)
         peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
         answer = _decode_new_tokens(self.processor, torch.as_tensor(generated), input_ids.shape[1])
+        qa_elapsed = max(time.perf_counter() - started, 1e-12)
         return AnswerOutput(
             answer,
             _all_kept_trace(grid),
-            time.perf_counter() - started,
+            qa_elapsed,
             peak_allocated_gpu_bytes,
             False,
+            False,
+            None,
+            None,
+            encoder_seconds,
+            decoder_seconds,
         )
 
 
@@ -378,7 +434,12 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         return AnswerOutput(
             answer,
             result.trace,
-            time.perf_counter() - started,
+            max(time.perf_counter() - started, 1e-12),
             peak_allocated_gpu_bytes,
             False,
+            False,
+            None,
+            None,
+            max(float(result.encoder_seconds), 1e-12),
+            max(float(result.decoder_seconds), 1e-12),
         )

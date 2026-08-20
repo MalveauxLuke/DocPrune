@@ -51,7 +51,7 @@ def _last_query_attention(
     decoder_layer: object,
     layer_input: torch.Tensor,
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
-    causal_mask: torch.Tensor,
+    causal_mask: torch.Tensor | None,
 ) -> torch.Tensor:
     from transformers.models.qwen2_vl.modeling_qwen2_vl import (
         apply_multimodal_rotary_pos_emb,
@@ -61,21 +61,24 @@ def _last_query_attention(
     attention = decoder_layer.self_attn
     hidden = decoder_layer.input_layernorm(layer_input)
     batch, sequence_length, _ = hidden.shape
-    query = attention.q_proj(hidden)
+    # CTP only needs the final prompt query.  Projecting the whole sequence
+    # here needlessly allocates an [batch, heads, sequence, head_dim] tensor.
+    query = attention.q_proj(hidden[:, -1:, :])
     key = attention.k_proj(hidden)
-    query = query.view(batch, sequence_length, attention.num_heads, attention.head_dim).transpose(1, 2)
+    query = query.view(batch, 1, attention.num_heads, attention.head_dim).transpose(1, 2)
     key = key.view(batch, sequence_length, attention.num_key_value_heads, attention.head_dim).transpose(1, 2)
     cosine, sine = position_embeddings
     query, key = apply_multimodal_rotary_pos_emb(
         query,
         key,
-        cosine,
-        sine,
+        cosine[..., -1:, :],
+        sine[..., -1:, :],
         attention.rope_scaling["mrope_section"],
     )
     key = repeat_kv(key, attention.num_key_value_groups)
     scores = torch.matmul(query[:, :, -1:, :], key.transpose(2, 3)) / math.sqrt(attention.head_dim)
-    scores = scores + causal_mask[:, :, -1:, :]
+    if causal_mask is not None:
+        scores = scores + causal_mask[:, :, -1:, :]
     return torch.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
 
 
@@ -113,9 +116,13 @@ def prefill_with_ctp(
     for layer_index, decoder_layer in enumerate(decoder_model.layers):
         layer_input = hidden
         position_embeddings = decoder_model.rotary_emb(layer_input, positions)
-        causal_mask = _causal_mask(hidden.shape[1], dtype=hidden.dtype, device=hidden.device)
         layer_attention_mask = _prefill_attention_mask(
             decoder_model, hidden.shape[1], hidden.dtype, hidden.device
+        )
+        causal_mask = (
+            None
+            if layer_attention_mask is None
+            else _causal_mask(hidden.shape[1], dtype=hidden.dtype, device=hidden.device)
         )
         layer_outputs = decoder_layer(
             hidden,

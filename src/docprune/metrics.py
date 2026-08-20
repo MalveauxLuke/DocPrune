@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import json
 import math
 import os
-from dataclasses import dataclass
+import platform
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +17,71 @@ from docprune.qwen2vl.model import PruningTrace
 
 MEASUREMENT_DEFINITION = (
     "peak_allocated_gpu_bytes is torch.cuda.max_memory_allocated after a synchronized "
-    "counter reset at the start of the complete QA path and synchronization after generation"
+    "counter reset at the start of complete QA and synchronization after generation; "
+    "encoder is synchronized Qwen vision execution and decoder is synchronized LM prefill "
+    "plus greedy decode"
 )
+
+
+def measurement_identity(
+    *, sample_ids: tuple[str, ...] = (), warmup_count: int = 1
+) -> dict[str, object]:
+    """Return the canonical identity used for paired efficiency measurements."""
+
+    import torch
+
+    cuda = bool(torch.cuda.is_available())
+    if cuda:
+        device = torch.cuda.current_device()
+        gpu_model = torch.cuda.get_device_name(device)
+        capability = list(torch.cuda.get_device_capability(device))
+    else:
+        gpu_model = "cpu"
+        capability = None
+    try:
+        transformers_version = importlib.metadata.version("transformers")
+    except importlib.metadata.PackageNotFoundError:
+        transformers_version = "unavailable"
+    identity_ids = tuple(str(value) for value in sample_ids)
+    return {
+        "definition": MEASUREMENT_DEFINITION,
+        "warmup_required": True,
+        "profiler_enabled": False,
+        "hardware": {
+            "gpu_model": gpu_model,
+            "compute_capability": capability,
+        },
+        "software": {
+            "python": platform.python_version(),
+            "cuda": torch.version.cuda or "unavailable",
+            "pytorch": torch.__version__,
+            "transformers": transformers_version,
+        },
+        "precision": {
+            "weights": "bfloat16",
+            "vision": "bfloat16",
+            "attention_accumulation": "float32",
+        },
+        "attention_backend": "flash_attention_2",
+        "allocator": {
+            "peak_memory": "torch.cuda.max_memory_allocated",
+            "reset": "torch.cuda.reset_peak_memory_stats",
+        },
+        "timer_boundaries": {
+            "synchronization": "torch.cuda.synchronize before and after each stage",
+            "encoder": "Qwen visual encoder execution only",
+            "decoder": "language-model prefill, first logits, and greedy decode",
+            "qa": "complete page preparation, BTP/QTP, encoder, decoder, and answer decode",
+            "sample": "retrieval, page loading, and complete QA wall time",
+        },
+        "warmup": {
+            "count": warmup_count,
+            "sample_id": identity_ids[0] if identity_ids else None,
+            "sample_identity_sha256": hashlib.sha256(
+                "\n".join(identity_ids).encode("utf-8")
+            ).hexdigest(),
+        },
+    }
 
 
 @dataclass
@@ -26,12 +92,19 @@ class StageMetrics:
     post_qtp: int = 0
     post_ctp: int = 0
     retrieval_seconds: float = 0.0
+    page_load_seconds: float = 0.0
     qa_seconds: float = 0.0
+    encoder_seconds: float = 0.0
+    decoder_seconds: float = 0.0
+    total_sample_seconds: float = 0.0
     peak_allocated_gpu_bytes: int = 0
     warmup_excluded: bool = False
     profiler_enabled: bool = False
     profiler_definition: str | None = None
     flops: float | None = None
+    _drop_rates: dict[str, list[float]] = field(
+        default_factory=lambda: {"btp": [], "qtp": [], "ctp": []}, repr=False
+    )
 
     def update(self, trace: PruningTrace, timing: SampleTiming) -> None:
         counts = (
@@ -46,12 +119,20 @@ class StageMetrics:
             raise ValueError(
                 "visual token counts must be nonnegative and monotonically nonincreasing"
             )
+        stage_values = (
+            timing.retrieval_seconds,
+            timing.page_load_seconds,
+            timing.qa_seconds,
+            timing.encoder_seconds,
+            timing.decoder_seconds,
+            timing.total_seconds,
+        )
         if any(
             not isinstance(value, int | float)
             or isinstance(value, bool)
             or not math.isfinite(float(value))
             or float(value) < 0
-            for value in (timing.retrieval_seconds, timing.qa_seconds)
+            for value in stage_values
         ):
             raise ValueError("timings must be finite and nonnegative")
         peak = getattr(timing, "peak_allocated_gpu_bytes", 0)
@@ -93,7 +174,14 @@ class StageMetrics:
         self.post_qtp += counts[2]
         self.post_ctp += counts[3]
         self.retrieval_seconds += timing.retrieval_seconds
+        self.page_load_seconds += timing.page_load_seconds
         self.qa_seconds += timing.qa_seconds
+        self.encoder_seconds += timing.encoder_seconds
+        self.decoder_seconds += timing.decoder_seconds
+        self.total_sample_seconds += timing.total_seconds
+        self._drop_rates["btp"].append(1.0 - counts[1] / counts[0])
+        self._drop_rates["qtp"].append(1.0 - counts[2] / counts[0])
+        self._drop_rates["ctp"].append(1.0 - counts[3] / counts[0])
         self.peak_allocated_gpu_bytes = max(self.peak_allocated_gpu_bytes, peak)
         if self.samples == 1:
             self.warmup_excluded = warmup_excluded
@@ -101,7 +189,7 @@ class StageMetrics:
             self.warmup_excluded = self.warmup_excluded and warmup_excluded
 
     def to_dict(self) -> dict[str, object]:
-        total_seconds = self.retrieval_seconds + self.qa_seconds
+        total_seconds = self.total_sample_seconds
 
         def drop(retained: int) -> float:
             return 0.0 if self.original == 0 else 1.0 - retained / self.original
@@ -115,15 +203,28 @@ class StageMetrics:
                 "post_ctp": self.post_ctp,
             },
             "drop_rates": {
+                name: (sum(values) / len(values) if values else 0.0)
+                for name, values in self._drop_rates.items()
+            },
+            "token_weighted_drop_rates": {
                 "btp": drop(self.post_btp),
                 "qtp": drop(self.post_qtp),
                 "ctp": drop(self.post_ctp),
             },
             "timing_seconds": {
                 "retrieval": self.retrieval_seconds,
+                "page_load": self.page_load_seconds,
                 "qa": self.qa_seconds,
+                "encoder": self.encoder_seconds,
+                "decoder": self.decoder_seconds,
                 "total": total_seconds,
             },
+            "encoder_samples_per_second": (
+                0.0 if self.encoder_seconds == 0 else self.samples / self.encoder_seconds
+            ),
+            "decoder_samples_per_second": (
+                0.0 if self.decoder_seconds == 0 else self.samples / self.decoder_seconds
+            ),
             "original_visual_tokens_per_second": (
                 0.0 if total_seconds == 0 else self.original / total_seconds
             ),

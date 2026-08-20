@@ -927,13 +927,24 @@ def validate_benchmark_run(
             )
     measurement = manifest.get("measurement")
     declared_profiler = False
-    required_measurement = {"definition", "warmup_required", "profiler_enabled"}
+    required_measurement = {
+        "definition",
+        "warmup_required",
+        "profiler_enabled",
+        "hardware",
+        "software",
+        "precision",
+        "attention_backend",
+        "allocator",
+        "timer_boundaries",
+        "warmup",
+    }
     if production_run and not isinstance(measurement, Mapping):
         errors.append("production run manifest is missing measurement definition")
     if isinstance(measurement, Mapping):
-        if set(measurement) != required_measurement:
+        if production_run and set(measurement) != required_measurement:
             errors.append("measurement manifest contains unexpected or missing fields")
-        if not required_measurement <= set(measurement):
+        if production_run and not required_measurement <= set(measurement):
             errors.append("measurement manifest is missing required fields")
         if measurement.get("definition") != MEASUREMENT_DEFINITION:
             errors.append("measurement definition does not match the benchmark contract")
@@ -944,6 +955,78 @@ def validate_benchmark_run(
             errors.append("measurement profiler_enabled must be boolean")
         else:
             declared_profiler = profiler_value
+        if production_run:
+            hardware = measurement.get("hardware")
+            software = measurement.get("software")
+            precision = measurement.get("precision")
+            allocator = measurement.get("allocator")
+            boundaries = measurement.get("timer_boundaries")
+            if not isinstance(hardware, Mapping) or not isinstance(
+                hardware.get("gpu_model"), str
+            ):
+                errors.append("measurement hardware identity is invalid")
+            capability = hardware.get("compute_capability") if isinstance(hardware, Mapping) else None
+            if capability is not None and (
+                not isinstance(capability, list)
+                or len(capability) != 2
+                or any(not isinstance(value, int) or isinstance(value, bool) for value in capability)
+            ):
+                errors.append("measurement compute capability is invalid")
+            if not isinstance(software, Mapping) or any(
+                not isinstance(software.get(name), str)
+                for name in ("python", "cuda", "pytorch", "transformers")
+            ):
+                errors.append("measurement software identity is invalid")
+            if not isinstance(precision, Mapping) or any(
+                precision.get(name) != expected
+                for name, expected in (
+                    ("weights", "bfloat16"),
+                    ("vision", "bfloat16"),
+                    ("attention_accumulation", "float32"),
+                )
+            ):
+                errors.append("measurement precision identity is invalid")
+            if not isinstance(allocator, Mapping) or allocator != {
+                "peak_memory": "torch.cuda.max_memory_allocated",
+                "reset": "torch.cuda.reset_peak_memory_stats",
+            }:
+                errors.append("measurement allocator identity is invalid")
+            if measurement.get("attention_backend") != "flash_attention_2":
+                errors.append("measurement attention backend identity is invalid")
+            expected_boundary_values = {
+                "synchronization": "torch.cuda.synchronize before and after each stage",
+                "encoder": "Qwen visual encoder execution only",
+                "decoder": "language-model prefill, first logits, and greedy decode",
+                "qa": "complete page preparation, BTP/QTP, encoder, decoder, and answer decode",
+                "sample": "retrieval, page loading, and complete QA wall time",
+            }
+            if not isinstance(boundaries, Mapping) or dict(boundaries) != expected_boundary_values:
+                errors.append("measurement timer boundaries are incomplete")
+            warmup = measurement.get("warmup")
+            if not isinstance(warmup, Mapping):
+                errors.append("measurement manifest is missing warmup identity")
+            else:
+                if (
+                    not isinstance(warmup.get("count"), int)
+                    or isinstance(warmup.get("count"), bool)
+                    or warmup.get("count") != 1
+                ):
+                    errors.append("measurement warmup count must equal one")
+                sample_ids = (
+                    manifest.get("selection", {}).get("resolved_question_ids", [])
+                    if isinstance(manifest.get("selection"), Mapping)
+                    else []
+                )
+                if (
+                    not isinstance(warmup.get("sample_id"), str)
+                    or warmup.get("sample_id") not in sample_ids
+                ):
+                    errors.append("measurement warmup sample identity is not selected")
+                expected_sample_hash = hashlib.sha256(
+                    "\n".join(str(value) for value in sample_ids).encode("utf-8")
+                ).hexdigest()
+                if warmup.get("sample_identity_sha256") != expected_sample_hash:
+                    errors.append("measurement sample identity digest is invalid")
     if production_run:
         source_order_sha256 = _validate_production_corpus(manifest, errors)
         _validate_production_run_config(manifest, run_dir, errors)
@@ -1013,6 +1096,26 @@ def validate_benchmark_run(
                         raise ValueError("production peak allocated GPU bytes must be positive")
                     if timing["warmup_excluded"] is not True:
                         raise ValueError("warmup must be explicitly excluded")
+                    if production_run:
+                        required_stages = {
+                            "encoder_seconds",
+                            "decoder_seconds",
+                            "page_load_seconds",
+                            "total_sample_seconds",
+                        }
+                        if not required_stages <= set(timing):
+                            raise ValueError("production timing is missing stage boundaries")
+                        for stage in required_stages:
+                            value = timing[stage]
+                            if (
+                                not isinstance(value, int | float)
+                                or isinstance(value, bool)
+                                or not math.isfinite(float(value))
+                                or float(value) <= 0
+                            ):
+                                raise ValueError(
+                                    f"production {stage} must be finite and positive"
+                                )
                     if "profiler_enabled" not in timing or not isinstance(
                         timing["profiler_enabled"], bool
                     ):
@@ -1097,7 +1200,7 @@ def validate_benchmark_run(
                         nested_index
                     ):
                         errors.append("index manifest identity does not match its source file")
-                    if index_payload.get("schema_version") == 4:
+                    if index_payload.get("schema_version") != 5:
                         try:
                             from docprune.m3docvqa_factory import _load_index_manifest
 

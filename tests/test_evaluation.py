@@ -530,6 +530,24 @@ def test_production_records_reject_zero_peak_gpu_measurement(tmp_path):
     assert any("peak allocated GPU bytes" in error for error in report.errors)
 
 
+def test_production_records_reject_missing_stage_timings(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    manifest["corpus"]["is_fixture"] = False
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    (run / "run_manifest.json").write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
+
+    assert report.valid is False
+    assert any("stage boundaries" in error for error in report.errors)
+
+
 def test_validate_benchmark_run_accepts_selected_rows_as_source_order_subsequence(tmp_path):
     run = tmp_path / "run"
     _write_valid_run(run)

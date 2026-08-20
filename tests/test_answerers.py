@@ -86,6 +86,8 @@ def test_all_kept_answerer_uses_exact_prompt_greedy_settings_and_new_tokens() ->
     assert output.trace.post_ctp_visual_tokens == 4
     assert output.warmup_excluded is False
     assert output.peak_allocated_gpu_bytes >= 0
+    assert output.encoder_seconds > 0
+    assert output.decoder_seconds > 0
     call = model.calls[0]
     assert call["max_new_tokens"] == 128
     assert call["do_sample"] is False
@@ -127,6 +129,8 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
 
     assert output.answer == "answer"
     assert output.trace.post_ctp_visual_tokens == 1
+    assert output.encoder_seconds > 0
+    assert output.decoder_seconds > 0
 
 
 def test_docprune_answerer_requires_retrieval_context() -> None:

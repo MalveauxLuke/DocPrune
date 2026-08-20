@@ -34,6 +34,8 @@ def test_tiny_model_generates_with_monotonic_pruning_trace(tiny_qwen2vl) -> None
         )
 
     assert got.generated_ids.shape == (1, 2)
+    assert got.encoder_seconds > 0
+    assert got.decoder_seconds > 0
     assert got.trace.original_visual_tokens == 4
     assert got.trace.post_btp_visual_tokens == 3
     assert got.trace.post_qtp_visual_tokens == 2

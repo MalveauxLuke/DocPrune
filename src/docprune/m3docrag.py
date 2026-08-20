@@ -86,17 +86,27 @@ class SampleTiming:
     profiler_enabled: bool = False
     profiler_definition: str | None = None
     flops: float | None = None
+    encoder_seconds: float = 0.0
+    decoder_seconds: float = 0.0
+    page_load_seconds: float = 0.0
+    total_sample_seconds: float | None = None
 
     @property
     def total_seconds(self) -> float:
-        return self.retrieval_seconds + self.qa_seconds
+        if self.total_sample_seconds is not None:
+            return self.total_sample_seconds
+        return self.retrieval_seconds + self.page_load_seconds + self.qa_seconds
 
     def to_dict(self) -> dict[str, object]:
         """Serialize measured fields without publishing disabled profiler data."""
 
         payload: dict[str, object] = {
             "retrieval_seconds": self.retrieval_seconds,
+            "page_load_seconds": self.page_load_seconds,
             "qa_seconds": self.qa_seconds,
+            "encoder_seconds": self.encoder_seconds,
+            "decoder_seconds": self.decoder_seconds,
+            "total_sample_seconds": self.total_seconds,
             "peak_allocated_gpu_bytes": self.peak_allocated_gpu_bytes,
             "warmup_excluded": self.warmup_excluded,
             "profiler_enabled": self.profiler_enabled,
@@ -117,6 +127,8 @@ class AnswerOutput:
     profiler_enabled: bool = False
     profiler_definition: str | None = None
     flops: float | None = None
+    encoder_seconds: float = 0.0
+    decoder_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -182,6 +194,7 @@ class DocPruneM3DocRAG:
 
     def run_sample(self, sample: SampleInput | Mapping[str, Any]) -> SampleResult:
         item = sample if isinstance(sample, SampleInput) else SampleInput.from_mapping(sample)
+        sample_started = time.perf_counter()
         retrieval_start = time.perf_counter()
         retrieval = self.retriever.retrieve(item.question, self.top_k)
         retrieval_output = retrieval if isinstance(retrieval, RetrievalOutput) else None
@@ -193,7 +206,9 @@ class DocPruneM3DocRAG:
         retrieval_seconds = time.perf_counter() - retrieval_start
         if len(pages) != self.top_k:
             raise ValueError(f"retriever returned {len(pages)} pages; expected {self.top_k}")
+        page_load_start = time.perf_counter()
         images = [self.page_loader.load_page(page.doc_id, page.page_index) for page in pages]
+        page_load_seconds = time.perf_counter() - page_load_start
         answer_method = self.answerer.answer
         if retrieval_output is not None:
             answer = answer_method(
@@ -203,8 +218,9 @@ class DocPruneM3DocRAG:
             )
         else:
             answer = answer_method(images, item.question)
-        if answer.qa_seconds < 0:
-            raise ValueError("qa_seconds must be nonnegative")
+        if answer.qa_seconds < 0 or answer.encoder_seconds < 0 or answer.decoder_seconds < 0:
+            raise ValueError("stage timings must be nonnegative")
+        total_sample_seconds = time.perf_counter() - sample_started
         return SampleResult(
             question_id=item.question_id,
             question=item.question,
@@ -220,6 +236,10 @@ class DocPruneM3DocRAG:
                 answer.profiler_enabled,
                 answer.profiler_definition,
                 answer.flops,
+                answer.encoder_seconds,
+                answer.decoder_seconds,
+                page_load_seconds,
+                total_sample_seconds,
             ),
         )
 

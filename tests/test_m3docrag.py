@@ -39,6 +39,8 @@ class FakeAnswerer:
             answer="42",
             trace=PruningTrace(100, 80, 50, 25, 7),
             qa_seconds=2.0,
+            encoder_seconds=0.3,
+            decoder_seconds=0.7,
         )
 
 
@@ -54,6 +56,10 @@ def test_adapter_preserves_official_retrieval_order_and_trace() -> None:
     assert [page.doc_id for page in result.retrieved_pages] == ["doc-b", "doc-a"]
     assert result.trace.post_ctp_visual_tokens == 25
     assert result.to_dict()["answers"] == ["42", "forty two"]
+    assert result.timing.encoder_seconds == pytest.approx(0.3)
+    assert result.timing.decoder_seconds == pytest.approx(0.7)
+    assert result.timing.page_load_seconds >= 0
+    assert result.timing.total_sample_seconds > 0
 
 
 def test_runner_passes_retrieval_context_to_answerer() -> None:

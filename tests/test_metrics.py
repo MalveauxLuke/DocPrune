@@ -33,8 +33,36 @@ def test_metrics_report_literal_drop_rates_and_throughput() -> None:
         "post_ctp": 45,
     }
     assert got["drop_rates"] == pytest.approx({"btp": 0.3, "qtp": 0.55, "ctp": 0.775})
-    assert got["timing_seconds"] == {"retrieval": 2.0, "qa": 8.0, "total": 10.0}
+    assert got["timing_seconds"] == {
+        "retrieval": 2.0,
+        "page_load": 0.0,
+        "qa": 8.0,
+        "encoder": 0.0,
+        "decoder": 0.0,
+        "total": 10.0,
+    }
     assert got["original_visual_tokens_per_second"] == pytest.approx(20.0)
+
+
+def test_paper_drop_rates_are_arithmetic_mean_of_per_sample_ratios() -> None:
+    metrics = StageMetrics()
+    metrics.update(
+        PruningTrace(100, 80, 50, 25, 7),
+        SampleTiming(1.0, 3.0, encoder_seconds=0.5, decoder_seconds=1.0),
+    )
+    metrics.update(
+        PruningTrace(200, 100, 100, 100, 5),
+        SampleTiming(1.0, 3.0, encoder_seconds=0.5, decoder_seconds=1.0),
+    )
+
+    got = metrics.to_dict()
+
+    assert got["drop_rates"] == pytest.approx({"btp": 0.35, "qtp": 0.5, "ctp": 0.625})
+    assert got["token_weighted_drop_rates"] == pytest.approx(
+        {"btp": 1 - 180 / 300, "qtp": 1 - 150 / 300, "ctp": 1 - 125 / 300}
+    )
+    assert got["timing_seconds"]["encoder"] == pytest.approx(1.0)
+    assert got["timing_seconds"]["decoder"] == pytest.approx(2.0)
 
 
 def test_jsonl_writer_refuses_overwrite_and_summary_is_reproducible(tmp_path) -> None:

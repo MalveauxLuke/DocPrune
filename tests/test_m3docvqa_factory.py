@@ -142,18 +142,21 @@ def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -
         pass
 
     qwen_model = QwenModel()
+    qwen_calls = []
     monkeypatch.setitem(
         sys.modules,
         "transformers",
         SimpleNamespace(
             AutoProcessor=SimpleNamespace(from_pretrained=lambda *args, **kwargs: object()),
             Qwen2VLForConditionalGeneration=SimpleNamespace(
-                from_pretrained=lambda *args, **kwargs: qwen_model
+                from_pretrained=lambda *args, **kwargs: (qwen_calls.append(kwargs) or qwen_model)
             ),
         ),
     )
     model, _ = factory._load_qwen(SimpleNamespace())
     assert model.devices == [torch.device("cuda")]
+    assert qwen_calls[0]["attn_implementation"] == "flash_attention_2"
+    assert qwen_calls[0]["torch_dtype"] is torch.bfloat16
 
 
 def test_model_loaders_fail_before_import_when_cuda_is_unavailable(monkeypatch) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import torch
@@ -48,6 +49,31 @@ class GenerationResult:
     generated_ids: torch.Tensor
     trace: PruningTrace
     first_step_logits: torch.Tensor | None = None
+    encoder_seconds: float = 0.0
+    decoder_seconds: float = 0.0
+
+
+def _model_device(model: object) -> torch.device | None:
+    parameters = getattr(model, "parameters", None)
+    if not callable(parameters):
+        return None
+    try:
+        return next(parameters()).device
+    except StopIteration:
+        return None
+
+
+def _begin_synchronized_timer(model: object) -> tuple[float, torch.device | None]:
+    device = _model_device(model)
+    if device is not None and device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(device)
+    return time.perf_counter(), device
+
+
+def _end_synchronized_timer(started: float, device: torch.device | None) -> float:
+    if device is not None and device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(device)
+    return max(time.perf_counter() - started, 1e-12)
 
 
 class DocPruneQwen2VL:
@@ -89,12 +115,14 @@ class DocPruneQwen2VL:
         vision_dtype = getattr(self.model.visual, "get_dtype", lambda: pixel_values.dtype)()
         vision_device = getattr(self.model.visual, "get_device", lambda: pixel_values.device)()
         pixel_values = pixel_values.to(device=vision_device, dtype=vision_dtype)
+        encoder_started, encoder_device = _begin_synchronized_timer(self.model)
         vision = compact_vision_batch(
             self.model.visual,
             pixel_values,
             image_grid_thw,
             combined,
         )
+        encoder_seconds = _end_synchronized_timer(encoder_started, encoder_device)
         compact = compact_multimodal_sequence(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -110,6 +138,7 @@ class DocPruneQwen2VL:
             device=embeddings.device,
             dtype=embeddings.dtype,
         )
+        decoder_started, decoder_device = _begin_synchronized_timer(self.model)
         prefill = prefill_with_ctp(
             self.model.model,
             embeddings,
@@ -147,6 +176,7 @@ class DocPruneQwen2VL:
             next_position += 1
 
         generated_ids = torch.stack(generated, dim=1)
+        decoder_seconds = _end_synchronized_timer(decoder_started, decoder_device)
         post_ctp = (
             len(prefill.decision.retained_visual_indices)
             if prefill.decision is not None
@@ -159,4 +189,10 @@ class DocPruneQwen2VL:
             post_ctp_visual_tokens=post_ctp,
             ctp_layer=prefill.decision.layer_index if prefill.decision is not None else None,
         )
-        return GenerationResult(generated_ids, trace, first_step_logits)
+        return GenerationResult(
+            generated_ids,
+            trace,
+            first_step_logits,
+            encoder_seconds,
+            decoder_seconds,
+        )

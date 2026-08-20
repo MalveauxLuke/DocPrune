@@ -39,6 +39,7 @@ from docprune.colpali.compat import assert_supported_colpali
 from docprune.config import DocPruneConfig
 from docprune.indexing import IndexBuildConfig, IndexBuildResult, build_index
 from docprune.m3docrag import DocPruneM3DocRAG, OfficialM3DocRAGBoundary, SampleInput
+from docprune.metrics import measurement_identity
 from docprune.processor_probe import validate_processor_contract
 
 DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
@@ -358,6 +359,10 @@ def _validate_result_record(
     timing = record["timing"]
     timing_fields = {"retrieval_seconds", "qa_seconds"}
     optional_timing_fields = {
+        "encoder_seconds",
+        "decoder_seconds",
+        "page_load_seconds",
+        "total_sample_seconds",
         "peak_allocated_gpu_bytes",
         "warmup_excluded",
         "profiler_enabled",
@@ -373,7 +378,15 @@ def _validate_result_record(
         or isinstance(timing[name], bool)
         or not math.isfinite(float(timing[name]))
         or float(timing[name]) < 0
-        for name in ("retrieval_seconds", "qa_seconds")
+        for name in timing
+        if name in {
+            "retrieval_seconds",
+            "qa_seconds",
+            "encoder_seconds",
+            "decoder_seconds",
+            "page_load_seconds",
+            "total_sample_seconds",
+        }
     ):
         raise ValueError(f"results JSONL record {line_number} has invalid timings")
     if "peak_allocated_gpu_bytes" in timing and (
@@ -742,11 +755,17 @@ def _load_qwen(run_config: object) -> tuple[object, object]:
     snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
     model = (
         Qwen2VLForConditionalGeneration.from_pretrained(
-            str(snapshot), torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+            str(snapshot),
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            attn_implementation="flash_attention_2",
         )
         .to(device)
         .eval()
     )
+    vision_config = getattr(getattr(model, "config", None), "vision_config", None)
+    if vision_config is not None:
+        vision_config.torch_dtype = torch.bfloat16
     processor = AutoProcessor.from_pretrained(str(snapshot))
     return model, processor
 
@@ -977,6 +996,7 @@ def _write_run_manifest(
             "pruning_config",
             "selection",
             "index_manifest",
+            "measurement",
         )
         if resume:
             if existing.get("schema_version") != 2 or existing.get("status") != "configured":
@@ -1115,6 +1135,10 @@ def build_workload(
             config, mode=resolved_mode, page_count=page_count
         ),
         "selection": _selection_identity(samples, limit=limit, sample_ids=sample_ids),
+        "measurement": measurement_identity(
+            sample_ids=tuple(sample.question_id for sample in samples),
+            warmup_count=1,
+        ),
     }
 
     if operation == "embed":
