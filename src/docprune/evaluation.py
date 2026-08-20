@@ -444,11 +444,28 @@ def _load_result_rows(path: Path) -> tuple[dict[str, object], ...]:
 
 
 def summarize_benchmark_run(
-    results_path: Path, source_rows: object | None = None
+    results_path: Path,
+    source_rows: object | None = None,
+    *,
+    require_positive: bool = False,
 ) -> dict[str, object]:
     """Produce the deterministic quality-plus-efficiency run summary."""
 
-    efficiency = summarize_jsonl(Path(results_path))
+    efficiency = summarize_jsonl(Path(results_path), require_positive=require_positive)
+    manifest_path = Path(results_path).parent / "run_manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = None
+        if isinstance(manifest, Mapping):
+            measurement = manifest.get("measurement")
+            if isinstance(measurement, Mapping) and "result_classification" in measurement:
+                summary_measurement = efficiency.get("measurement")
+                if isinstance(summary_measurement, dict):
+                    summary_measurement["result_classification"] = measurement[
+                        "result_classification"
+                    ]
     if source_rows is None:
         return efficiency
     records = _load_result_rows(Path(results_path))
@@ -802,8 +819,8 @@ def _validate_production_index(
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, Mapping):
             raise ValueError("index manifest is not an object")
-        if payload.get("schema_version") != 4:
-            raise ValueError("index manifest schema_version must equal 4")
+        if payload.get("schema_version") != 5:
+            raise ValueError("index manifest schema_version must equal 5")
         supplied = payload.get("manifest_sha256")
         unsigned = dict(payload)
         unsigned.pop("manifest_sha256", None)
@@ -932,6 +949,7 @@ def validate_benchmark_run(
         "warmup_required",
         "profiler_enabled",
         "hardware",
+        "result_classification",
         "software",
         "precision",
         "attention_backend",
@@ -963,17 +981,27 @@ def validate_benchmark_run(
             boundaries = measurement.get("timer_boundaries")
             if not isinstance(hardware, Mapping) or not isinstance(
                 hardware.get("gpu_model"), str
-            ):
+            ) or not hardware.get("gpu_model", "").strip():
                 errors.append("measurement hardware identity is invalid")
             capability = hardware.get("compute_capability") if isinstance(hardware, Mapping) else None
-            if capability is not None and (
+            if capability is None or (
                 not isinstance(capability, list)
                 or len(capability) != 2
                 or any(not isinstance(value, int) or isinstance(value, bool) for value in capability)
             ):
                 errors.append("measurement compute capability is invalid")
+            from docprune.metrics import hardware_result_classification
+
+            try:
+                expected_classification = hardware_result_classification(
+                    str(hardware.get("gpu_model")) if isinstance(hardware, Mapping) else ""
+                )
+            except ValueError:
+                expected_classification = None
+            if measurement.get("result_classification") != expected_classification:
+                errors.append("measurement result classification is invalid")
             if not isinstance(software, Mapping) or any(
-                not isinstance(software.get(name), str)
+                not isinstance(software.get(name), str) or not software.get(name).strip()
                 for name in ("python", "cuda", "pytorch", "transformers")
             ):
                 errors.append("measurement software identity is invalid")
@@ -1077,6 +1105,10 @@ def validate_benchmark_run(
                         mode=manifest.get("mode")
                         if isinstance(manifest.get("mode"), str)
                         else None,
+                        # Keep independent record-shape validation separate from
+                        # the production measurement checks below so memory and
+                        # stage failures remain independently diagnosable.
+                        production=False,
                     )
                     timing = record["timing"]
                     if not isinstance(timing, Mapping):
@@ -1098,6 +1130,8 @@ def validate_benchmark_run(
                         raise ValueError("warmup must be explicitly excluded")
                     if production_run:
                         required_stages = {
+                            "retrieval_seconds",
+                            "qa_seconds",
                             "encoder_seconds",
                             "decoder_seconds",
                             "page_load_seconds",
@@ -1201,6 +1235,8 @@ def validate_benchmark_run(
                     ):
                         errors.append("index manifest identity does not match its source file")
                     if index_payload.get("schema_version") != 5:
+                        errors.append("index manifest schema_version must equal 5")
+                    else:
                         try:
                             from docprune.m3docvqa_factory import _load_index_manifest
 
@@ -1223,7 +1259,11 @@ def validate_benchmark_run(
             source_for_summary = source_rows_from_manifest(manifest, run_dir)
             if production_run and source_for_summary is None:
                 errors.append("summary cannot include official quality without source questions")
-            reproduced = summarize_benchmark_run(results_path, source_for_summary)
+            reproduced = summarize_benchmark_run(
+                results_path,
+                source_for_summary,
+                require_positive=production_run,
+            )
             if production_run and "quality" not in reproduced:
                 errors.append("summary is missing official quality metrics")
             if not _finite_json(reproduced):

@@ -95,6 +95,26 @@ def test_all_kept_answerer_uses_exact_prompt_greedy_settings_and_new_tokens() ->
     assert call["input_ids"].tolist() == [[10, 100, 100, 100, 100, 11]]
 
 
+def test_stock_stage_timers_observe_only_visual_and_language_modules() -> None:
+    class HookedModel(RecordingModel):
+        def __init__(self) -> None:
+            super().__init__()
+            self.visual = torch.nn.Identity()
+            self.model = torch.nn.Identity()
+
+        def generate(self, **kwargs):
+            self.visual(torch.ones(1))
+            self.model(torch.ones(1))
+            return super().generate(**kwargs)
+
+    output = AllKeptQwenAnswerer(
+        model=HookedModel(), processor=RecordingProcessor()
+    ).answer(["page"], "what?")
+
+    assert output.encoder_seconds > 0
+    assert output.decoder_seconds > 0
+
+
 def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) -> None:
     from transformers import Qwen2VLImageProcessor
 

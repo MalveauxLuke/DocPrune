@@ -273,6 +273,7 @@ def _validate_result_record(
     line_number: int,
     expected_page_count: int | None = None,
     mode: str | None = None,
+    production: bool = False,
 ) -> None:
     required = {
         "question_id",
@@ -371,13 +372,25 @@ def _validate_result_record(
     }
     if not isinstance(timing, Mapping) or not timing_fields <= set(timing):
         raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
+    production_timing_fields = {
+        "retrieval_seconds",
+        "page_load_seconds",
+        "qa_seconds",
+        "total_sample_seconds",
+        "encoder_seconds",
+        "decoder_seconds",
+    }
+    if production and not production_timing_fields <= set(timing):
+        raise ValueError(
+            f"results JSONL record {line_number} is missing production timing fields"
+        )
     if set(timing) - timing_fields - optional_timing_fields:
         raise ValueError(f"results JSONL record {line_number} has invalid timing schema")
     if any(
         not isinstance(timing[name], int | float)
         or isinstance(timing[name], bool)
         or not math.isfinite(float(timing[name]))
-        or float(timing[name]) < 0
+        or (float(timing[name]) <= 0 if production else float(timing[name]) < 0)
         for name in timing
         if name in {
             "retrieval_seconds",

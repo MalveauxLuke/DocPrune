@@ -23,6 +23,22 @@ MEASUREMENT_DEFINITION = (
 )
 
 
+def hardware_result_classification(actual_hardware: str) -> dict[str, object]:
+    """Classify measurements against the paper's RTX A6000 reference hardware."""
+
+    if not isinstance(actual_hardware, str) or not actual_hardware.strip():
+        raise ValueError("actual_hardware must be a non-empty string")
+    direct_parity = "RTX A6000" in actual_hardware.upper()
+    return {
+        "actual_hardware": actual_hardware,
+        "paper_hardware": "NVIDIA RTX A6000",
+        "classification": "paper_hardware_parity"
+        if direct_parity
+        else "reconstruction_measurement",
+        "direct_hardware_parity": direct_parity,
+    }
+
+
 def measurement_identity(
     *, sample_ids: tuple[str, ...] = (), warmup_count: int = 1
 ) -> dict[str, object]:
@@ -51,6 +67,7 @@ def measurement_identity(
             "gpu_model": gpu_model,
             "compute_capability": capability,
         },
+        "result_classification": hardware_result_classification(gpu_model),
         "software": {
             "python": platform.python_version(),
             "cuda": torch.version.cuda or "unavailable",
@@ -106,7 +123,9 @@ class StageMetrics:
         default_factory=lambda: {"btp": [], "qtp": [], "ctp": []}, repr=False
     )
 
-    def update(self, trace: PruningTrace, timing: SampleTiming) -> None:
+    def update(
+        self, trace: PruningTrace, timing: SampleTiming, *, require_positive: bool = False
+    ) -> None:
         counts = (
             trace.original_visual_tokens,
             trace.post_btp_visual_tokens,
@@ -131,10 +150,14 @@ class StageMetrics:
             not isinstance(value, int | float)
             or isinstance(value, bool)
             or not math.isfinite(float(value))
-            or float(value) < 0
+            or (float(value) <= 0 if require_positive else float(value) < 0)
             for value in stage_values
         ):
-            raise ValueError("timings must be finite and nonnegative")
+            raise ValueError(
+                "timings must be finite and positive"
+                if require_positive
+                else "timings must be finite and nonnegative"
+            )
         peak = getattr(timing, "peak_allocated_gpu_bytes", 0)
         warmup_excluded = getattr(timing, "warmup_excluded", False)
         profiler_enabled = getattr(timing, "profiler_enabled", False)
@@ -262,7 +285,7 @@ def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = Fa
         os.close(descriptor)
 
 
-def summarize_jsonl(path: Path) -> dict[str, object]:
+def summarize_jsonl(path: Path, *, require_positive: bool = False) -> dict[str, object]:
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"results JSONL must be a regular file: {path}")
     metrics = StageMetrics()
@@ -276,5 +299,5 @@ def summarize_jsonl(path: Path) -> dict[str, object]:
                 timing = SampleTiming(**record["timing"])
             except (KeyError, TypeError) as exc:
                 raise ValueError(f"invalid result record on line {line_number}") from exc
-            metrics.update(trace, timing)
+            metrics.update(trace, timing, require_positive=require_positive)
     return metrics.to_dict()

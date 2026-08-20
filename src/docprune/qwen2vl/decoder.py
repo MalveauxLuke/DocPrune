@@ -68,11 +68,18 @@ def _last_query_attention(
     query = query.view(batch, 1, attention.num_heads, attention.head_dim).transpose(1, 2)
     key = key.view(batch, sequence_length, attention.num_key_value_heads, attention.head_dim).transpose(1, 2)
     cosine, sine = position_embeddings
-    query, key = apply_multimodal_rotary_pos_emb(
+    query, _ = apply_multimodal_rotary_pos_emb(
         query,
-        key,
+        query,
         cosine[..., -1:, :],
         sine[..., -1:, :],
+        attention.rope_scaling["mrope_section"],
+    )
+    _, key = apply_multimodal_rotary_pos_emb(
+        key,
+        key,
+        cosine,
+        sine,
         attention.rope_scaling["mrope_section"],
     )
     key = repeat_kv(key, attention.num_key_value_groups)

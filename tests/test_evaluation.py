@@ -12,7 +12,7 @@ from docprune.evaluation import (
     summarize_benchmark_run,
     validate_benchmark_run,
 )
-from docprune.metrics import MEASUREMENT_DEFINITION
+from docprune.metrics import MEASUREMENT_DEFINITION, measurement_identity
 
 
 def _source_rows():
@@ -524,7 +524,7 @@ def test_production_records_reject_zero_peak_gpu_measurement(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
+    report = validate_benchmark_run(run, expected_questions=2)
 
     assert report.valid is False
     assert any("peak allocated GPU bytes" in error for error in report.errors)
@@ -542,10 +542,88 @@ def test_production_records_reject_missing_stage_timings(tmp_path):
     ).hexdigest()
     (run / "run_manifest.json").write_text(json.dumps(manifest))
 
-    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
+    report = validate_benchmark_run(run, expected_questions=2)
 
     assert report.valid is False
     assert any("stage boundaries" in error for error in report.errors)
+
+
+@pytest.mark.parametrize("capability", [None, [8], ["8", 0], [8, True]])
+def test_production_measurement_identity_requires_exact_compute_capability(
+    tmp_path, capability
+):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest_path = run / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["corpus"]["is_fixture"] = False
+    identity = measurement_identity(sample_ids=("q1", "q2"))
+    identity["hardware"]["compute_capability"] = capability
+    manifest["measurement"] = identity
+    unsigned = dict(manifest)
+    unsigned.pop("run_manifest_sha256")
+    manifest["run_manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+    report = validate_benchmark_run(run, expected_questions=2)
+
+    assert report.valid is False
+    assert any("compute capability" in error for error in report.errors)
+
+
+def test_production_index_validation_accepts_schema_five_and_rejects_schema_four(
+    tmp_path, monkeypatch
+):
+    from docprune.evaluation import _canonical_digest_index, _validate_production_index
+
+    path = tmp_path / "index.json"
+    payload = {"schema_version": 5, "value": "index"}
+    payload["manifest_sha256"] = _canonical_digest_index(payload)
+    path.write_text(json.dumps(payload, sort_keys=True))
+    manifest = {
+        "index_manifest_source_path": str(path),
+        "index_manifest_source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        "index_manifest": payload,
+    }
+
+    class Loaded:
+        def to_dict(self):
+            return payload
+
+    monkeypatch.setattr("docprune.m3docvqa_factory._load_index_manifest", lambda _: Loaded())
+    errors = []
+    _validate_production_index(manifest, tmp_path, errors, None)
+    assert errors == []
+
+    payload["schema_version"] = 4
+    payload["manifest_sha256"] = _canonical_digest_index(
+        {key: value for key, value in payload.items() if key != "manifest_sha256"}
+    )
+    path.write_text(json.dumps(payload, sort_keys=True))
+    manifest["index_manifest_source_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    errors = []
+    _validate_production_index(manifest, tmp_path, errors, None)
+    assert any("schema_version" in error for error in errors)
+
+
+def test_summary_includes_canonical_hardware_result_classification(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run)
+    manifest_path = run / "run_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["measurement"] = measurement_identity(sample_ids=("q1", "q2"))
+    manifest_path.write_text(json.dumps(manifest))
+
+    summary = summarize_benchmark_run(run / "results.jsonl")
+
+    assert summary["measurement"]["result_classification"] == {
+        "actual_hardware": "cpu",
+        "paper_hardware": "NVIDIA RTX A6000",
+        "classification": "reconstruction_measurement",
+        "direct_hardware_parity": False,
+    }
 
 
 def test_validate_benchmark_run_accepts_selected_rows_as_source_order_subsequence(tmp_path):

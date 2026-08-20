@@ -76,6 +76,43 @@ def _end_synchronized_timer(started: float, device: torch.device | None) -> floa
     return max(time.perf_counter() - started, 1e-12)
 
 
+def _module_timer_hooks(
+    model: object, modules: list[object]
+) -> tuple[list[float], list[object]]:
+    """Measure only synchronized execution of the supplied model modules."""
+
+    elapsed: list[float] = []
+    handles: list[object] = []
+    for module in modules:
+        register_pre = getattr(module, "register_forward_pre_hook", None)
+        register_post = getattr(module, "register_forward_hook", None)
+        if not callable(register_pre) or not callable(register_post):
+            continue
+        def callbacks() -> tuple[object, object]:
+            started: list[tuple[float, torch.device | None]] = []
+
+            def before(*_args: object, **_kwargs: object) -> None:
+                started.append(_begin_synchronized_timer(model))
+
+            def after(*_args: object, **_kwargs: object) -> None:
+                if started:
+                    start, device = started.pop()
+                    elapsed.append(_end_synchronized_timer(start, device))
+
+            return before, after
+
+        before, after = callbacks()
+        handles.extend([register_pre(before), register_post(after)])
+    return elapsed, handles
+
+
+def _remove_module_timer_hooks(handles: list[object]) -> None:
+    for handle in handles:
+        remove = getattr(handle, "remove", None)
+        if callable(remove):
+            remove()
+
+
 class DocPruneQwen2VL:
     def __init__(self, model: object) -> None:
         self.compatibility = assert_supported_qwen2vl(model)
@@ -115,14 +152,31 @@ class DocPruneQwen2VL:
         vision_dtype = getattr(self.model.visual, "get_dtype", lambda: pixel_values.dtype)()
         vision_device = getattr(self.model.visual, "get_device", lambda: pixel_values.device)()
         pixel_values = pixel_values.to(device=vision_device, dtype=vision_dtype)
+        visual_modules = [
+            getattr(self.model.visual, "patch_embed", None),
+            *list(getattr(self.model.visual, "blocks", ())),
+            getattr(self.model.visual, "merger", None),
+        ]
+        encoder_times, encoder_hooks = _module_timer_hooks(self.model, [
+            module for module in visual_modules if module is not None
+        ])
         encoder_started, encoder_device = _begin_synchronized_timer(self.model)
-        vision = compact_vision_batch(
-            self.model.visual,
-            pixel_values,
-            image_grid_thw,
-            combined,
-        )
-        encoder_seconds = _end_synchronized_timer(encoder_started, encoder_device)
+        try:
+            vision = compact_vision_batch(
+                self.model.visual,
+                pixel_values,
+                image_grid_thw,
+                combined,
+            )
+        finally:
+            _remove_module_timer_hooks(encoder_hooks)
+        encoder_elapsed = _end_synchronized_timer(encoder_started, encoder_device)
+        if encoder_times:
+            encoder_seconds = sum(encoder_times)
+        elif encoder_device is not None and encoder_device.type == "cuda":
+            raise RuntimeError("Qwen vision encoder timing hooks did not observe execution")
+        else:
+            encoder_seconds = encoder_elapsed
         compact = compact_multimodal_sequence(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -138,45 +192,61 @@ class DocPruneQwen2VL:
             device=embeddings.device,
             dtype=embeddings.dtype,
         )
+        decoder_modules = [
+            getattr(self.model.model, "embed_tokens", None),
+            *list(getattr(self.model.model, "layers", ())),
+            getattr(self.model.model, "norm", None),
+            getattr(self.model, "lm_head", None),
+        ]
+        decoder_times, decoder_hooks = _module_timer_hooks(self.model, [
+            module for module in decoder_modules if module is not None
+        ])
         decoder_started, decoder_device = _begin_synchronized_timer(self.model)
-        prefill = prefill_with_ctp(
-            self.model.model,
-            embeddings,
-            compact.position_ids,
-            visual_indices=compact.visual_indices,
-            comprehension_threshold=comprehension_threshold,
-            attention_threshold=attention_threshold,
-            head_aggregation=head_aggregation,
-        )
-
-        generated: list[torch.Tensor] = []
-        logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
-        first_step_logits = logits.detach()
-        next_token = logits.argmax(dim=-1)
-        next_position = int(prefill.position_ids.max().item()) + 1
-        eos = set(eos_token_ids)
-        for token_index in range(max_new_tokens):
-            generated.append(next_token)
-            if int(next_token.item()) in eos or token_index + 1 == max_new_tokens:
-                break
-            token_embedding = self.model.model.embed_tokens(next_token[:, None])
-            step_positions = torch.full(
-                (3, 1, 1),
-                next_position,
-                dtype=compact.position_ids.dtype,
-                device=token_embedding.device,
-            )
-            hidden = decode_one_token(
+        try:
+            prefill = prefill_with_ctp(
                 self.model.model,
-                token_embedding,
-                step_positions,
-                prefill.cache,
+                embeddings,
+                compact.position_ids,
+                visual_indices=compact.visual_indices,
+                comprehension_threshold=comprehension_threshold,
+                attention_threshold=attention_threshold,
+                head_aggregation=head_aggregation,
             )
-            next_token = self.model.lm_head(hidden[:, -1, :]).argmax(dim=-1)
-            next_position += 1
-
-        generated_ids = torch.stack(generated, dim=1)
-        decoder_seconds = _end_synchronized_timer(decoder_started, decoder_device)
+            generated: list[torch.Tensor] = []
+            logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
+            first_step_logits = logits.detach()
+            next_token = logits.argmax(dim=-1)
+            next_position = int(prefill.position_ids.max().item()) + 1
+            eos = set(eos_token_ids)
+            for token_index in range(max_new_tokens):
+                generated.append(next_token)
+                if int(next_token.item()) in eos or token_index + 1 == max_new_tokens:
+                    break
+                token_embedding = self.model.model.embed_tokens(next_token[:, None])
+                step_positions = torch.full(
+                    (3, 1, 1),
+                    next_position,
+                    dtype=compact.position_ids.dtype,
+                    device=token_embedding.device,
+                )
+                hidden = decode_one_token(
+                    self.model.model,
+                    token_embedding,
+                    step_positions,
+                    prefill.cache,
+                )
+                next_token = self.model.lm_head(hidden[:, -1, :]).argmax(dim=-1)
+                next_position += 1
+            generated_ids = torch.stack(generated, dim=1)
+        finally:
+            decoder_elapsed = _end_synchronized_timer(decoder_started, decoder_device)
+            _remove_module_timer_hooks(decoder_hooks)
+        if decoder_times:
+            decoder_seconds = sum(decoder_times)
+        elif decoder_device is not None and decoder_device.type == "cuda":
+            raise RuntimeError("Qwen language-model timing hooks did not observe execution")
+        else:
+            decoder_seconds = decoder_elapsed
         post_ctp = (
             len(prefill.decision.retained_visual_indices)
             if prefill.decision is not None

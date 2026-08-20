@@ -7,6 +7,8 @@ from docprune.metrics import (
     MEASUREMENT_DEFINITION,
     StageMetrics,
     append_result_jsonl,
+    hardware_result_classification,
+    measurement_identity,
     summarize_jsonl,
 )
 from docprune.qwen2vl.model import PruningTrace
@@ -65,6 +67,24 @@ def test_paper_drop_rates_are_arithmetic_mean_of_per_sample_ratios() -> None:
     assert got["timing_seconds"]["decoder"] == pytest.approx(2.0)
 
 
+def test_measurement_identity_classifies_reconstruction_hardware_exactly() -> None:
+    assert hardware_result_classification("NVIDIA A100-SXM4-80GB") == {
+        "actual_hardware": "NVIDIA A100-SXM4-80GB",
+        "paper_hardware": "NVIDIA RTX A6000",
+        "classification": "reconstruction_measurement",
+        "direct_hardware_parity": False,
+    }
+    assert hardware_result_classification("NVIDIA RTX A6000") == {
+        "actual_hardware": "NVIDIA RTX A6000",
+        "paper_hardware": "NVIDIA RTX A6000",
+        "classification": "paper_hardware_parity",
+        "direct_hardware_parity": True,
+    }
+    assert measurement_identity(sample_ids=("q1",))["result_classification"][
+        "classification"
+    ] == "reconstruction_measurement"
+
+
 def test_jsonl_writer_refuses_overwrite_and_summary_is_reproducible(tmp_path) -> None:
     path = tmp_path / "results.jsonl"
     record = {
@@ -89,6 +109,31 @@ def test_jsonl_writer_refuses_overwrite_and_summary_is_reproducible(tmp_path) ->
     assert got["visual_tokens"]["post_ctp"] == 8
     assert len(path.read_text().splitlines()) == 2
     assert json.loads(path.read_text().splitlines()[0]) == record
+
+
+def test_production_summary_rejects_missing_or_zero_stage_timings(tmp_path) -> None:
+    path = tmp_path / "results.jsonl"
+    record = {
+        "trace": {
+            "original_visual_tokens": 10,
+            "post_btp_visual_tokens": 8,
+            "post_qtp_visual_tokens": 6,
+            "post_ctp_visual_tokens": 4,
+            "ctp_layer": 3,
+        },
+        "timing": {
+            "retrieval_seconds": 0.0,
+            "qa_seconds": 0.0,
+            "page_load_seconds": 0.0,
+            "encoder_seconds": 0.0,
+            "decoder_seconds": 0.0,
+            "total_sample_seconds": 0.0,
+        },
+    }
+    append_result_jsonl(path, record)
+
+    with pytest.raises(ValueError, match="positive"):
+        summarize_jsonl(path, require_positive=True)
 
 
 def test_measurement_aggregate_requires_warmup_flag_and_peak_gpu_bytes() -> None:

@@ -101,6 +101,46 @@ def test_validate_result_record_requires_boolean_profiler_state(value) -> None:
         _validate_result_record(record, line_number=1)
 
 
+@pytest.mark.parametrize("field", [
+    "retrieval_seconds",
+    "page_load_seconds",
+    "qa_seconds",
+    "total_sample_seconds",
+    "encoder_seconds",
+    "decoder_seconds",
+])
+def test_production_result_record_requires_positive_exact_stage_timings(field: str) -> None:
+    record = result_record("q-1")
+    record["timing"].update(
+        {
+            "page_load_seconds": 0.1,
+            "total_sample_seconds": 0.4,
+            "encoder_seconds": 0.1,
+            "decoder_seconds": 0.1,
+        }
+    )
+    del record["timing"][field]
+    with pytest.raises(ValueError, match="(production timing|invalid timing schema)"):
+        _validate_result_record(record, line_number=1, production=True)
+
+    record = result_record("q-1")
+    record["timing"].update(
+        {
+            "page_load_seconds": 0.1,
+            "total_sample_seconds": 0.4,
+            "encoder_seconds": 0.1,
+            "decoder_seconds": 0.1,
+        }
+    )
+    record["timing"][field] = 0.0
+    with pytest.raises(ValueError, match="invalid timings"):
+        _validate_result_record(record, line_number=1, production=True)
+
+    record["timing"][field] = float("nan")
+    with pytest.raises(ValueError, match="invalid timings"):
+        _validate_result_record(record, line_number=1, production=True)
+
+
 def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -> None:
     import torch
 

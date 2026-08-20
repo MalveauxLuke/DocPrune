@@ -18,6 +18,8 @@ from docprune.qwen2vl.model import (
     VisionPruningMasks,
     _begin_synchronized_timer,
     _end_synchronized_timer,
+    _module_timer_hooks,
+    _remove_module_timer_hooks,
 )
 from docprune.qwen2vl.preprocessing import (
     PreparedQwenPage,
@@ -68,22 +70,18 @@ def _encoder_timer_hooks(model: object) -> tuple[list[float], list[object]]:
     """Time only calls to Qwen's vision module during stock generation."""
 
     visual = getattr(model, "visual", None)
-    register_pre = getattr(visual, "register_forward_pre_hook", None)
-    register_post = getattr(visual, "register_forward_hook", None)
-    if not callable(register_pre) or not callable(register_post):
-        return [], []
-    elapsed: list[float] = []
-    started: list[tuple[float, torch.device | None]] = []
+    return _module_timer_hooks(model, [visual] if visual is not None else [])
 
-    def before(*_args: object, **_kwargs: object) -> None:
-        started.append(_begin_synchronized_timer(model))
 
-    def after(*_args: object, **_kwargs: object) -> None:
-        if started:
-            start, device = started.pop()
-            elapsed.append(_end_synchronized_timer(start, device))
+def _decoder_timer_hooks(model: object) -> tuple[list[float], list[object]]:
+    """Time only calls to Qwen's language-model module during stock generation."""
 
-    return elapsed, [register_pre(before), register_post(after)]
+    decoder = getattr(model, "model", None)
+    lm_head = getattr(model, "lm_head", None)
+    return _module_timer_hooks(
+        model,
+        [module for module in (decoder, lm_head) if module is not None],
+    )
 
 
 def _remove_hooks(handles: Sequence[object]) -> None:
@@ -254,7 +252,8 @@ class AllKeptQwenAnswerer:
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         batch = _move_batch(batch, _model_device(self.model))
         generation_started, generation_device = _begin_synchronized_timer(self.model)
-        encoder_times, hooks = _encoder_timer_hooks(self.model)
+        encoder_times, encoder_hooks = _encoder_timer_hooks(self.model)
+        decoder_times, decoder_hooks = _decoder_timer_hooks(self.model)
         with torch.no_grad():
             try:
                 generated = self.model.generate(
@@ -264,17 +263,21 @@ class AllKeptQwenAnswerer:
                     num_beams=1,
                 )
             finally:
-                _remove_hooks(hooks)
+                _remove_module_timer_hooks(encoder_hooks)
+                _remove_module_timer_hooks(decoder_hooks)
         generation_elapsed = _end_synchronized_timer(generation_started, generation_device)
         encoder_seconds = sum(encoder_times)
-        if not encoder_seconds:
+        decoder_seconds = sum(decoder_times)
+        if not encoder_seconds or not decoder_seconds:
             # CPU fakes do not expose Qwen's visual module.  Keep their
             # stage fields deterministic while production CUDA models use
             # the forward-hook measurement above.
             if generation_device is not None and generation_device.type == "cuda":
-                raise RuntimeError("Qwen vision encoder timing hook did not observe execution")
-            encoder_seconds = max(generation_elapsed / 2.0, 1e-12)
-        decoder_seconds = max(generation_elapsed - encoder_seconds, 1e-12)
+                raise RuntimeError("Qwen stage timing hooks did not observe model execution")
+            if not encoder_seconds:
+                encoder_seconds = max(generation_elapsed / 2.0, 1e-12)
+            if not decoder_seconds:
+                decoder_seconds = max(generation_elapsed - encoder_seconds, 1e-12)
         peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
         answer = _decode_new_tokens(self.processor, torch.as_tensor(generated), input_ids.shape[1])
         qa_elapsed = max(time.perf_counter() - started, 1e-12)
