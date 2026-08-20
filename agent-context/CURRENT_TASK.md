@@ -10,8 +10,9 @@ grounded in the CVPR 2026 paper and supplement.
 The benchmark implementation is complete through the hardened Task-6 runtime
 commit `bd16c045e99162b62e55c1961f2e15a011dbb4e7`. Task 7 supplies the active
 SOL gate, six page-specific index launchers, six evaluation cells, and the
-commit-pinned benchmark handoff. No benchmark job has been submitted and no
-benchmark result is claimed.
+commit-pinned benchmark handoff. Two superseded `d5cefb3` gate attempts were
+submitted and preserved; no `bd16c04` attempt or successful benchmark result
+is claimed.
 
 ## Binding design
 
