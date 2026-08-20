@@ -343,7 +343,7 @@ def test_manifest_pair_requires_distinct_mode_bound_artifacts(tmp_path: Path) ->
 def test_manifest_accepts_all_kept_root_below_unrelated_docprune_ancestor(
     tmp_path: Path,
 ) -> None:
-    root = tmp_path / "docprune" / "benchmark-3755812" / "indexes" / "all-kept"
+    root = tmp_path / "docprune" / "benchmark-6c19bfc" / "indexes" / "all-kept"
 
     manifest = make_manifest(tmp_path, mode="all-kept", artifact_root=root)
 
@@ -353,7 +353,7 @@ def test_manifest_accepts_all_kept_root_below_unrelated_docprune_ancestor(
 def test_manifest_accepts_docprune_root_below_unrelated_all_kept_ancestor(
     tmp_path: Path,
 ) -> None:
-    root = tmp_path / "all-kept" / "benchmark-3755812" / "indexes" / "docprune"
+    root = tmp_path / "all-kept" / "benchmark-6c19bfc" / "indexes" / "docprune"
 
     manifest = make_manifest(tmp_path, mode="docprune", artifact_root=root)
 
@@ -367,7 +367,7 @@ def test_manifest_accepts_docprune_root_below_unrelated_all_kept_ancestor(
 def test_manifest_rejects_wrong_mode_artifact_root(
     tmp_path: Path, mode: str, wrong_leaf: str
 ) -> None:
-    root = tmp_path / "benchmark-3755812" / "indexes" / wrong_leaf
+    root = tmp_path / "benchmark-6c19bfc" / "indexes" / wrong_leaf
 
     with pytest.raises(ValueError, match=f"manifest mode/path mismatch for {mode}"):
         make_manifest(tmp_path, mode=mode, artifact_root=root)

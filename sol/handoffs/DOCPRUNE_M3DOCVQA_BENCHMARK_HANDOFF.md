@@ -9,7 +9,7 @@ mutation, and no browser download. Large artifacts, model weights, HF caches,
 page images, indexes, predictions, and raw profiles remain under
 `/scratch/lmalveau/docprune/`.
 
-No `3755812` attempt or successful gate, index, evaluation, or benchmark
+No `6c19bfc` attempt or successful gate, index, evaluation, or benchmark
 result exists yet. Submit only from the clean control checkout after the local
 checks at the end of this document pass.
 
@@ -17,8 +17,8 @@ checks at the end of this document pass.
 
 ```text
 control checkout: /home/lmalveau/DocPrune-benchmark
-runtime checkout: /home/lmalveau/DocPrune-runtime-3755812 (detached, clean)
-runtime commit: 3755812cc3dc1a6205671202894cdf7915bc95a9
+runtime checkout: /home/lmalveau/DocPrune-runtime-6c19bfc (detached, clean)
+runtime commit: 6c19bfcb4fcb73685af5b16ad493097ed6c609a5
 control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -55,7 +55,7 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-3755812/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
 mkdir "$ATTEMPT_ROOT"
@@ -95,8 +95,8 @@ config generator require a strictly empty upstream status. All jobs set
 `PYTHONDONTWRITEBYTECODE=1` so the dedicated checkout remains clean.
 
 ```bash
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-3755812
-export EXPECTED_COMMIT=3755812cc3dc1a6205671202894cdf7915bc95a9
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-6c19bfc
+export EXPECTED_COMMIT=6c19bfcb4fcb73685af5b16ad493097ed6c609a5
 export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -154,7 +154,7 @@ SHA-256.
 ## Resources and artifacts
 
 Every job requests one A100 80 GB, 8 CPUs, and 128 GB RAM on `public`/`public`.
-Use `/scratch/lmalveau/docprune/benchmark-3755812/attempt-N/` for each new
+Use `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/` for each new
 attempt; never reuse a failed attempt root.
 
 ```text
@@ -191,7 +191,7 @@ corpus identity shown in the Corpus section:
 {
   "mode": "all-kept",
   "page_count": 1,
-  "runtime_commit": "3755812cc3dc1a6205671202894cdf7915bc95a9",
+  "runtime_commit": "6c19bfcb4fcb73685af5b16ad493097ed6c609a5",
   "m3docrag_commit": "29e6ac2294d6b87075a1d45b8a8df175b214248a",
   "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
   "qwen_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
@@ -264,10 +264,10 @@ the Slurm export list. Use a fresh `attempt-N` and never reuse a failed root.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-3755812
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-6c19bfc
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
-export EXPECTED_COMMIT=3755812cc3dc1a6205671202894cdf7915bc95a9
+export EXPECTED_COMMIT=6c19bfcb4fcb73685af5b16ad493097ed6c609a5
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
@@ -278,7 +278,7 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-3755812/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
@@ -358,11 +358,18 @@ not rewrite, delete, resume, or describe these artifacts as successful:
 | `benchmark-d5cefb3/attempt-2` | `61786419` | `slurm-logs/gate-61786419.{out,err}` | numeric answer: the dataset loader rejected MMQA row 54's answer before benchmarking |
 | `benchmark-bd16c04/attempt-1` | `61788275` | `slurm-logs/gate-61788275.{out,err}` | exact model weights were absent from the shared cache |
 | `benchmark-bd16c04/attempt-2` | `61789057` | `slurm-logs/gate-61789057.{out,err}` | real top-1 trace was `[2508, 1682, 1118, 0]`, revealing the missing attention-score scaling |
+| `benchmark-3755812/attempt-1` | — | scheduling-only graph canceled before work | no benchmark jobs performed work |
+| `benchmark-3755812/attempt-2` | `61792205` | gate `61792205`; all-kept indexes `61792206`-`61792208`; DocPrune indexes `61792209`-`61792211`; eval `61792212` | gate passed; all-kept indexes failed at final manifest mode/path validation; DocPrune indexes passed; eval canceled |
+| `benchmark-3755812/attempt-3` | `61792435` | gate `61792435`; all-kept indexes `61792436`-`61792438`; DocPrune indexes `61792439`-`61792441`; eval `61792442` | gate passed; all-kept indexes failed identically at final manifest mode/path validation; DocPrune indexes passed; eval canceled |
+
+The three `benchmark-3755812` rows above are failed overall attempts: none is a complete benchmark result or resumable active attempt. Their passed gates or
+DocPrune indexes do not make the attempts successful, and no `6c19bfc` attempt
+or result exists yet.
 
 These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-d5cefb3/` and
 `/scratch/lmalveau/docprune/benchmark-bd16c04/`; all new benchmark work uses
-`/scratch/lmalveau/docprune/benchmark-3755812/attempt-N/` and the runtime
+`/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/` and the runtime
 commit pinned at the top of this handoff.
 
 On preemption or time limit, use `--resume` only when the run/index manifest,
@@ -402,5 +409,5 @@ exact commits and strictly clean; and the control checkout contains only
 reviewed source/docs/launchers.
 
 The runtime remains pinned separately to
-`3755812cc3dc1a6205671202894cdf7915bc95a9`; the reviewed control commit is
+`6c19bfcb4fcb73685af5b16ad493097ed6c609a5`; the reviewed control commit is
 always the full SHA sealed in each attempt's `control.json`.

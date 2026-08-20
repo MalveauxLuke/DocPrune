@@ -34,7 +34,12 @@ LAUNCHERS = tuple(
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
-ACTIVE_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
+ACTIVE_RUNTIME_COMMIT = "6c19bfcb4fcb73685af5b16ad493097ed6c609a5"
+ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-6c19bfc"
+ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N"
+HISTORICAL_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
+HISTORICAL_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-3755812"
+HISTORICAL_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N"
 
 
 def _python_heredocs(path: Path) -> tuple[str, ...]:
@@ -237,8 +242,18 @@ def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     handoff = HANDOFF.read_text(encoding="utf-8")
     assert ACTIVE_RUNTIME_COMMIT in gate_config
     assert ACTIVE_RUNTIME_COMMIT in handoff
-    assert "/home/lmalveau/DocPrune-runtime-3755812" in handoff
-    assert "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N" in handoff
+    assert ACTIVE_RUNTIME_DIR in handoff
+    assert ACTIVE_ATTEMPT_ROOT in handoff
+
+
+def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    active, historical = text.split("### Historical failures (not resumable or successful)", 1)
+    assert HISTORICAL_RUNTIME_COMMIT not in active
+    assert HISTORICAL_RUNTIME_DIR not in active
+    assert HISTORICAL_ATTEMPT_ROOT not in active
+    assert "benchmark-3755812/attempt-" in historical
+    assert "none is a complete benchmark result or resumable active attempt" in historical
 
 
 def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
@@ -248,11 +263,11 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
     command_lines = tuple(
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("--") and "benchmark-3755812" in line
+        if line.strip().startswith("--") and "benchmark-6c19bfc" in line
     )
     assert len(command_lines) == 5
-    assert all("/scratch/lmalveau/docprune/benchmark-3755812/" in line for line in command_lines)
-    assert all("/scratch/$USER/docprune/benchmark-3755812/" not in line for line in command_lines)
+    assert all("/scratch/lmalveau/docprune/benchmark-6c19bfc/" in line for line in command_lines)
+    assert all("/scratch/$USER/docprune/benchmark-6c19bfc/" not in line for line in command_lines)
 
 
 def test_upstream_checkouts_require_strict_clean_status() -> None:

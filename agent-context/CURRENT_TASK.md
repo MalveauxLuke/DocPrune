@@ -7,12 +7,13 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-The benchmark implementation is complete through the review-clean Task-9
-runtime commit `3755812cc3dc1a6205671202894cdf7915bc95a9`. Task 10 supplies
+The benchmark implementation is complete through the review-clean Task-11
+runtime commit `6c19bfcb4fcb73685af5b16ad493097ed6c609a5`. Task 12 supplies
 the active SOL gate, six page-specific index launchers, six evaluation cells,
-and the commit-pinned benchmark handoff. Four historical failed gate attempts
-were submitted and preserved; no `3755812` attempt or successful gate, index,
-evaluation, or benchmark result exists yet.
+and the commit-pinned benchmark handoff. Seven historical failed attempts
+were submitted and preserved, including three failed overall attempts under
+the superseded `3755812` runtime; no `6c19bfc` attempt or successful gate,
+index, evaluation, or benchmark result exists yet.
 
 ## Binding design
 
