@@ -110,6 +110,37 @@ def test_evaluate_m3docvqa_matches_official_lists_and_slices():
     }
 
 
+@pytest.mark.parametrize(
+    ("value", "prediction"),
+    [(300.0, "300.0"), (True, "True"), (None, "None")],
+)
+def test_evaluate_m3docvqa_uses_official_string_conversion_for_gold_values(value, prediction):
+    source = [
+        {
+            "qid": "q1",
+            "question": "How many?",
+            "answers": [{"answer": value, "modality": "table"}],
+            "metadata": {"type": "TableQ"},
+            "supporting_context": [{"doc_id": "doc-a"}],
+        }
+    ]
+
+    metrics = evaluate_m3docvqa(
+        [_result("q1", prediction, [("doc-a", 0, 1.0)])],
+        source,
+    )
+
+    assert metrics.overall == {"list_em": 100.0, "list_f1": 100.0}
+
+
+def test_evaluate_m3docvqa_requires_answer_key_on_answer_objects():
+    source = _source_rows()[:1]
+    source[0]["answers"] = [{"value": "New York", "modality": "text"}]
+
+    with pytest.raises(ValueError, match="answer key"):
+        evaluate_m3docvqa([_result("q1", "new york", [("doc-a", 0, 1.0)])], source)
+
+
 def test_evaluator_fails_closed_without_required_word2number(monkeypatch):
     import docprune.evaluation as evaluation
 
@@ -151,18 +182,18 @@ def _run_manifest(qids):
     return manifest
 
 
-def _write_valid_run(path: Path):
+def _write_valid_run(path: Path, *, answer: object = "answer"):
     path.mkdir()
     records = [
-        _result("q1", "answer", [("doc-a", 0, 1.0)]),
-        _result("q2", "answer", [("doc-a", 0, 1.0)]),
+        _result("q1", str(answer), [("doc-a", 0, 1.0)]),
+        _result("q2", str(answer), [("doc-a", 0, 1.0)]),
     ]
     corpus_root = path / "corpus"
     corpus_root.mkdir()
     source_path = corpus_root / "MMQA_dev.jsonl"
     source_path.write_text(
         "".join(
-            json.dumps({"qid": qid, "question": qid, "answers": [{"answer": "answer"}]}) + "\n"
+            json.dumps({"qid": qid, "question": qid, "answers": [{"answer": answer}]}) + "\n"
             for qid in ("q1", "q2")
         )
     )
@@ -208,7 +239,7 @@ def _write_valid_run(path: Path):
         "archive_hashes": {},
     }
     for record in records:
-        record["answers"] = ["answer"]
+        record["answers"] = [str(answer)]
     (path / "results.jsonl").write_text(
         "".join(json.dumps(record, sort_keys=True) + "\n" for record in records)
     )
@@ -226,8 +257,8 @@ def _write_valid_run(path: Path):
             summarize_benchmark_run(
                 path / "results.jsonl",
                 [
-                    {"qid": "q1", "question": "q1", "answers": [{"answer": "answer"}]},
-                    {"qid": "q2", "question": "q2", "answers": [{"answer": "answer"}]},
+                    {"qid": "q1", "question": "q1", "answers": [{"answer": answer}]},
+                    {"qid": "q2", "question": "q2", "answers": [{"answer": answer}]},
                 ],
             ),
             sort_keys=True,
@@ -247,6 +278,16 @@ def test_validate_benchmark_run_accepts_sealed_two_record_fixture(tmp_path):
     assert report.question_count == 2
     assert report.summary["quality"]["overall"] == {"list_em": 100.0, "list_f1": 100.0}
     assert report.summary["quality"]["observed_retrieval_depth"] == 1
+
+
+def test_validate_benchmark_run_preserves_numeric_source_answer_content(tmp_path):
+    run = tmp_path / "run"
+    _write_valid_run(run, answer=300.0)
+
+    report = validate_benchmark_run(run, expected_questions=2, allow_fixture=True)
+
+    assert report.valid is True
+    assert report.summary["quality"]["overall"] == {"list_em": 100.0, "list_f1": 100.0}
 
 
 @pytest.mark.parametrize(

@@ -32,7 +32,29 @@ class SampleInput:
         if question_id is None:
             raise ValueError("sample requires question_id or qid")
         answers = sample.get("answers", ())
-        return cls(str(question_id), str(sample["question"]), tuple(str(x) for x in answers))
+        return cls(
+            str(question_id),
+            str(sample["question"]),
+            tuple(official_answer_text(answer, require_mapping=True) for answer in answers),
+        )
+
+
+def official_answer_text(answer: object, *, require_mapping: bool = False) -> str:
+    """Apply the pinned M3DocVQA gold-answer conversion at a source boundary.
+
+    The upstream evaluator constructs each reference with ``str(item["answer"])``.
+    Keep that exact conversion for numeric, boolean, and null JSON values while
+    rejecting malformed answer objects instead of silently turning a missing key
+    into ``"None"``.
+    """
+
+    if isinstance(answer, Mapping):
+        if "answer" not in answer:
+            raise ValueError("answer object must contain an answer key")
+        return str(answer["answer"])
+    if require_mapping:
+        raise ValueError("answer must be an object with an answer key")
+    return str(answer)
 
 
 @dataclass(frozen=True)

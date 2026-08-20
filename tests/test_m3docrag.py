@@ -54,6 +54,31 @@ def test_adapter_preserves_official_retrieval_order_and_trace() -> None:
     assert result.to_dict()["answers"] == ["42", "forty two"]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(300.0, "300.0"), (True, "True"), (None, "None")],
+)
+def test_sample_input_from_mapping_uses_official_answer_conversion(
+    value: object, expected: str
+) -> None:
+    sample = SampleInput.from_mapping(
+        {
+            "qid": "q-1",
+            "question": "How many?",
+            "answers": [{"answer": value}],
+        }
+    )
+
+    assert sample.answers == (expected,)
+
+
+def test_sample_input_from_mapping_requires_answer_key() -> None:
+    with pytest.raises(ValueError, match="answer key"):
+        SampleInput.from_mapping(
+            {"qid": "q-1", "question": "How many?", "answers": [{"value": 1}]}
+        )
+
+
 def test_runner_marks_rows_warmup_excluded_only_after_explicit_warmup() -> None:
     runner = DocPruneM3DocRAG(FakeRetriever(), FakePages(), FakeAnswerer(), top_k=2)
     sample = SampleInput("q-1", "Which value is largest?")

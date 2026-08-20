@@ -70,6 +70,57 @@ def test_iter_samples_preserves_jsonl_order_and_extracts_answer_objects(tmp_path
     assert samples[1].answers == ("one", "uno")
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(300.0, "300.0"), (True, "True"), (None, "None")],
+)
+def test_iter_samples_uses_official_string_conversion_for_answer_values(
+    tmp_path: Path, value: object, expected: str
+) -> None:
+    corpus = make_dataset_root(tmp_path)
+    corpus.questions_path.write_text(
+        json.dumps(
+            {
+                "qid": "q-2",
+                "question": "second",
+                "answers": [{"answer": value}],
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {"qid": "q-1", "question": "first", "answers": [{"answer": "one"}]}
+        )
+        + "\n"
+    )
+    object.__setattr__(
+        corpus, "questions_sha256", hashlib.sha256(corpus.questions_path.read_bytes()).hexdigest()
+    )
+
+    samples = list(M3DocVQADevDataset(corpus, expected_question_count=2))
+
+    assert samples[0].answers == (expected,)
+
+
+def test_iter_samples_requires_answer_key_on_answer_objects(tmp_path: Path) -> None:
+    corpus = make_dataset_root(tmp_path)
+    corpus.questions_path.write_text(
+        json.dumps(
+            {"qid": "q-2", "question": "second", "answers": [{"value": "two"}]}
+        )
+        + "\n"
+        + json.dumps(
+            {"qid": "q-1", "question": "first", "answers": [{"answer": "one"}]}
+        )
+        + "\n"
+    )
+    object.__setattr__(
+        corpus, "questions_sha256", hashlib.sha256(corpus.questions_path.read_bytes()).hexdigest()
+    )
+
+    with pytest.raises(ValueError, match="answer key"):
+        M3DocVQADevDataset(corpus, expected_question_count=2)
+
+
 def test_dataset_rejects_duplicate_question_ids_and_unknown_pdf_documents(tmp_path: Path) -> None:
     corpus = make_dataset_root(tmp_path)
     corpus.questions_path.write_text(

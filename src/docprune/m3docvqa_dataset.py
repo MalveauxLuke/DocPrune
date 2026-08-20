@@ -12,7 +12,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 
 from docprune.benchmark_config import CorpusIdentity, sha256_file
-from docprune.m3docrag import SampleInput
+from docprune.m3docrag import SampleInput, official_answer_text
 
 
 class M3DocVQADevDataset:
@@ -69,9 +69,12 @@ class M3DocVQADevDataset:
                     raise ValueError(f"MMQA row {line_number} is missing question or answers")
                 extracted: list[str] = []
                 for answer in answers:
-                    if not isinstance(answer, dict) or not isinstance(answer.get("answer"), str):
-                        raise ValueError(f"MMQA row {line_number} has an invalid answer")
-                    extracted.append(answer["answer"])
+                    try:
+                        extracted.append(official_answer_text(answer, require_mapping=True))
+                    except ValueError as error:
+                        raise ValueError(
+                            f"MMQA row {line_number} has an invalid answer: {error}"
+                        ) from error
                 qids.add(qid)
                 samples.append(SampleInput(qid, row["question"], tuple(extracted)))
         if len(samples) != self.expected_question_count:

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
+from docprune.m3docrag import official_answer_text
 from docprune.metrics import MEASUREMENT_DEFINITION, summarize_jsonl
 
 try:
@@ -199,13 +200,10 @@ def _gold_answers(row: Mapping[str, object]) -> list[str]:
         raise ValueError(f"source row {row.get('qid')} has invalid answers")
     values: list[str] = []
     for answer in answers:
-        if isinstance(answer, Mapping):
-            value = answer.get("answer")
-        else:
-            value = answer
-        if not isinstance(value, str):
-            raise ValueError(f"source row {row.get('qid')} has an invalid answer")
-        values.append(value)
+        try:
+            values.append(official_answer_text(answer, require_mapping=True))
+        except ValueError as error:
+            raise ValueError(f"source row {row.get('qid')} has an invalid answer: {error}") from error
     return values
 
 
@@ -593,14 +591,15 @@ def _validate_source_questions(
             continue
         expected_answers: list[str] = []
         for answer in raw_answers:
-            value = answer.get("answer") if isinstance(answer, Mapping) else answer
-            if not isinstance(value, str):
+            try:
+                expected_answers.append(official_answer_text(answer, require_mapping=True))
+            except ValueError as error:
                 errors.append(
-                    f"source question content has an invalid answer for {record.get('question_id')}"
+                    "source question content has an invalid answer for "
+                    f"{record.get('question_id')}: {error}"
                 )
                 expected_answers = []
                 break
-            expected_answers.append(value)
         if record.get("answers") != expected_answers:
             errors.append(f"source answer content mismatch for {record.get('question_id')}")
 
