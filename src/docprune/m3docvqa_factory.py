@@ -195,6 +195,7 @@ def load_completed_qids(
     expected_qids: Sequence[str] | None = None,
     expected_samples: Sequence[SampleInput] | None = None,
     expected_page_count: int | None = None,
+    production: bool = False,
 ) -> set[str]:
     """Validate a result JSONL's qid set before permitting resume."""
 
@@ -231,6 +232,7 @@ def load_completed_qids(
                 record,
                 line_number=line_number,
                 expected_page_count=expected_page_count,
+                production=production,
             )
             qid = record["question_id"]
             if not isinstance(qid, str) or not qid:
@@ -382,7 +384,8 @@ def _validate_result_record(
     }
     if production and not production_timing_fields <= set(timing):
         raise ValueError(
-            f"results JSONL record {line_number} is missing production timing fields"
+            f"results JSONL record {line_number} production timing is missing stage boundaries: "
+            f"{sorted(production_timing_fields - set(timing))!r}"
         )
     if set(timing) - timing_fields - optional_timing_fields:
         raise ValueError(f"results JSONL record {line_number} has invalid timing schema")

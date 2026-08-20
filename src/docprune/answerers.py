@@ -20,6 +20,7 @@ from docprune.qwen2vl.model import (
     _end_synchronized_timer,
     _module_timer_hooks,
     _remove_module_timer_hooks,
+    _resolve_module_timer_groups,
 )
 from docprune.qwen2vl.preprocessing import (
     PreparedQwenPage,
@@ -266,8 +267,9 @@ class AllKeptQwenAnswerer:
                 _remove_module_timer_hooks(encoder_hooks)
                 _remove_module_timer_hooks(decoder_hooks)
         generation_elapsed = _end_synchronized_timer(generation_started, generation_device)
-        encoder_seconds = sum(encoder_times)
-        decoder_seconds = sum(decoder_times)
+        encoder_seconds, decoder_seconds = _resolve_module_timer_groups(
+            self.model, (encoder_times, decoder_times)
+        )
         if not encoder_seconds or not decoder_seconds:
             # CPU fakes do not expose Qwen's visual module.  Keep their
             # stage fields deterministic while production CUDA models use

@@ -18,6 +18,7 @@ from docprune.cli import (
 from docprune.config import load_config
 from docprune.indexing import IndexBuildResult
 from docprune.m3docrag import RetrievedPage, SampleInput, SampleResult, SampleTiming
+from docprune.metrics import measurement_identity
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -479,7 +480,7 @@ def test_evaluate_factory_cannot_mutate_nested_or_scalar_invocation_identity(
 
     class Runner:
         def run_sample(self, item):
-            return SampleResult(
+                return SampleResult(
                 item.question_id,
                 item.question,
                 item.answers,
@@ -748,12 +749,23 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
             "count": 3,
         },
         "index_manifest": {},
+        "measurement": measurement_identity(sample_ids=("q-1", "q-2", "q-3")),
     }
     workload_manifest["run_manifest_sha256"] = _manifest_digest(workload_manifest)
     monkeypatch.setattr(
         "docprune.cli._resolve_evaluate_authority",
         lambda *args, **kwargs: dict(workload_manifest),
     )
+    from docprune import cli as cli_module
+
+    original_manifest = cli_module._manifest
+
+    def manifest_with_identity(*args, **kwargs):
+        manifest = original_manifest(*args, **kwargs)
+        manifest["measurement"] = measurement_identity(sample_ids=("q-1", "q-2", "q-3"))
+        return manifest
+
+    monkeypatch.setattr(cli_module, "_manifest", manifest_with_identity)
 
     class Runner:
         def warmup(self, sample):
@@ -770,7 +782,16 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
                 predicted_answer="answer",
                 retrieved_pages=(RetrievedPage("doc", 0, 1.0),),
                 trace=PruningTrace(4, 3, 2, 1, None),
-                timing=SampleTiming(0.1, 0.2),
+                timing=SampleTiming(
+                    0.1,
+                    0.2,
+                    encoder_seconds=0.1,
+                    decoder_seconds=0.1,
+                    page_load_seconds=0.1,
+                    total_sample_seconds=0.5,
+                    peak_allocated_gpu_bytes=1,
+                    warmup_excluded=True,
+                ),
             )
 
     def factory(**kwargs):

@@ -105,6 +105,7 @@ def test_stock_stage_timers_observe_only_visual_and_language_modules() -> None:
         def generate(self, **kwargs):
             self.visual(torch.ones(1))
             self.model(torch.ones(1))
+            self.model(torch.ones(1))
             return super().generate(**kwargs)
 
     output = AllKeptQwenAnswerer(

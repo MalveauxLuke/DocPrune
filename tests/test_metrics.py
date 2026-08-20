@@ -136,6 +136,48 @@ def test_production_summary_rejects_missing_or_zero_stage_timings(tmp_path) -> N
         summarize_jsonl(path, require_positive=True)
 
 
+def test_strict_summary_rejects_derived_total_and_missing_classification(tmp_path) -> None:
+    path = tmp_path / "results.jsonl"
+    record = {
+        "trace": {
+            "original_visual_tokens": 10,
+            "post_btp_visual_tokens": 8,
+            "post_qtp_visual_tokens": 6,
+            "post_ctp_visual_tokens": 4,
+            "ctp_layer": 3,
+        },
+        "timing": {
+            "retrieval_seconds": 1.0,
+            "qa_seconds": 1.0,
+            "page_load_seconds": 1.0,
+            "encoder_seconds": 1.0,
+            "decoder_seconds": 1.0,
+        },
+    }
+    append_result_jsonl(path, record)
+
+    with pytest.raises(ValueError, match="total_sample_seconds"):
+        summarize_jsonl(path, require_positive=True)
+
+    record["timing"]["total_sample_seconds"] = 1.0
+    path.write_text(json.dumps(record) + "\n")
+    with pytest.raises(ValueError, match="result classification"):
+        summarize_jsonl(path, require_positive=True)
+
+
+def test_strict_aggregate_carries_exact_result_classification() -> None:
+    classification = hardware_result_classification("NVIDIA A100-SXM4-80GB")
+    metrics = StageMetrics(result_classification=classification)
+    metrics.update(
+        PruningTrace(10, 8, 6, 4, None),
+        SampleTiming(1.0, 1.0, page_load_seconds=1.0, encoder_seconds=1.0, decoder_seconds=1.0,
+                     total_sample_seconds=1.0),
+        require_positive=True,
+    )
+
+    assert metrics.to_dict(require_classification=True)["measurement"]["result_classification"] == classification
+
+
 def test_measurement_aggregate_requires_warmup_flag_and_peak_gpu_bytes() -> None:
     metrics = StageMetrics()
     metrics.update(

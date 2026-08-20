@@ -625,6 +625,7 @@ def _run_evaluate(
             results_path,
             expected_samples=samples,
             expected_page_count=pages,
+            production=True,
         )
         existing_order = []
         if results_path.exists():
@@ -653,7 +654,12 @@ def _run_evaluate(
         )
 
         record = _canonicalize_result_record(record, line_number=1)
-        _validate_result_record(record, line_number=1, expected_page_count=pages)
+        _validate_result_record(
+            record,
+            line_number=1,
+            expected_page_count=pages,
+            production=True,
+        )
         if (
             record.get("question_id") != sample.question_id
             or record.get("question") != sample.question
@@ -665,9 +671,21 @@ def _run_evaluate(
     from docprune.evaluation import source_rows_from_manifest, summarize_benchmark_run
 
     source_rows = source_rows_from_manifest(existing_manifest, output)
+    measurement = existing_manifest.get("measurement")
+    result_classification = (
+        measurement.get("result_classification")
+        if isinstance(measurement, Mapping)
+        and isinstance(measurement.get("result_classification"), dict)
+        else None
+    )
     _atomic_write_json(
         output / "summary.json",
-        summarize_benchmark_run(results_path, source_rows),
+        summarize_benchmark_run(
+            results_path,
+            source_rows,
+            require_positive=True,
+            result_classification=result_classification,
+        ),
     )
 
 

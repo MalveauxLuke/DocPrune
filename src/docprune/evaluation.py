@@ -448,24 +448,15 @@ def summarize_benchmark_run(
     source_rows: object | None = None,
     *,
     require_positive: bool = False,
+    result_classification: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Produce the deterministic quality-plus-efficiency run summary."""
 
-    efficiency = summarize_jsonl(Path(results_path), require_positive=require_positive)
-    manifest_path = Path(results_path).parent / "run_manifest.json"
-    if manifest_path.is_file():
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            manifest = None
-        if isinstance(manifest, Mapping):
-            measurement = manifest.get("measurement")
-            if isinstance(measurement, Mapping) and "result_classification" in measurement:
-                summary_measurement = efficiency.get("measurement")
-                if isinstance(summary_measurement, dict):
-                    summary_measurement["result_classification"] = measurement[
-                        "result_classification"
-                    ]
+    efficiency = summarize_jsonl(
+        Path(results_path),
+        require_positive=require_positive,
+        result_classification=result_classification,
+    )
     if source_rows is None:
         return efficiency
     records = _load_result_rows(Path(results_path))
@@ -1022,7 +1013,7 @@ def validate_benchmark_run(
             if measurement.get("attention_backend") != "flash_attention_2":
                 errors.append("measurement attention backend identity is invalid")
             expected_boundary_values = {
-                "synchronization": "torch.cuda.synchronize before and after each stage",
+                "synchronization": "CUDA stage events resolve with one synchronization after generation; sparse stages synchronize at each boundary",
                 "encoder": "Qwen visual encoder execution only",
                 "decoder": "language-model prefill, first logits, and greedy decode",
                 "qa": "complete page preparation, BTP/QTP, encoder, decoder, and answer decode",
@@ -1129,6 +1120,17 @@ def validate_benchmark_run(
                     if timing["warmup_excluded"] is not True:
                         raise ValueError("warmup must be explicitly excluded")
                     if production_run:
+                        _validate_result_record(
+                            record,
+                            line_number=line_number,
+                            expected_page_count=expected_pages
+                            if isinstance(expected_pages, int)
+                            else None,
+                            mode=manifest.get("mode")
+                            if isinstance(manifest.get("mode"), str)
+                            else None,
+                            production=True,
+                        )
                         required_stages = {
                             "retrieval_seconds",
                             "qa_seconds",
@@ -1263,6 +1265,12 @@ def validate_benchmark_run(
                 results_path,
                 source_for_summary,
                 require_positive=production_run,
+                result_classification=(
+                    measurement.get("result_classification")
+                    if production_run and isinstance(measurement, Mapping)
+                    and isinstance(measurement.get("result_classification"), dict)
+                    else None
+                ),
             )
             if production_run and "quality" not in reproduced:
                 errors.append("summary is missing official quality metrics")

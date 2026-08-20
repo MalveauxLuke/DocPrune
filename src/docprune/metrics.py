@@ -39,6 +39,18 @@ def hardware_result_classification(actual_hardware: str) -> dict[str, object]:
     }
 
 
+def _validate_result_classification(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise ValueError("result classification must be an object")
+    actual = value.get("actual_hardware")
+    if not isinstance(actual, str) or not actual.strip():
+        raise ValueError("result classification hardware is invalid")
+    expected = hardware_result_classification(actual)
+    if value != expected:
+        raise ValueError("result classification is not canonical")
+    return expected
+
+
 def measurement_identity(
     *, sample_ids: tuple[str, ...] = (), warmup_count: int = 1
 ) -> dict[str, object]:
@@ -85,7 +97,7 @@ def measurement_identity(
             "reset": "torch.cuda.reset_peak_memory_stats",
         },
         "timer_boundaries": {
-            "synchronization": "torch.cuda.synchronize before and after each stage",
+            "synchronization": "CUDA stage events resolve with one synchronization after generation; sparse stages synchronize at each boundary",
             "encoder": "Qwen visual encoder execution only",
             "decoder": "language-model prefill, first logits, and greedy decode",
             "qa": "complete page preparation, BTP/QTP, encoder, decoder, and answer decode",
@@ -119,6 +131,7 @@ class StageMetrics:
     profiler_enabled: bool = False
     profiler_definition: str | None = None
     flops: float | None = None
+    result_classification: dict[str, object] | None = None
     _drop_rates: dict[str, list[float]] = field(
         default_factory=lambda: {"btp": [], "qtp": [], "ctp": []}, repr=False
     )
@@ -211,7 +224,13 @@ class StageMetrics:
         else:
             self.warmup_excluded = self.warmup_excluded and warmup_excluded
 
-    def to_dict(self) -> dict[str, object]:
+    def to_dict(self, *, require_classification: bool = False) -> dict[str, object]:
+        if require_classification and self.result_classification is None:
+            raise ValueError("strict aggregate requires a result classification")
+        if self.result_classification is not None:
+            self.result_classification = _validate_result_classification(
+                self.result_classification
+            )
         total_seconds = self.total_sample_seconds
 
         def drop(retained: int) -> float:
@@ -258,6 +277,8 @@ class StageMetrics:
                 "profiler_enabled": self.profiler_enabled,
             },
         }
+        if self.result_classification is not None:
+            payload["measurement"]["result_classification"] = self.result_classification
         if self.profiler_enabled:
             measurement = payload["measurement"]
             if not isinstance(measurement, dict):
@@ -285,7 +306,12 @@ def append_result_jsonl(path: Path, record: dict[str, Any], *, resume: bool = Fa
         os.close(descriptor)
 
 
-def summarize_jsonl(path: Path, *, require_positive: bool = False) -> dict[str, object]:
+def summarize_jsonl(
+    path: Path,
+    *,
+    require_positive: bool = False,
+    result_classification: dict[str, object] | None = None,
+) -> dict[str, object]:
     if path.is_symlink() or not path.is_file():
         raise ValueError(f"results JSONL must be a regular file: {path}")
     metrics = StageMetrics()
@@ -294,10 +320,30 @@ def summarize_jsonl(path: Path, *, require_positive: bool = False) -> dict[str, 
             if not line.strip():
                 continue
             record = json.loads(line)
+            timing_mapping = record.get("timing") if isinstance(record, dict) else None
+            if require_positive:
+                required_timing = {
+                    "retrieval_seconds",
+                    "page_load_seconds",
+                    "qa_seconds",
+                    "total_sample_seconds",
+                    "encoder_seconds",
+                    "decoder_seconds",
+                }
+                if not isinstance(timing_mapping, dict) or not required_timing <= set(
+                    timing_mapping
+                ):
+                    missing = sorted(
+                        required_timing - set(timing_mapping)
+                        if isinstance(timing_mapping, dict)
+                        else required_timing
+                    )
+                    raise ValueError(f"production timing is missing fields: {missing!r}")
             try:
                 trace = PruningTrace(**record["trace"])
                 timing = SampleTiming(**record["timing"])
             except (KeyError, TypeError) as exc:
                 raise ValueError(f"invalid result record on line {line_number}") from exc
             metrics.update(trace, timing, require_positive=require_positive)
-    return metrics.to_dict()
+    metrics.result_classification = result_classification
+    return metrics.to_dict(require_classification=require_positive)

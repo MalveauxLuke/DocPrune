@@ -616,7 +616,10 @@ def test_summary_includes_canonical_hardware_result_classification(tmp_path):
     manifest["measurement"] = measurement_identity(sample_ids=("q1", "q2"))
     manifest_path.write_text(json.dumps(manifest))
 
-    summary = summarize_benchmark_run(run / "results.jsonl")
+    summary = summarize_benchmark_run(
+        run / "results.jsonl",
+        result_classification=manifest["measurement"]["result_classification"],
+    )
 
     assert summary["measurement"]["result_classification"] == {
         "actual_hardware": "cpu",

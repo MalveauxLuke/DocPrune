@@ -5,7 +5,45 @@ import pytest
 import torch
 from PIL import Image
 
-from docprune.qwen2vl.model import DocPruneQwen2VL, VisionPruningMasks
+from docprune.qwen2vl.model import (
+    DocPruneQwen2VL,
+    VisionPruningMasks,
+    _module_timer_hooks,
+    _remove_module_timer_hooks,
+    _resolve_module_timer_samples,
+)
+
+
+def test_module_timer_hooks_use_cuda_events_without_per_module_synchronization(monkeypatch) -> None:
+    import docprune.qwen2vl.model as model_module
+
+    class FakeEvent:
+        pairs = []
+
+        def __init__(self, **kwargs):
+            del kwargs
+            self.recorded = False
+
+        def record(self):
+            self.recorded = True
+
+        def elapsed_time(self, other):
+            assert self.recorded and other.recorded
+            return 2.0
+
+    synchronize_calls = []
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "Event", FakeEvent)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda *_args: synchronize_calls.append(True))
+    monkeypatch.setattr(model_module, "_model_device", lambda _model: torch.device("cuda"))
+
+    module = torch.nn.Identity()
+    samples, handles = _module_timer_hooks(module, [module])
+    module(torch.ones(1))
+    _remove_module_timer_hooks(handles)
+    assert synchronize_calls == []
+    assert _resolve_module_timer_samples(module, samples) == pytest.approx(0.002)
+    assert len(synchronize_calls) == 1
 
 
 def test_tiny_model_generates_with_monotonic_pruning_trace(tiny_qwen2vl) -> None:

@@ -78,26 +78,39 @@ def _end_synchronized_timer(started: float, device: torch.device | None) -> floa
 
 def _module_timer_hooks(
     model: object, modules: list[object]
-) -> tuple[list[float], list[object]]:
-    """Measure only synchronized execution of the supplied model modules."""
+) -> tuple[list[float | tuple[object, object]], list[object]]:
+    """Record module execution intervals without synchronizing every hook."""
 
-    elapsed: list[float] = []
+    elapsed: list[float | tuple[object, object]] = []
     handles: list[object] = []
+    device = _model_device(model)
+    use_cuda_events = device is not None and device.type == "cuda" and torch.cuda.is_available()
     for module in modules:
         register_pre = getattr(module, "register_forward_pre_hook", None)
         register_post = getattr(module, "register_forward_hook", None)
         if not callable(register_pre) or not callable(register_post):
             continue
         def callbacks() -> tuple[object, object]:
-            started: list[tuple[float, torch.device | None]] = []
+            started: list[tuple[float, torch.device | None] | object] = []
 
             def before(*_args: object, **_kwargs: object) -> None:
-                started.append(_begin_synchronized_timer(model))
+                if use_cuda_events:
+                    event = torch.cuda.Event(enable_timing=True)
+                    event.record()
+                    started.append(event)
+                else:
+                    started.append(_begin_synchronized_timer(model))
 
             def after(*_args: object, **_kwargs: object) -> None:
                 if started:
-                    start, device = started.pop()
-                    elapsed.append(_end_synchronized_timer(start, device))
+                    start = started.pop()
+                    if use_cuda_events:
+                        end = torch.cuda.Event(enable_timing=True)
+                        end.record()
+                        elapsed.append((start, end))
+                    else:
+                        started_at, started_device = start
+                        elapsed.append(_end_synchronized_timer(started_at, started_device))
 
             return before, after
 
@@ -111,6 +124,36 @@ def _remove_module_timer_hooks(handles: list[object]) -> None:
         remove = getattr(handle, "remove", None)
         if callable(remove):
             remove()
+
+
+def _resolve_module_timer_groups(
+    model: object, groups: tuple[list[float | tuple[object, object]], ...]
+) -> tuple[float, ...]:
+    """Resolve hook timings, synchronizing CUDA once for all stage groups."""
+
+    device = _model_device(model)
+    event_groups = [
+        [sample for sample in group if isinstance(sample, tuple)] for group in groups
+    ]
+    if any(event_groups):
+        if device is None or device.type != "cuda":
+            raise RuntimeError("CUDA timer events require a CUDA model device")
+        torch.cuda.synchronize(device)
+    return tuple(
+        sum(
+            sample
+            if isinstance(sample, int | float)
+            else sample[0].elapsed_time(sample[1]) / 1000.0
+            for sample in group
+        )
+        for group in groups
+    )
+
+
+def _resolve_module_timer_samples(
+    model: object, samples: list[float | tuple[object, object]]
+) -> float:
+    return _resolve_module_timer_groups(model, (samples,))[0]
 
 
 class DocPruneQwen2VL:
@@ -152,31 +195,15 @@ class DocPruneQwen2VL:
         vision_dtype = getattr(self.model.visual, "get_dtype", lambda: pixel_values.dtype)()
         vision_device = getattr(self.model.visual, "get_device", lambda: pixel_values.device)()
         pixel_values = pixel_values.to(device=vision_device, dtype=vision_dtype)
-        visual_modules = [
-            getattr(self.model.visual, "patch_embed", None),
-            *list(getattr(self.model.visual, "blocks", ())),
-            getattr(self.model.visual, "merger", None),
-        ]
-        encoder_times, encoder_hooks = _module_timer_hooks(self.model, [
-            module for module in visual_modules if module is not None
-        ])
         encoder_started, encoder_device = _begin_synchronized_timer(self.model)
-        try:
-            vision = compact_vision_batch(
-                self.model.visual,
-                pixel_values,
-                image_grid_thw,
-                combined,
-            )
-        finally:
-            _remove_module_timer_hooks(encoder_hooks)
+        vision = compact_vision_batch(
+            self.model.visual,
+            pixel_values,
+            image_grid_thw,
+            combined,
+        )
         encoder_elapsed = _end_synchronized_timer(encoder_started, encoder_device)
-        if encoder_times:
-            encoder_seconds = sum(encoder_times)
-        elif encoder_device is not None and encoder_device.type == "cuda":
-            raise RuntimeError("Qwen vision encoder timing hooks did not observe execution")
-        else:
-            encoder_seconds = encoder_elapsed
+        encoder_seconds = encoder_elapsed
         compact = compact_multimodal_sequence(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -184,25 +211,18 @@ class DocPruneQwen2VL:
             image_token_id=self.model.config.image_token_id,
             group_keep_mask=combined,
         )
-        embeddings = self.model.model.embed_tokens(compact.input_ids)
-        if compact.visual_indices.numel() != vision.image_embeds.shape[0]:
-            raise ValueError("compacted image placeholders and sparse vision features do not match")
-        embeddings = embeddings.clone()
-        embeddings[0, compact.visual_indices] = vision.image_embeds.to(
-            device=embeddings.device,
-            dtype=embeddings.dtype,
-        )
-        decoder_modules = [
-            getattr(self.model.model, "embed_tokens", None),
-            *list(getattr(self.model.model, "layers", ())),
-            getattr(self.model.model, "norm", None),
-            getattr(self.model, "lm_head", None),
-        ]
-        decoder_times, decoder_hooks = _module_timer_hooks(self.model, [
-            module for module in decoder_modules if module is not None
-        ])
         decoder_started, decoder_device = _begin_synchronized_timer(self.model)
         try:
+            embeddings = self.model.model.embed_tokens(compact.input_ids)
+            if compact.visual_indices.numel() != vision.image_embeds.shape[0]:
+                raise ValueError(
+                    "compacted image placeholders and sparse vision features do not match"
+                )
+            embeddings = embeddings.clone()
+            embeddings[0, compact.visual_indices] = vision.image_embeds.to(
+                device=embeddings.device,
+                dtype=embeddings.dtype,
+            )
             prefill = prefill_with_ctp(
                 self.model.model,
                 embeddings,
@@ -240,13 +260,7 @@ class DocPruneQwen2VL:
             generated_ids = torch.stack(generated, dim=1)
         finally:
             decoder_elapsed = _end_synchronized_timer(decoder_started, decoder_device)
-            _remove_module_timer_hooks(decoder_hooks)
-        if decoder_times:
-            decoder_seconds = sum(decoder_times)
-        elif decoder_device is not None and decoder_device.type == "cuda":
-            raise RuntimeError("Qwen language-model timing hooks did not observe execution")
-        else:
-            decoder_seconds = decoder_elapsed
+        decoder_seconds = decoder_elapsed
         post_ctp = (
             len(prefill.decision.retained_visual_indices)
             if prefill.decision is not None

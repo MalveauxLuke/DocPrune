@@ -141,6 +141,14 @@ def test_production_result_record_requires_positive_exact_stage_timings(field: s
         _validate_result_record(record, line_number=1, production=True)
 
 
+def test_production_resume_validation_requires_raw_total_sample_seconds(tmp_path: Path) -> None:
+    path = tmp_path / "results.jsonl"
+    path.write_text(json.dumps(result_record("q-1")) + "\n")
+
+    with pytest.raises(ValueError, match="production timing"):
+        load_completed_qids(path, expected_qids=("q-1",), production=True)
+
+
 def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -> None:
     import torch
 
