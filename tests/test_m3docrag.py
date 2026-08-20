@@ -9,7 +9,9 @@ from docprune.m3docrag import (
     AnswerOutput,
     DocPruneM3DocRAG,
     OfficialM3DocRAGBoundary,
+    RetrievalOutput,
     RetrievedPage,
+    RetrievedPageFeatures,
     SampleInput,
 )
 from docprune.qwen2vl.model import PruningTrace
@@ -52,6 +54,36 @@ def test_adapter_preserves_official_retrieval_order_and_trace() -> None:
     assert [page.doc_id for page in result.retrieved_pages] == ["doc-b", "doc-a"]
     assert result.trace.post_ctp_visual_tokens == 25
     assert result.to_dict()["answers"] == ["42", "forty two"]
+
+
+def test_runner_passes_retrieval_context_to_answerer() -> None:
+    context = RetrievalOutput(
+        pages=(RetrievedPage("doc-b", 3, 0.9), RetrievedPage("doc-a", 1, 0.7)),
+        query_embeddings=torch.ones((2, 128)),
+        page_features=(
+            RetrievedPageFeatures("doc-b", 3, torch.ones((1, 128)), torch.tensor([0]), (32, 32)),
+            RetrievedPageFeatures("doc-a", 1, torch.ones((1, 128)), torch.tensor([0]), (32, 32)),
+        ),
+    )
+
+    class ContextRetriever:
+        def retrieve(self, question: str, top_k: int) -> RetrievalOutput:
+            assert question == "Which value is largest?"
+            assert top_k == 2
+            return context
+
+    class ContextAnswerer:
+        def answer(self, images, question: str, *, retrieval_output: RetrievalOutput):
+            assert images == ["doc-b:3", "doc-a:1"]
+            assert question == "Which value is largest?"
+            assert retrieval_output is context
+            return AnswerOutput("42", PruningTrace(1, 1, 1, 1, None), 0.1)
+
+    result = DocPruneM3DocRAG(
+        ContextRetriever(), FakePages(), ContextAnswerer(), top_k=2
+    ).run_sample(SampleInput("q-1", "Which value is largest?"))
+
+    assert result.predicted_answer == "42"
 
 
 @pytest.mark.parametrize(
@@ -136,7 +168,7 @@ class DuplicateOfficialRAG:
         return []
 
 
-def test_official_boundary_overfetches_and_deduplicates_page_uids() -> None:
+def test_official_boundary_does_not_overfetch_page_uids() -> None:
     rag = DuplicateOfficialRAG()
     boundary = OfficialM3DocRAGBoundary(
         rag_model=rag,
@@ -144,10 +176,10 @@ def test_official_boundary_overfetches_and_deduplicates_page_uids() -> None:
         docid2embs={"doc-a": object(), "doc-b": object()},
     )
 
-    pages = boundary.retrieve("question", top_k=2)
+    with pytest.raises(ValueError, match="only 1 unique pages"):
+        boundary.retrieve("question", top_k=2)
 
-    assert pages == (RetrievedPage("doc-a", 0, 9.0), RetrievedPage("doc-b", 2, 8.0))
-    assert rag.calls == [2, 4]
+    assert rag.calls == [2]
 
 
 class IndexedQueryModel:
@@ -190,3 +222,66 @@ def test_official_boundary_index_branch_preserves_maxsim_and_structured_page_ids
     assert pages[1].doc_id == "doc-a"
     assert pages[1].page_index == 0
     assert pages[1].score == pytest.approx(0.9)
+
+
+class ExactKIndex:
+    ntotal = 4
+
+    def __init__(self) -> None:
+        self.searched: list[int] = []
+        self._index = faiss.IndexFlatIP(128)
+        values = np.zeros((4, 128), dtype=np.float32)
+        values[0, 0] = 0.9
+        values[1, 0] = 0.8
+        values[2, 1] = 0.95
+        values[3, 1] = 0.7
+        self._index.add(values)
+
+    def search(self, query, k):
+        self.searched.append(k)
+        return self._index.search(query, k)
+
+
+def test_indexed_retrieval_searches_exact_k_and_returns_aligned_features() -> None:
+    query = torch.zeros((2, 128), dtype=torch.float32)
+    query[0, 0] = 1
+    query[1, 1] = 1
+    vectors = torch.zeros((4, 128), dtype=torch.float32)
+    vectors[0, 0] = 0.9
+    vectors[1, 0] = 0.8
+    vectors[2, 1] = 0.95
+    vectors[3, 1] = 0.7
+    index = ExactKIndex()
+    boundary = OfficialM3DocRAGBoundary(
+        rag_model=type("Rag", (), {"retrieval_model": IndexedQueryModel128(query)})(),
+        dataset=FakeOfficialDataset(),
+        docid2embs={},
+        index=index,
+        token2pageuid=[
+            {"doc_id": "doc-a", "page_index": 0},
+            {"doc_id": "doc-a", "page_index": 0},
+            {"doc_id": "doc-b", "page_index": 2},
+            {"doc_id": "doc-b", "page_index": 2},
+        ],
+        all_token_embeddings=vectors,
+        raster_indices=torch.tensor([-1, 0, -1, 1], dtype=torch.int64),
+    )
+
+    result = boundary.retrieve("question", top_k=2)
+
+    assert isinstance(result, RetrievalOutput)
+    assert index.searched == [2]
+    assert [page.doc_id for page in result.pages] == ["doc-b", "doc-a"]
+    assert [feature.doc_id for feature in result.page_features] == ["doc-b", "doc-a"]
+    assert [feature.page_index for feature in result.page_features] == [2, 0]
+    assert [feature.raster_indices.tolist() for feature in result.page_features] == [[1], [0]]
+    assert all(feature.source_hw == (32, 32) for feature in result.page_features)
+
+
+class IndexedQueryModel128:
+    def __init__(self, query: torch.Tensor) -> None:
+        self.query = query
+
+    def encode_queries(self, questions):
+        assert questions == ["question"]
+        return [self.query]

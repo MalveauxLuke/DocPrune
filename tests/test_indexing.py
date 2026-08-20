@@ -177,20 +177,20 @@ def test_build_index_persists_source_order_visual_rows_mapping_and_faiss(
     assert result.documents_built == 2
     assert result.documents_resumed == 0
     assert result.manifest.mode == "all-kept"
-    assert result.manifest.embedding_shape == (16, 128)
+    assert result.manifest.embedding_shape == (28, 128)
     tensors = load_file(result.manifest.embeddings_path)
-    assert tensors["embeddings"][:, 0].tolist() == [10.0] * 4 + [20.0] * 4 + [30.0] * 4 + [40.0] * 4
-    assert tensors["raster_indices"].tolist() == [0, 1, 2, 3] * 4
+    assert tensors["embeddings"][:, 0].tolist() == [0.0] * 28
+    assert tensors["raster_indices"].tolist() == [-1, 0, 1, 2, 3, -1, -1] * 4
     token_map = json.loads(result.token2pageuid_path.read_text(encoding="utf-8"))
     assert token_map == (
-        [{"doc_id": "doc-b", "page_index": 0}] * 4
-        + [{"doc_id": "doc-b", "page_index": 1}] * 4
-        + [{"doc_id": "doc-a", "page_index": 0}] * 4
-        + [{"doc_id": "doc-a", "page_index": 1}] * 4
+        [{"doc_id": "doc-b", "page_index": 0}] * 7
+        + [{"doc_id": "doc-b", "page_index": 1}] * 7
+        + [{"doc_id": "doc-a", "page_index": 0}] * 7
+        + [{"doc_id": "doc-a", "page_index": 1}] * 7
     )
     index = faiss.read_index(str(result.manifest.index_path))
     assert index.d == 128
-    assert index.ntotal == 16
+    assert index.ntotal == 28
     result.manifest.validate_files()
 
 
@@ -215,8 +215,8 @@ def test_docprune_uses_page_count_retrieval_threshold_and_separate_mode_root(
     baseline_result = build_index(baseline, "all-kept", tmp_path / "indexes")
 
     assert seen_masks == [[True, False, False, False], [True, True, True, True]]
-    assert pruned_result.manifest.embedding_shape == (1, 128)
-    assert baseline_result.manifest.embedding_shape == (4, 128)
+    assert pruned_result.manifest.embedding_shape == (4, 128)
+    assert baseline_result.manifest.embedding_shape == (7, 128)
     assert pruned_result.mode_root == tmp_path / "indexes" / "docprune"
     assert baseline_result.mode_root == tmp_path / "indexes" / "all-kept"
     assert (
@@ -250,7 +250,7 @@ def test_resume_skips_only_manifest_identical_atomically_completed_documents(
     first_entry_path.write_text(json.dumps(first_entry), encoding="utf-8")
     with pytest.raises(ValueError, match="completion ledger entry"):
         build_index(config, "all-kept", tmp_path / "indexes")
-    first_entry["shape"] = [4, 128]
+    first_entry["shape"] = [7, 128]
     first_entry_path.write_text(
         json.dumps(first_entry, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
@@ -317,6 +317,47 @@ def test_build_rejects_mode_root_symlink_before_writing_artifacts(
     assert not (external / "documents").exists()
 
 
+def test_build_index_persists_complete_sequence_and_row_aligned_rasters(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The index contract keeps nonvisual rows around the compact visual span."""
+
+    monkeypatch.setattr("docprune.indexing.assert_supported_colpali", lambda model, processor: None)
+
+    def complete_encoder(model, batch, mapping, patch_keep_mask):
+        del model
+        keep = torch.as_tensor(patch_keep_mask, dtype=torch.bool)
+        sequence_keep = torch.ones(batch["input_ids"].shape[1], dtype=torch.bool)
+        sequence_keep[mapping.visual_start : mapping.visual_stop] = keep
+        compact_ids = batch["input_ids"][:, sequence_keep]
+        compact_attention = batch["attention_mask"][:, sequence_keep]
+        sequence = torch.arange(compact_ids.shape[1] * 128, dtype=torch.float32).reshape(
+            1, compact_ids.shape[1], 128
+        )
+        visual = sequence[:, mapping.visual_start : mapping.visual_start + int(keep.sum()), :]
+        return ColPaliPageEmbedding(
+            embeddings=sequence,
+            visual_embeddings=visual,
+            raster_indices=torch.arange(4, dtype=torch.long)[keep],
+            input_ids=compact_ids,
+            attention_mask=compact_attention,
+        )
+
+    monkeypatch.setattr("docprune.indexing.encode_colpali_page", complete_encoder)
+    dataset = FakeDataset({"doc": (Image.new("RGB", (28, 28), color=(10, 0, 0)),)})
+    config = make_build_config(tmp_path, mode="all-kept", page_count=1, dataset=dataset)
+
+    result = build_index(config, "all-kept", tmp_path / "indexes")
+
+    tensors = load_file(result.manifest.embeddings_path)
+    assert tensors["embeddings"].shape == (7, 128)
+    assert tensors["raster_indices"].tolist() == [-1, 0, 1, 2, 3, -1, -1]
+    torch.testing.assert_close(
+        tensors["embeddings"],
+        torch.arange(7 * 128, dtype=torch.float32).reshape(7, 128),
+    )
+
+
 @pytest.mark.parametrize(
     "target_name", ["documents/000000.safetensors", "completion-ledger/000000.json"]
 )
@@ -359,18 +400,24 @@ def test_resume_rejects_empty_page_and_bad_raster_identity(
 
     for offsets, rasters, message in (
         (
-            torch.tensor([0, 0, 8], dtype=torch.int64),
+            torch.tensor([0, 0, 14], dtype=torch.int64),
             tensors["raster_indices"],
             "strictly increasing",
         ),
         (
             tensors["page_offsets"],
-            torch.tensor([0, 0, 2, 3, 0, 1, 2, 3], dtype=torch.int64),
+            torch.tensor(
+                [-1, 0, 0, 3, -1, -1, -1, -1, 0, 1, 2, 3, -1, -1],
+                dtype=torch.int64,
+            ),
             "raster indices",
         ),
         (
             tensors["page_offsets"],
-            torch.tensor([0, 1, 2, 3, 0, 1, 2, 1024], dtype=torch.int64),
+            torch.tensor(
+                [-1, 0, 1, 2, 3, -1, -1, -1, 0, 1, 2, 1024, -1, -1],
+                dtype=torch.int64,
+            ),
             "raster indices",
         ),
     ):

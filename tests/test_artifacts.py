@@ -44,14 +44,16 @@ def make_manifest(
     metadata.write_text(
         json.dumps(
             {
+                "schema_version": 5,
                 "shape": [12, 128],
                 "dtype": "float32",
                 "document_ids": ["doc"],
+                "source_hw": [32, 32],
             }
         )
     )
     build_manifest = {
-        "schema_version": 1,
+        "schema_version": 5,
         "source_order_sha256": "b" * 64,
         "document_ids": ["doc"],
     }
@@ -68,7 +70,7 @@ def make_manifest(
         json.dumps(
             [
                 {
-                    "schema_version": 1,
+                    "schema_version": 5,
                     "ordinal": 0,
                     "doc_id": "doc",
                     "build_manifest_sha256": build_manifest["build_manifest_sha256"],
@@ -76,7 +78,7 @@ def make_manifest(
                     "sha256": "d" * 64,
                     "shape": [12, 128],
                     "dtype": "float32",
-                    "pages": [{"doc_id": "doc", "page_index": 0}],
+                    "pages": [{"doc_id": "doc", "page_index": 0, "source_hw": [32, 32]}],
                     "page_offsets": [0, 12],
                 }
             ]
@@ -127,7 +129,7 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
 
     payload = manifest.to_dict()
 
-    assert payload["schema_version"] == 4
+    assert payload["schema_version"] == 5
     assert payload["mode"] == "docprune"
     assert payload["corpus_integrity_sha256"] == "a" * 64
     assert payload["source_order_sha256"] == "b" * 64
@@ -148,6 +150,16 @@ def test_index_manifest_serializes_all_immutable_inputs_and_checksums(tmp_path: 
         {key: value for key, value in payload.items() if key != "manifest_sha256"}
     )
     manifest.validate_files()
+
+
+def test_schema_four_manifest_is_rejected_before_construction(tmp_path: Path) -> None:
+    from docprune.m3docvqa_factory import _load_index_manifest
+
+    path = tmp_path / "schema-4.json"
+    path.write_text(json.dumps({"schema_version": 4, "manifest_sha256": "0" * 64}))
+
+    with pytest.raises(ValueError, match="schema_version.*5"):
+        _load_index_manifest(path)
 
 
 @pytest.mark.parametrize(

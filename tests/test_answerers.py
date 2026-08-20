@@ -7,6 +7,7 @@ from PIL import Image
 from docprune import answerers
 from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
 from docprune.config import PagePruningConfig
+from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures
 from docprune.qwen2vl.model import GenerationResult, PruningTrace, VisionPruningMasks
 from docprune.qwen2vl.preprocessing import PreparedQwenPage
 
@@ -53,6 +54,24 @@ class RecordingModel:
         return torch.tensor([[10, 100, 100, 11, 55]])
 
 
+def retrieval_context(page_count: int = 1) -> RetrievalOutput:
+    pages = tuple(RetrievedPage(f"doc-{index}", index, 1.0) for index in range(page_count))
+    return RetrievalOutput(
+        pages=pages,
+        query_embeddings=torch.ones((2, 128)),
+        page_features=tuple(
+            RetrievedPageFeatures(
+                page.doc_id,
+                page.page_index,
+                torch.ones((4, 128)),
+                torch.arange(4),
+                (32, 32),
+            )
+            for page in pages
+        ),
+    )
+
+
 def test_all_kept_answerer_uses_exact_prompt_greedy_settings_and_new_tokens() -> None:
     processor = RecordingProcessor()
     model = RecordingModel()
@@ -87,19 +106,11 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
     processor = RecordingProcessor()
     processor.image_processor = Qwen2VLImageProcessor()
 
-    class Compatibility:
-        grid_hw = (32, 32)
-        patch_size = 14
-        image_token_id = 127
-
-    monkeypatch.setattr(
-        answerers, "assert_supported_colpali", lambda *_: Compatibility(), raising=False
-    )
     monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
     monkeypatch.setattr(
         DocPruneQwenAnswerer,
         "_masks",
-        lambda self, images, prepared, batch, question: VisionPruningMasks(
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
             torch.ones(2, dtype=torch.bool), torch.ones(2, dtype=torch.bool)
         ),
     )
@@ -107,101 +118,60 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
     answerer = DocPruneQwenAnswerer(
         model=RecordingModel(),
         processor=processor,
-        colpali_model=object(),
-        colpali_processor=object(),
         page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
     )
 
-    output = answerer.answer([Image.new("RGB", (112, 56))], "what?")
+    output = answerer.answer(
+        [Image.new("RGB", (112, 56))], "what?", retrieval_output=retrieval_context()
+    )
 
     assert output.answer == "answer"
     assert output.trace.post_ctp_visual_tokens == 1
 
 
-def test_docprune_answerer_requires_colpali_pruning_resources() -> None:
-    with pytest.raises(ValueError, match="ColPali"):
-        DocPruneQwenAnswerer(model=RecordingModel(), processor=RecordingProcessor())
+def test_docprune_answerer_requires_retrieval_context() -> None:
+    answerer = DocPruneQwenAnswerer(model=RecordingModel(), processor=RecordingProcessor())
+    with pytest.raises(ValueError, match="retrieval_output"):
+        answerer.answer([Image.new("RGB", (112, 56))], "what?")
 
 
-def test_docprune_constructor_validates_colpali_contract_once(monkeypatch) -> None:
-    seen: list[tuple[object, object]] = []
+def test_docprune_answerer_reuses_retrieval_features_without_colpali_forward(monkeypatch) -> None:
+    from transformers import Qwen2VLImageProcessor
 
-    class Compatibility:
-        grid_hw = (32, 32)
-        patch_size = 14
-        image_token_id = 127
+    class FakeAdapter:
+        def generate_with_trace(self, **kwargs):
+            return GenerationResult(
+                generated_ids=torch.tensor([[55]]),
+                trace=PruningTrace(4, 4, 4, 4, None),
+            )
 
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: FakeAdapter())
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
     monkeypatch.setattr(
-        answerers,
-        "assert_supported_colpali",
-        lambda model, processor: seen.append((model, processor)) or Compatibility(),
-        raising=False,
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.ones(4, dtype=torch.bool), torch.ones(4, dtype=torch.bool)
+        ),
     )
-    model = object()
-    processor = object()
 
     answerer = DocPruneQwenAnswerer(
         model=RecordingModel(),
-        processor=RecordingProcessor(),
-        colpali_model=model,
-        colpali_processor=processor,
+        processor=processor,
         page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
     )
 
-    assert seen == [(model, processor)]
-    assert answerer.colpali_compatibility.grid_hw == (32, 32)
-
-
-def test_docprune_rejects_shape_compatible_wrong_colpali_mapping(monkeypatch) -> None:
-    from docprune.processor_probe import ColPaliVisualMapping
-
-    class Compatibility:
-        grid_hw = (32, 32)
-        patch_size = 14
-        image_token_id = 127
-
-    class FakeColPaliProcessor:
-        image_token_id = 127
-        image_seq_length = 1024
-
-        def process_queries(self, questions):
-            del questions
-            return {
-                "input_ids": torch.tensor([[5, 6]]),
-                "attention_mask": torch.ones((1, 2), dtype=torch.long),
-            }
-
-        def process_images(self, images):
-            del images
-            ids = torch.tensor([[7, *([127] * 1024), 8]])
-            return {"input_ids": ids, "attention_mask": torch.ones_like(ids)}
-
-    class FakeColPaliModel:
-        def __call__(self, **batch):
-            return torch.zeros((1, batch["input_ids"].shape[1], 128))
-
-    monkeypatch.setattr(
-        answerers, "assert_supported_colpali", lambda *_: Compatibility(), raising=False
-    )
-    monkeypatch.setattr(
-        answerers,
-        "resolve_colpali_visual_mapping",
-        lambda **_: ColPaliVisualMapping(127, 1, 1025, (16, 64), tuple(range(1024))),
-    )
-    answerer = DocPruneQwenAnswerer(
-        model=RecordingModel(),
-        processor=RecordingProcessor(),
-        colpali_model=FakeColPaliModel(),
-        colpali_processor=FakeColPaliProcessor(),
-        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+    output = answerer.answer(
+        [Image.new("RGB", (112, 56))], "what?", retrieval_output=retrieval_context()
     )
 
-    with pytest.raises(ValueError, match="compatibility grid"):
-        answerer._colpali_page_embeddings(
-            [Image.new("RGB", (448, 448))],
-            "what?",
-            answerer.page_config,
-        )
+    assert output.answer == "answer"
+
+
+def test_docprune_constructor_does_not_load_colpali() -> None:
+    DocPruneQwenAnswerer(model=RecordingModel(), processor=RecordingProcessor())
 
 
 def test_docprune_rejects_batched_qwen_page_order_drift(monkeypatch) -> None:
@@ -224,18 +194,10 @@ def test_docprune_rejects_batched_qwen_page_order_drift(monkeypatch) -> None:
                 "image_grid_thw": torch.cat([page.image_grid_thw for page in swapped]),
             }
 
-    class Compatibility:
-        grid_hw = (32, 32)
-        patch_size = 14
-        image_token_id = 127
-
-    monkeypatch.setattr(
-        answerers, "assert_supported_colpali", lambda *_: Compatibility(), raising=False
-    )
     monkeypatch.setattr(
         answerers.DocPruneQwenAnswerer,
         "_masks",
-        lambda self, images, prepared, batch, question: VisionPruningMasks(
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
             torch.ones(16, dtype=torch.bool), torch.ones(16, dtype=torch.bool)
         ),
     )
@@ -244,8 +206,6 @@ def test_docprune_rejects_batched_qwen_page_order_drift(monkeypatch) -> None:
     answerer = DocPruneQwenAnswerer(
         model=RecordingModel(),
         processor=DriftProcessor(),
-        colpali_model=object(),
-        colpali_processor=object(),
         page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
     )
     with pytest.raises(ValueError, match="batched Qwen"):
@@ -255,6 +215,7 @@ def test_docprune_rejects_batched_qwen_page_order_drift(monkeypatch) -> None:
                 Image.new("RGB", (56, 112), color=(4, 5, 6)),
             ],
             "what?",
+            retrieval_output=retrieval_context(2),
         )
 
 

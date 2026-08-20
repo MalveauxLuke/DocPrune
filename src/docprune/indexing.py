@@ -25,6 +25,8 @@ from docprune.processor_probe import resolve_colpali_visual_mapping
 
 EMBEDDING_WIDTH = 128
 SIGLIP_PATCH_SIZE = 14
+INDEX_SCHEMA_VERSION = 5
+COLPALI_SOURCE_HW = (32, 32)
 
 
 @dataclass(frozen=True)
@@ -217,7 +219,7 @@ def _build_identity(config: IndexBuildConfig, mode: str) -> dict[str, object]:
     if not processor_contract_path.is_file():
         raise FileNotFoundError(f"processor contract is missing: {processor_contract_path}")
     payload: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": INDEX_SCHEMA_VERSION,
         "mode": mode,
         "page_count": page_count,
         "corpus_integrity_sha256": str(_value(_value(run, "corpus"), "integrity_sha256")),
@@ -314,6 +316,8 @@ def _load_completed_document(
     entry = _read_json(ledger_path)
     if not isinstance(entry, dict):
         raise ValueError(f"invalid completion ledger entry: {ledger_path}")
+    if entry.get("schema_version") != INDEX_SCHEMA_VERSION:
+        raise ValueError(f"completion ledger schema version is unsupported: {doc_id}")
     expected = {
         "ordinal": ordinal,
         "doc_id": doc_id,
@@ -351,24 +355,21 @@ def _load_completed_document(
         raise ValueError(f"completed document page offsets must be strictly increasing: {doc_id}")
     if len(rasters) != len(embeddings):
         raise ValueError(f"completed document rows are inconsistent: {doc_id}")
-    if not bool(((rasters >= 0) & (rasters < 1024)).all()):
-        raise ValueError(f"completed document raster indices are out of range: {doc_id}")
+    _validate_raster_segments(rasters, offsets, doc_id=doc_id)
     pages = entry.get("pages")
     if not isinstance(pages, list) or len(pages) != offsets.numel() - 1:
         raise ValueError(f"completed document page ledger is invalid: {doc_id}")
     mapping: list[dict[str, object]] = []
     for page_index, page in enumerate(pages):
         identity = {"doc_id": doc_id, "page_index": page_index}
-        if page != identity:
+        if (
+            not isinstance(page, dict)
+            or page.get("doc_id") != doc_id
+            or page.get("page_index") != page_index
+            or page.get("source_hw") != list(COLPALI_SOURCE_HW)
+        ):
             raise ValueError(f"completed document page order drift: {doc_id}")
         count = int(offsets[page_index + 1] - offsets[page_index])
-        page_rasters = rasters[int(offsets[page_index]) : int(offsets[page_index + 1])]
-        if page_rasters.numel() == 0 or (
-            page_rasters.numel() > 1 and not bool((page_rasters[1:] > page_rasters[:-1]).all())
-        ):
-            raise ValueError(
-                f"completed document raster indices are not strictly increasing: {doc_id}"
-            )
         mapping.extend([identity] * count)
     return embeddings, rasters, mapping, entry
 
@@ -387,6 +388,38 @@ def _require_document_target(target: Path, root: Path, label: str) -> None:
         raise ValueError(f"{label} target is outside its artifact root: {target}") from error
     if target.exists() and not target.is_file():
         raise ValueError(f"{label} target must be a regular file: {target}")
+
+
+def _validate_raster_segment(
+    segment: torch.Tensor, *, doc_id: str, page_index: int | None = None
+) -> None:
+    """Validate one row-aligned raster map with one compact visual span."""
+
+    label = f"{doc_id} page {page_index}" if page_index is not None else doc_id
+    if segment.ndim != 1 or segment.numel() == 0:
+        raise ValueError(f"completed document raster indices are invalid: {label}")
+    valid = segment >= 0
+    if not bool(valid.any()):
+        raise ValueError(f"completed document has no visual rows: {label}")
+    positions = valid.nonzero(as_tuple=False).flatten()
+    first, last = int(positions[0]), int(positions[-1])
+    if not bool(valid[first : last + 1].all()) or bool(valid[:first].any()) or bool(
+        valid[last + 1 :].any()
+    ):
+        raise ValueError(f"completed document raster indices are not one compact visual span: {label}")
+    visual = segment[first : last + 1]
+    if bool((visual >= 1024).any()) or bool((visual < 0).any()):
+        raise ValueError(f"completed document raster indices are out of range: {label}")
+    if visual.numel() > 1 and not bool((visual[1:] > visual[:-1]).all()):
+        raise ValueError(f"completed document raster indices are not strictly increasing: {label}")
+
+
+def _validate_raster_segments(
+    rasters: torch.Tensor, offsets: torch.Tensor, *, doc_id: str
+) -> None:
+    for page_index in range(offsets.numel() - 1):
+        start, stop = int(offsets[page_index]), int(offsets[page_index + 1])
+        _validate_raster_segment(rasters[start:stop], doc_id=doc_id, page_index=page_index)
 
 
 def _encode_document(
@@ -442,11 +475,18 @@ def _encode_document(
             raise ValueError(f"retrieval BTP rejected every patch for {doc_id} page {page_index}")
         encoded = encode_colpali_page(config.model, batch, mapping, keep)
         _validate_page_embedding(encoded, keep, doc_id=doc_id, page_index=page_index)
-        visual = encoded.visual_embeddings[0].detach().to(device="cpu", dtype=torch.float32)
         rasters = encoded.raster_indices.detach().to(device="cpu", dtype=torch.int64)
-        page_embeddings.append(visual)
-        page_rasters.append(rasters)
-        offsets.append(offsets[-1] + len(visual))
+        sequence = encoded.embeddings[0].detach().to(device="cpu", dtype=torch.float32)
+        row_rasters = torch.full((sequence.shape[0],), -1, dtype=torch.int64)
+        visual_start = mapping.visual_start
+        visual_stop = visual_start + int(rasters.numel())
+        if visual_stop > sequence.shape[0]:
+            raise ValueError(f"ColPali visual span exceeds sequence for {doc_id} page {page_index}")
+        row_rasters[visual_start:visual_stop] = rasters
+        _validate_raster_segment(row_rasters, doc_id=doc_id, page_index=page_index)
+        page_embeddings.append(sequence)
+        page_rasters.append(row_rasters)
+        offsets.append(offsets[-1] + len(sequence))
         page_identities.append({"doc_id": doc_id, "page_index": page_index})
     return (
         torch.cat(page_embeddings),
@@ -464,7 +504,17 @@ def _validate_page_embedding(
     page_index: int,
 ) -> None:
     visual = encoded.visual_embeddings
+    embeddings = encoded.embeddings
     expected_rasters = torch.arange(keep.numel(), device=keep.device, dtype=torch.long)[keep]
+    if (
+        embeddings.ndim != 3
+        or embeddings.shape[0] != 1
+        or embeddings.shape[2] != EMBEDDING_WIDTH
+        or not bool(torch.isfinite(embeddings).all())
+    ):
+        raise ValueError(
+            f"ColPali sequence embeddings are invalid for {doc_id} page {page_index}"
+        )
     if visual.ndim != 3 or visual.shape[0] != 1 or visual.shape[2] != EMBEDDING_WIDTH:
         raise ValueError(
             f"ColPali visual embedding shape is invalid for {doc_id} page {page_index}"
@@ -529,7 +579,7 @@ def build_index(config: IndexBuildConfig, mode: str, output: Path) -> IndexBuild
                 },
             )
             entry: dict[str, object] = {
-                "schema_version": 1,
+                "schema_version": INDEX_SCHEMA_VERSION,
                 "ordinal": ordinal,
                 "doc_id": doc_id,
                 "build_manifest_sha256": build_sha,
@@ -537,7 +587,9 @@ def build_index(config: IndexBuildConfig, mode: str, output: Path) -> IndexBuild
                 "sha256": sha256_file(document_path),
                 "shape": list(embeddings.shape),
                 "dtype": "float32",
-                "pages": pages,
+                "pages": [
+                    {**page, "source_hw": list(COLPALI_SOURCE_HW)} for page in pages
+                ],
                 "page_offsets": offsets.tolist(),
             }
             _atomic_write_json(ledger_path, entry)
@@ -572,9 +624,11 @@ def build_index(config: IndexBuildConfig, mode: str, output: Path) -> IndexBuild
     _atomic_write_json(
         metadata_path,
         {
+            "schema_version": INDEX_SCHEMA_VERSION,
             "shape": list(embeddings.shape),
             "dtype": "float32",
             "document_ids": list(_document_ids(config.dataset)),
+            "source_hw": list(COLPALI_SOURCE_HW),
             "token2pageuid_sha256": sha256_file(token2pageuid_path),
         },
     )

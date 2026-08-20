@@ -21,6 +21,26 @@ class RetrievedPage:
 
 
 @dataclass(frozen=True)
+class RetrievedPageFeatures:
+    """Persisted ColPali visual rows selected for one retrieved page."""
+
+    doc_id: str
+    page_index: int
+    visual_embeddings: torch.Tensor
+    raster_indices: torch.Tensor
+    source_hw: tuple[int, int]
+
+
+@dataclass(frozen=True)
+class RetrievalOutput:
+    """Page identities plus the retrieval tensors consumed by QTP."""
+
+    pages: tuple[RetrievedPage, ...]
+    query_embeddings: torch.Tensor
+    page_features: tuple[RetrievedPageFeatures, ...]
+
+
+@dataclass(frozen=True)
 class SampleInput:
     question_id: str
     question: str
@@ -122,7 +142,9 @@ class SampleResult:
 
 
 class Retriever(Protocol):
-    def retrieve(self, question: str, top_k: int) -> Sequence[RetrievedPage]: ...
+    def retrieve(
+        self, question: str, top_k: int
+    ) -> RetrievalOutput | Sequence[RetrievedPage]: ...
 
 
 class PageLoader(Protocol):
@@ -130,7 +152,13 @@ class PageLoader(Protocol):
 
 
 class Answerer(Protocol):
-    def answer(self, images: Sequence[object], question: str) -> AnswerOutput: ...
+    def answer(
+        self,
+        images: Sequence[object],
+        question: str,
+        *,
+        retrieval_output: RetrievalOutput | None = None,
+    ) -> AnswerOutput: ...
 
 
 class DocPruneM3DocRAG:
@@ -155,12 +183,26 @@ class DocPruneM3DocRAG:
     def run_sample(self, sample: SampleInput | Mapping[str, Any]) -> SampleResult:
         item = sample if isinstance(sample, SampleInput) else SampleInput.from_mapping(sample)
         retrieval_start = time.perf_counter()
-        pages = tuple(self.retriever.retrieve(item.question, self.top_k))
+        retrieval = self.retriever.retrieve(item.question, self.top_k)
+        retrieval_output = retrieval if isinstance(retrieval, RetrievalOutput) else None
+        pages = (
+            tuple(retrieval.pages)
+            if retrieval_output is not None
+            else tuple(retrieval)
+        )
         retrieval_seconds = time.perf_counter() - retrieval_start
         if len(pages) != self.top_k:
             raise ValueError(f"retriever returned {len(pages)} pages; expected {self.top_k}")
         images = [self.page_loader.load_page(page.doc_id, page.page_index) for page in pages]
-        answer = self.answerer.answer(images, item.question)
+        answer_method = self.answerer.answer
+        if retrieval_output is not None:
+            answer = answer_method(
+                images,
+                item.question,
+                retrieval_output=retrieval_output,
+            )
+        else:
+            answer = answer_method(images, item.question)
         if answer.qa_seconds < 0:
             raise ValueError("qa_seconds must be nonnegative")
         return SampleResult(
@@ -203,12 +245,18 @@ class OfficialM3DocRAGBoundary:
         index: object | None = None,
         token2pageuid: object | None = None,
         all_token_embeddings: object | None = None,
+        raster_indices: object | None = None,
+        source_hw: tuple[int, int] = (32, 32),
     ) -> None:
         self.rag_model = rag_model
         self.dataset = dataset
         self.index = index
         self.token2pageuid = token2pageuid
         self.all_token_embeddings = all_token_embeddings
+        self.raster_indices = raster_indices
+        self.source_hw = tuple(source_hw)
+        if self.source_hw != (32, 32):
+            raise ValueError("indexed ColPali source grid must be (32, 32)")
         self.retrieval_kwargs = {
             "docid2embs": docid2embs,
             "docid2lens": docid2lens,
@@ -217,7 +265,9 @@ class OfficialM3DocRAGBoundary:
             "all_token_embeddings": all_token_embeddings,
         }
 
-    def retrieve(self, question: str, top_k: int) -> tuple[RetrievedPage, ...]:
+    def retrieve(
+        self, question: str, top_k: int
+    ) -> RetrievalOutput | tuple[RetrievedPage, ...]:
         if top_k not in {1, 2, 4}:
             raise ValueError("top_k must be 1, 2, or 4")
         if (
@@ -227,27 +277,15 @@ class OfficialM3DocRAGBoundary:
         ):
             return self._retrieve_indexed(question, top_k)
 
-        # The pinned upstream implementation uses n_return_pages for both the
-        # number of requested pages and the per-query-token FAISS neighbors.
-        # Increase that neighbor count deterministically, then retain the first
-        # occurrence of each structured page identity.  This preserves its
-        # MaxSim ordering while preventing one page's many tokens from
-        # consuming the requested page budget.
-        neighbor_count = top_k
-        for _ in range(16):
-            raw = self.rag_model.retrieve_pages_from_docs(
-                query=question,
-                n_return_pages=neighbor_count,
-                show_progress=False,
-                **self.retrieval_kwargs,
-            )
-            pages = self._unique_pages(raw)
-            if len(pages) >= top_k:
-                return tuple(pages[:top_k])
-            next_count = max(neighbor_count + 1, neighbor_count * 2)
-            if next_count <= neighbor_count:
-                break
-            neighbor_count = next_count
+        raw = self.rag_model.retrieve_pages_from_docs(
+            query=question,
+            n_return_pages=top_k,
+            show_progress=False,
+            **self.retrieval_kwargs,
+        )
+        pages = self._unique_pages(raw)
+        if len(pages) >= top_k:
+            return tuple(pages[:top_k])
         raise ValueError(
             f"official retrieval returned only {len(pages)} unique pages; expected {top_k}"
         )
@@ -309,36 +347,102 @@ class OfficialM3DocRAGBoundary:
         if total_tokens < top_k:
             raise ValueError("indexed corpus contains fewer tokens than requested pages")
 
-        neighbor_count = min(top_k, total_tokens)
-        for _ in range(16):
-            _distances, nearest = index.search(query_array, neighbor_count)
-            page_scores: dict[tuple[str, int], float] = {}
-            page_order: dict[tuple[str, int], int] = {}
-            order = 0
-            for query_row, nearest_row in zip(query_array, nearest):
-                query_page_scores: dict[tuple[str, int], float] = {}
-                for token_index in nearest_row:
-                    token_index = int(token_index)
-                    if token_index < 0:
-                        continue
-                    page = self._page_identity(token_map[token_index])
-                    score = float(np.dot(query_row, all_array[token_index]))
-                    query_page_scores[page] = max(query_page_scores.get(page, -np.inf), score)
-                    page_order.setdefault(page, order)
-                    order += 1
-                for page, score in query_page_scores.items():
-                    page_scores[page] = page_scores.get(page, 0.0) + score
-            ordered = sorted(page_scores, key=lambda page: (-page_scores[page], page_order[page]))
-            if len(ordered) >= top_k:
-                return tuple(
-                    RetrievedPage(page[0], page[1], page_scores[page]) for page in ordered[:top_k]
-                )
-            if neighbor_count >= total_tokens:
-                break
-            neighbor_count = min(total_tokens, max(neighbor_count + 1, neighbor_count * 2))
+        _distances, nearest = index.search(query_array, top_k)
+        page_scores: dict[tuple[str, int], float] = {}
+        page_order: dict[tuple[str, int], int] = {}
+        order = 0
+        for query_row, nearest_row in zip(query_array, nearest):
+            query_page_scores: dict[tuple[str, int], float] = {}
+            for token_index in nearest_row:
+                token_index = int(token_index)
+                if token_index < 0:
+                    continue
+                page = self._page_identity(token_map[token_index])
+                score = float(np.dot(query_row, all_array[token_index]))
+                query_page_scores[page] = max(query_page_scores.get(page, -np.inf), score)
+                page_order.setdefault(page, order)
+                order += 1
+            for page, score in query_page_scores.items():
+                page_scores[page] = page_scores.get(page, 0.0) + score
+        ordered = sorted(page_scores, key=lambda page: (-page_scores[page], page_order[page]))
+        if len(ordered) >= top_k:
+            pages = tuple(
+                RetrievedPage(page[0], page[1], page_scores[page]) for page in ordered[:top_k]
+            )
+            if self.raster_indices is None:
+                return pages
+            return self._retrieval_output(
+                pages,
+                query=torch.from_numpy(query_array),
+                token_map=token_map,
+                all_embeddings=all_embeddings,
+                raster_indices=torch.as_tensor(self.raster_indices),
+            )
         raise ValueError(
             f"indexed retrieval returned only {len(ordered)} unique pages; expected {top_k}"
         )
+
+    def _retrieval_output(
+        self,
+        pages: tuple[RetrievedPage, ...],
+        *,
+        query: torch.Tensor,
+        token_map: tuple[object, ...],
+        all_embeddings: torch.Tensor,
+        raster_indices: torch.Tensor,
+    ) -> RetrievalOutput:
+        if all_embeddings.ndim != 2 or all_embeddings.shape[1] != 128:
+            raise ValueError("indexed token embeddings must have width 128")
+        if raster_indices.ndim != 1 or len(raster_indices) != len(all_embeddings):
+            raise ValueError("indexed raster rows do not agree with embeddings")
+        if query.ndim != 2 or query.shape[1] != 128:
+            raise ValueError("indexed query embeddings must have width 128")
+        segments: dict[tuple[str, int], tuple[int, int]] = {}
+        start = 0
+        while start < len(token_map):
+            identity = self._page_identity(token_map[start])
+            stop = start + 1
+            while stop < len(token_map) and self._page_identity(token_map[stop]) == identity:
+                stop += 1
+            if identity in segments:
+                raise ValueError("indexed page rows must remain contiguous")
+            segments[identity] = (start, stop)
+            start = stop
+
+        features: list[RetrievedPageFeatures] = []
+        for page in pages:
+            identity = (page.doc_id, page.page_index)
+            if identity not in segments:
+                raise ValueError("retrieved page is absent from indexed page rows")
+            row_start, row_stop = segments[identity]
+            rows = torch.as_tensor(raster_indices[row_start:row_stop], dtype=torch.int64)
+            valid = rows >= 0
+            if not bool(valid.any()):
+                raise ValueError("retrieved page has no visual rows")
+            visual_positions = valid.nonzero(as_tuple=False).flatten()
+            first, last = int(visual_positions[0]), int(visual_positions[-1])
+            if not bool(valid[first : last + 1].all()) or bool(valid[:first].any()) or bool(
+                valid[last + 1 :].any()
+            ):
+                raise ValueError("retrieved page raster rows are not one compact visual span")
+            page_rasters = rows[valid]
+            if bool((page_rasters < 0).any()) or bool((page_rasters >= 1024).any()):
+                raise ValueError("retrieved page raster indices are out of range")
+            if page_rasters.numel() > 1 and not bool((page_rasters[1:] > page_rasters[:-1]).all()):
+                raise ValueError("retrieved page raster indices are not strictly increasing")
+            page_embeddings = all_embeddings[row_start:row_stop][valid].to(torch.float32)
+            if page_embeddings.ndim != 2 or page_embeddings.shape != (len(page_rasters), 128):
+                raise ValueError("retrieved page visual embeddings have invalid shape")
+            features.append(
+                RetrievedPageFeatures(
+                    page.doc_id,
+                    page.page_index,
+                    page_embeddings,
+                    page_rasters,
+                    self.source_hw,
+                )
+            )
+        return RetrievalOutput(pages, query, tuple(features))
 
     @staticmethod
     def _page_identity(value: object) -> tuple[str, int]:

@@ -166,6 +166,14 @@ def test_model_loaders_fail_before_import_when_cuda_is_unavailable(monkeypatch) 
         factory._load_qwen(SimpleNamespace())
 
 
+def test_load_index_manifest_rejects_schema_four(tmp_path: Path) -> None:
+    path = tmp_path / "schema-4.json"
+    path.write_text(json.dumps({"schema_version": 4, "manifest_sha256": "0" * 64}))
+
+    with pytest.raises(ValueError, match="schema_version.*5"):
+        _load_index_manifest(path)
+
+
 def test_load_completed_qids_rejects_duplicate_and_unknown_records(tmp_path: Path) -> None:
     path = tmp_path / "results.jsonl"
     path.write_text(
@@ -438,7 +446,7 @@ def test_index_manifest_schema_and_digest_are_checked_before_construction(tmp_pa
     with pytest.raises(ValueError, match="schema_version"):
         _load_index_manifest(wrong_schema)
     wrong_digest = tmp_path / "wrong-digest.json"
-    wrong_digest.write_text(json.dumps({"schema_version": 4, "manifest_sha256": "0" * 64}))
+    wrong_digest.write_text(json.dumps({"schema_version": 5, "manifest_sha256": "0" * 64}))
     with pytest.raises(ValueError, match="canonical"):
         _load_index_manifest(wrong_digest)
 

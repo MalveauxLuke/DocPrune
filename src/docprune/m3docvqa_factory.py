@@ -786,8 +786,8 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
             raise ValueError("index manifest must be valid JSON") from error
         if not isinstance(payload, Mapping):
             raise ValueError("index manifest must be a JSON object")
-        if payload.get("schema_version") != 4:
-            raise ValueError("index manifest schema_version must equal 4")
+        if payload.get("schema_version") != 5:
+            raise ValueError("index manifest schema_version must equal 5")
         supplied_digest = payload.get("manifest_sha256")
         unsigned_payload = dict(payload)
         unsigned_payload.pop("manifest_sha256", None)
@@ -877,7 +877,12 @@ class _ColPaliQueryAdapter:
         output = torch.as_tensor(output)
         if output.ndim != 3 or output.shape[0] != len(queries):
             raise ValueError("ColPali query embeddings must have shape [batch, tokens, width]")
-        return list(output)
+        if output.shape[2] != 128:
+            raise ValueError("ColPali query embeddings must have width 128")
+        attention_mask = torch.as_tensor(batch.get("attention_mask", torch.ones(output.shape[:2])))
+        if attention_mask.shape != output.shape[:2]:
+            raise ValueError("ColPali query attention mask must match query embeddings")
+        return [rows[mask.bool()] for rows, mask in zip(output, attention_mask, strict=True)]
 
 
 def _run_manifest(
@@ -1172,7 +1177,11 @@ def build_workload(
     import faiss
     from safetensors.torch import load_file
 
-    embeddings = load_file(manifest.embeddings_path, device="cpu")["embeddings"]
+    embedding_tensors = load_file(manifest.embeddings_path, device="cpu")
+    embeddings = embedding_tensors["embeddings"]
+    raster_indices = embedding_tensors["raster_indices"]
+    metadata = json.loads(manifest.embedding_metadata_path.read_text(encoding="utf-8"))
+    source_hw = tuple(metadata["source_hw"])
     token_map = json.loads(manifest.token2pageuid_path.read_text(encoding="utf-8"))
     if not isinstance(token_map, list) or len(token_map) != len(embeddings):
         raise ValueError("index token2pageuid rows do not match embeddings")
@@ -1187,6 +1196,8 @@ def build_workload(
         index=index,
         token2pageuid=token_map,
         all_token_embeddings=embeddings,
+        raster_indices=raster_indices,
+        source_hw=source_hw,
     )
     qwen_model, qwen_processor = _load_qwen(resolved_run)
     if resolved_mode == "all-kept":
@@ -1195,8 +1206,6 @@ def build_workload(
         answerer = DocPruneQwenAnswerer(
             qwen_model,
             qwen_processor,
-            colpali_model=colpali_model,
-            colpali_processor=colpali_processor,
             page_config=config.for_pages(page_count),
         )
     runner = DocPruneM3DocRAG(boundary, dataset, answerer, top_k=page_count)

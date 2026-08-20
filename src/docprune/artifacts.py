@@ -135,7 +135,7 @@ class IndexManifest:
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
-            "schema_version": 4,
+            "schema_version": 5,
             "mode": self.mode,
             "page_count": self.page_count,
             "corpus_integrity_sha256": self.corpus_integrity_sha256,
@@ -223,6 +223,10 @@ class IndexManifest:
             raise ValueError("embedding metadata shape mismatch")
         if metadata.get("dtype") != self.embedding_dtype:
             raise ValueError("embedding metadata dtype mismatch")
+        if metadata.get("schema_version") != 5:
+            raise ValueError("embedding metadata schema_version must equal 5")
+        if metadata.get("source_hw") != [32, 32]:
+            raise ValueError("embedding metadata source_hw must equal [32, 32]")
         document_ids = metadata.get("document_ids")
         if (
             not isinstance(document_ids, list)
@@ -271,8 +275,8 @@ class IndexManifest:
             raise ValueError("safetensors raster indices must use int64")
         if not bool(embeddings.isfinite().all()):
             raise ValueError("safetensors embeddings must be finite")
-        if not bool(((raster_indices >= 0) & (raster_indices < 1024)).all()):
-            raise ValueError("safetensors raster indices must be in [0, 1024)")
+        if bool((raster_indices < -1).any()) or bool((raster_indices >= 1024).any()):
+            raise ValueError("safetensors raster indices must be -1 or in [0, 1024)")
         return embeddings, raster_indices
 
     def _validate_token2pageuid(self, raster_indices: torch.Tensor) -> list[dict[str, object]]:
@@ -307,9 +311,19 @@ class IndexManifest:
             while stop < len(rows) and (rows[stop]["doc_id"], rows[stop]["page_index"]) == identity:
                 stop += 1
             segment = raster_indices[start:stop]
-            if segment.numel() == 0 or (
-                segment.numel() > 1 and not bool((segment[1:] > segment[:-1]).all())
+            valid = segment >= 0
+            if not bool(valid.any()):
+                raise ValueError("token2pageuid page segment has no visual rows")
+            visual_positions = valid.nonzero(as_tuple=False).flatten()
+            first, last = int(visual_positions[0]), int(visual_positions[-1])
+            if not bool(valid[first : last + 1].all()) or bool(valid[:first].any()) or bool(
+                valid[last + 1 :].any()
             ):
+                raise ValueError(
+                    "token2pageuid page segment raster indices must have one compact visual span"
+                )
+            visual = segment[first : last + 1]
+            if visual.numel() > 1 and not bool((visual[1:] > visual[:-1]).all()):
                 raise ValueError(
                     "token2pageuid page segment raster indices must be strictly increasing"
                 )
@@ -350,7 +364,7 @@ class IndexManifest:
         for entry in ledger:
             if not isinstance(entry, dict) or set(entry) != required:
                 raise ValueError("completion ledger entry schema is invalid")
-            if entry["schema_version"] != 1:
+            if entry["schema_version"] != 5:
                 raise ValueError("completion ledger schema version is unsupported")
             ordinal = entry["ordinal"]
             doc_id = entry["doc_id"]
@@ -402,10 +416,19 @@ class IndexManifest:
             if shape[0] != offsets[-1]:
                 raise ValueError("completion ledger shape does not match page offsets")
             for page_index, page in enumerate(pages):
-                identity = {"doc_id": doc_id, "page_index": page_index}
+                identity = {
+                    "doc_id": doc_id,
+                    "page_index": page_index,
+                    "source_hw": [32, 32],
+                }
                 if page != identity:
                     raise ValueError("completion ledger page source order is invalid")
-                expected_rows.extend([identity] * (offsets[page_index + 1] - offsets[page_index]))
+                expected_rows.extend(
+                    [
+                        {"doc_id": doc_id, "page_index": page_index}
+                    ]
+                    * (offsets[page_index + 1] - offsets[page_index])
+                )
         if ordinals != list(range(len(ledger))):
             raise ValueError("completion ledger ordinals must be contiguous and ordered")
         if [entry["doc_id"] for entry in ledger] != document_ids:
@@ -427,6 +450,8 @@ class IndexManifest:
             raise ValueError("build manifest must be JSON") from error
         if not isinstance(payload, dict):
             raise ValueError("build manifest must be a JSON object")
+        if payload.get("schema_version") != 5:
+            raise ValueError("build manifest schema_version must equal 5")
         supplied = payload.get("build_manifest_sha256")
         if not isinstance(supplied, str):
             raise ValueError("build manifest checksum is missing")
