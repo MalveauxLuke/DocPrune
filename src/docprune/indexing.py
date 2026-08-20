@@ -476,9 +476,14 @@ def _encode_document(
         encoded = encode_colpali_page(config.model, batch, mapping, keep)
         _validate_page_embedding(encoded, keep, doc_id=doc_id, page_index=page_index)
         rasters = encoded.raster_indices.detach().to(device="cpu", dtype=torch.int64)
-        sequence = encoded.embeddings[0].detach().to(device="cpu", dtype=torch.float32)
+        sequence, visual_start = _trim_attention_masked_rows(
+            encoded,
+            visual_start=mapping.visual_start,
+            visual_stop=mapping.visual_start + int(rasters.numel()),
+            doc_id=doc_id,
+            page_index=page_index,
+        )
         row_rasters = torch.full((sequence.shape[0],), -1, dtype=torch.int64)
-        visual_start = mapping.visual_start
         visual_stop = visual_start + int(rasters.numel())
         if visual_stop > sequence.shape[0]:
             raise ValueError(f"ColPali visual span exceeds sequence for {doc_id} page {page_index}")
@@ -494,6 +499,42 @@ def _encode_document(
         torch.tensor(offsets, dtype=torch.int64),
         page_identities,
     )
+
+
+def _trim_attention_masked_rows(
+    encoded: ColPaliPageEmbedding,
+    *,
+    visual_start: int,
+    visual_stop: int,
+    doc_id: str,
+    page_index: int,
+) -> tuple[torch.Tensor, int]:
+    """Drop masked sequence rows and return the shifted visual span start."""
+
+    embeddings = encoded.embeddings
+    attention_mask = torch.as_tensor(encoded.attention_mask, device=embeddings.device)
+    if attention_mask.ndim != 2 or attention_mask.shape != embeddings.shape[:2]:
+        raise ValueError(
+            f"ColPali attention mask shape is invalid for {doc_id} page {page_index}"
+        )
+    if not bool(torch.all((attention_mask == 0) | (attention_mask == 1))):
+        raise ValueError(
+            f"ColPali attention mask values are invalid for {doc_id} page {page_index}"
+        )
+    active = attention_mask[0].to(dtype=torch.bool)
+    if not bool(active.any()):
+        raise ValueError(f"ColPali attention mask is empty for {doc_id} page {page_index}")
+    if visual_start < 0 or visual_stop < visual_start or visual_stop > active.numel():
+        raise ValueError(f"ColPali visual span exceeds sequence for {doc_id} page {page_index}")
+    if not bool(active[visual_start:visual_stop].all()):
+        raise ValueError(
+            f"ColPali attention mask removes a visual row for {doc_id} page {page_index}"
+        )
+
+    active_positions = torch.nonzero(active, as_tuple=False).flatten()
+    sequence = embeddings[0, active].detach().to(device="cpu", dtype=torch.float32)
+    shifted_visual_start = int((active_positions < visual_start).sum().item())
+    return sequence, shifted_visual_start
 
 
 def _validate_page_embedding(
