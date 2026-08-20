@@ -224,3 +224,102 @@ This is an environmental skip: `torch.cuda.is_available()` is false, so the cach
 - CUDA kernel execution and cached real-model numerical equivalence remain unobserved because this environment has no CUDA device; deterministic CPU fakes and the full CPU suite pass.
 
 Round-1 implementation/test commit: `e9316b7`.
+
+## Fix Round 2
+
+Round 2 closes the remaining strict timing, boundary, synchronization, and aggregate-classification findings.
+
+### Changes
+
+- Production record validation now checks the raw JSON timing mapping before `SampleTiming` construction. Strict paths require explicitly present, finite, strictly positive retrieval, page-load, QA, total-sample, encoder, and decoder fields; a derived `SampleTiming.total_seconds` fallback cannot satisfy production presence.
+- The evaluate CLI now invokes production record validation for resume and newly written rows and emits summaries through strict timing validation with an explicitly passed canonical result classification. Independent evaluation validation also performs the raw production check before aggregate reproduction.
+- Sparse DocPrune timing now uses one synchronized encoder boundary around the complete compact vision execution (including `rot_pos_emb`) and one decoder boundary beginning before prompt `embed_tokens`, covering prefill, LM head, and every greedy decode call. Sequence/mask compaction remains outside the decoder boundary.
+- Stock module hooks now record CUDA events without synchronizing per module; all event samples resolve with one post-generation synchronization. CPU fakes retain perf-counter intervals. Missing expected CUDA stage observations remain fail-closed.
+- `StageMetrics.to_dict()` and strict `summarize_jsonl` now carry and validate exact canonical result classification. Strict standalone summaries reject absent classification; classification is no longer opportunistically injected from an adjacent manifest.
+
+Round-2 implementation/test files:
+
+```text
+src/docprune/answerers.py
+src/docprune/cli.py
+src/docprune/evaluation.py
+src/docprune/m3docvqa_factory.py
+src/docprune/metrics.py
+src/docprune/qwen2vl/model.py
+tests/qwen2vl/test_model.py
+tests/test_answerers.py
+tests/test_cli.py
+tests/test_evaluation.py
+tests/test_m3docvqa_factory.py
+tests/test_metrics.py
+```
+
+### TDD RED
+
+The intended RED command was:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_model.py::test_module_timer_hooks_use_cuda_events_without_per_module_synchronization tests/test_metrics.py::test_strict_summary_rejects_derived_total_and_missing_classification tests/test_metrics.py::test_strict_aggregate_carries_exact_result_classification tests/test_m3docvqa_factory.py::test_production_resume_validation_requires_raw_total_sample_seconds -v
+```
+
+Literal initial RED output:
+
+```text
+ImportError: cannot import name '_resolve_module_timer_samples' from 'docprune.qwen2vl.model'
+=========================== short test summary info ============================
+ERROR tests/qwen2vl/test_model.py
+============================== 1 error in ... ================================
+```
+
+After the initial timer interface was added, the remaining RED assertions exposed the expected intermediate gaps: strict summary reported a generic stage-boundary error instead of naming missing `total_sample_seconds`, and the newly introduced production resume test exposed an accidentally misplaced parameterized timing assertion. Those were corrected before the GREEN run. The event test also proved that the final implementation performs zero per-module CUDA synchronizations and one resolution synchronization.
+
+### GREEN and verification
+
+Required focused suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_model.py tests/test_answerers.py tests/test_metrics.py tests/test_evaluation.py tests/test_cli.py tests/test_m3docvqa_factory.py tests/test_m3docrag.py -q
+139 passed, 1 skipped in 4.66s
+```
+
+Full CPU suite:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
+348 passed, 1 skipped in 7.78s
+```
+
+Ruff and diff checks:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m ruff check src tests
+All checks passed!
+
+git diff --check
+exit 0 (no output)
+```
+
+### Cached real-model probe
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src DOCPRUNE_REAL_MODEL_TEST=1 /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/qwen2vl/test_model.py::test_real_model_all_kept_matches_stock_first_step_logits_without_download -q
+```
+
+Result:
+
+```text
+SKIPPED [1] tests/qwen2vl/test_model.py:191: real-model probe requires CUDA; CPU tests never load the 7B checkpoint
+1 skipped in 1.65s
+```
+
+This is an explicit environmental skip because `torch.cuda.is_available()` is false; no model download was attempted.
+
+### Self-review and concerns
+
+- Rechecked round-1 rotary numerical equivalence, schema-5 canonical loading, exact compute capability validation, and classification validation through the full CPU suite; no regressions occurred.
+- Sparse timers now have exactly one stage timer each and include the requested visual rotary-position computation and prompt embedding/greedy decode boundaries.
+- Stock CUDA hooks no longer call synchronized timers in every module hook; event intervals accumulate repeated calls and resolve once after generation. CPU deterministic fakes remain supported.
+- Strict aggregate output requires a canonical classification passed from validated measurement identity; fixture/non-strict summaries remain available without that production requirement.
+- CUDA/FlashAttention execution and cached real-model equivalence remain unobserved in this CPU-only environment.
+
+Round-2 implementation/test commit: `cc10336`.
