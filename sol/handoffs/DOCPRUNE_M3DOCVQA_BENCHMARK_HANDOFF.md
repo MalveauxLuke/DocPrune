@@ -9,9 +9,13 @@ mutation, and no browser download. Large artifacts, model weights, HF caches,
 page images, indexes, predictions, and raw profiles remain under
 `/scratch/lmalveau/docprune/`.
 
-No `6c19bfc` attempt or successful gate, index, evaluation, or benchmark
-result exists yet. Submit only from the clean control checkout after the local
-checks at the end of this document pass.
+`benchmark-6c19bfc/attempt-1` is a failed overall attempt: gate `61820163`
+and indexes `61820164`-`61820169` passed, but evaluation array `61820170`
+tasks 0-2 failed before evaluation work with the Slurm spool sibling error,
+tasks 3-5 were canceled, and no evaluation artifacts or results exist. It is
+not resumable or a complete benchmark result. The next active root is the
+fresh `benchmark-6c19bfc/attempt-2`; submit only from the clean control
+checkout after the local checks at the end of this document pass.
 
 ## Immutable sources
 
@@ -55,7 +59,7 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
 mkdir "$ATTEMPT_ROOT"
@@ -154,8 +158,8 @@ SHA-256.
 ## Resources and artifacts
 
 Every job requests one A100 80 GB, 8 CPUs, and 128 GB RAM on `public`/`public`.
-Use `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/` for each new
-attempt; never reuse a failed attempt root.
+Use `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/` for the next
+attempt; never reuse the failed `attempt-1` root.
 
 ```text
 $ATTEMPT_ROOT/inputs/gate-top1.json
@@ -260,7 +264,8 @@ This block supplies every launcher variable and directs logs to an absolute
 artifact directory outside the control checkout. `--export=ALL` carries the
 explicitly exported values into each job; comma-separated sample IDs remain
 safe because they are exported through the environment rather than embedded in
-the Slurm export list. Use a fresh `attempt-N` and never reuse a failed root.
+the Slurm export list. Use the fresh `attempt-2` root and never reuse the
+failed `attempt-1` root.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
@@ -278,7 +283,7 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
@@ -361,15 +366,19 @@ not rewrite, delete, resume, or describe these artifacts as successful:
 | `benchmark-3755812/attempt-1` | — | scheduling-only graph canceled before work | no benchmark jobs performed work |
 | `benchmark-3755812/attempt-2` | `61792205` | gate `61792205`; all-kept indexes `61792206`-`61792208`; DocPrune indexes `61792209`-`61792211`; eval `61792212` | gate passed; all-kept indexes failed at final manifest mode/path validation; DocPrune indexes passed; eval canceled |
 | `benchmark-3755812/attempt-3` | `61792435` | gate `61792435`; all-kept indexes `61792436`-`61792438`; DocPrune indexes `61792439`-`61792441`; eval `61792442` | gate passed; all-kept indexes failed identically at final manifest mode/path validation; DocPrune indexes passed; eval canceled |
+| `benchmark-6c19bfc/attempt-1` | `61820163` | gate `61820163`; indexes `61820164`-`61820169`; eval `61820170` | gate and all indexes passed; eval tasks 0-2 failed with `/var/spool/slurmd/job*/slurm_script: line 78: /var/spool/slurmd/job*/11_docprune_m3docvqa.sbatch: No such file or directory` before evaluation work; tasks 3-5 were canceled; no eval artifacts or results exist |
 
 The three `benchmark-3755812` rows above are failed overall attempts: none is a complete benchmark result or resumable active attempt. Their passed gates or
-DocPrune indexes do not make the attempts successful, and no `6c19bfc` attempt
-or result exists yet.
+DocPrune indexes do not make the attempts successful. The
+`benchmark-6c19bfc/attempt-1` row is also a failed overall attempt, is not
+resumable, and is not a complete benchmark result because its evaluation
+array failed before producing any artifacts or results. The next active root
+is the fresh `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/`.
 
 These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-d5cefb3/` and
 `/scratch/lmalveau/docprune/benchmark-bd16c04/`; all new benchmark work uses
-`/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/` and the runtime
+`/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/` and the runtime
 commit pinned at the top of this handoff.
 
 On preemption or time limit, use `--resume` only when the run/index manifest,

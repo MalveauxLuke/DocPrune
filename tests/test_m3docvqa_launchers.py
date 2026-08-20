@@ -36,7 +36,7 @@ LAUNCHERS = tuple(
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
 ACTIVE_RUNTIME_COMMIT = "6c19bfcb4fcb73685af5b16ad493097ed6c609a5"
 ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-6c19bfc"
-ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N"
+ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2"
 HISTORICAL_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
 HISTORICAL_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-3755812"
 HISTORICAL_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N"
@@ -191,6 +191,29 @@ def test_eval_postcheck_uses_combined_summary_without_copy() -> None:
     assert 'efficiency["samples"]' in text
     assert 'summary.get("quality")' in text
     assert "cp --" not in text
+
+
+def test_eval_array_delegates_via_project_dir_not_spooled_script() -> None:
+    """The array must invoke the tracked cell launcher from the sealed checkout."""
+
+    text = (LAUNCHER_DIR / "14_docprune_m3docvqa_eval_array.sbatch").read_text(
+        encoding="utf-8"
+    )
+    launcher_assignment = (
+        'CELL_LAUNCHER="$PROJECT_DIR/examples/sbatch/11_docprune_m3docvqa.sbatch"'
+    )
+    assert launcher_assignment in text
+    assert 'test -f "$CELL_LAUNCHER"' in text
+    assert 'exec "$CELL_LAUNCHER"' in text
+    assert text.index("sealed control record project path mismatch") < text.index(
+        launcher_assignment
+    )
+    assert "BASH_SOURCE" not in text
+    assert "SCRIPT_DIR" not in text
+    assert "dirname" not in text
+    assert '"$0"' not in text
+    assert "readlink" not in text
+    assert "/var/spool/slurmd" not in text
 
 
 def test_index_seals_resume_and_uses_production_manifest_loader() -> None:

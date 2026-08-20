@@ -74,5 +74,6 @@ export CELL_ROOT="$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
 test -f "$RUN_CONFIG"
 test -f "$INDEX_MANIFEST"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-exec "$SCRIPT_DIR/11_docprune_m3docvqa.sbatch"
+CELL_LAUNCHER="$PROJECT_DIR/examples/sbatch/11_docprune_m3docvqa.sbatch"
+test -f "$CELL_LAUNCHER"
+exec "$CELL_LAUNCHER"

@@ -92,17 +92,17 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/run-configs/docprune-top4.json \
-  --index-manifest /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/eval/docprune/top4/run \
+  --run-config /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/run-configs/docprune-top4.json \
+  --index-manifest /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/eval/docprune/top4/run \
+  --run /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \
-  --results /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-N/eval/docprune/top4/run/results.jsonl
+  --results /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run/results.jsonl
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in
