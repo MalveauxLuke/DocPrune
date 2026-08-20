@@ -34,7 +34,7 @@ test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
 CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
-python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+"$ENV_DIR/bin/python" - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -82,7 +82,7 @@ if [[ -d "$CELL_ROOT/run" ]]; then
   RESUME_ARGS+=(--resume)
 fi
 
-docprune-m3docvqa evaluate \
+"$ENV_DIR/bin/docprune-m3docvqa" evaluate \
   --config configs/docprune-m3docvqa.toml \
   --pages "$PAGES" \
   --mode "$MODE" \
@@ -92,12 +92,12 @@ docprune-m3docvqa evaluate \
   --factory "$DOCPRUNE_FACTORY" \
   "${RESUME_ARGS[@]}"
 
-docprune-m3docvqa validate-run \
+"$ENV_DIR/bin/docprune-m3docvqa" validate-run \
   --run "$CELL_ROOT/run" \
   --expected-questions 2441 \
   | tee "$CELL_ROOT/validation.json"
 
-python - "$CELL_ROOT/validation.json" <<'PY'
+"$ENV_DIR/bin/python" - "$CELL_ROOT/validation.json" <<'PY'
 import json
 import sys
 
@@ -107,7 +107,7 @@ if report.get("valid") is not True:
     raise SystemExit("independent run validation failed")
 PY
 
-python - "$CELL_ROOT/run/summary.json" <<'PY'
+"$ENV_DIR/bin/python" - "$CELL_ROOT/run/summary.json" <<'PY'
 import json
 import sys
 

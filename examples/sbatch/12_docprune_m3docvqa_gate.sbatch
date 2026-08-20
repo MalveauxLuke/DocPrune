@@ -50,7 +50,7 @@ test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
 CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
-python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+"$ENV_DIR/bin/python" - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -103,7 +103,7 @@ cd "$RUNTIME_DIR"
 PROBE_IMAGE="$GATE_ROOT/probe-page.png"
 export PROBE_IMAGE
 PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
-  PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_probe_image.py" \
+  PYTHONDONTWRITEBYTECODE=1 "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_probe_image.py" \
   --corpus-root "$CORPUS_ROOT" \
   --qid "a33985b1e8b2502fc18cc8147dc27db8" \
   --run-config "$RUN_CONFIG" \
@@ -111,9 +111,9 @@ PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
 test -f "$PROBE_IMAGE"
 
 CONTRACT="$GATE_ROOT/processor-contract.json"
-docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml --pages 1 \
+"$ENV_DIR/bin/docprune-m3docvqa" inspect --config configs/docprune-m3docvqa.toml --pages 1 \
   > "$GATE_ROOT/config-inspection.json"
-docprune-m3docvqa probe-processors \
+"$ENV_DIR/bin/docprune-m3docvqa" probe-processors \
   --page-image "$PROBE_IMAGE" \
   --qwen-model "$QWEN_MODEL" \
   --qwen-revision "$QWEN_REVISION" \
@@ -124,7 +124,7 @@ docprune-m3docvqa probe-processors \
   --output "$CONTRACT" \
   > "$GATE_ROOT/processor-probe.stdout.json"
 
-python - "$CONTRACT" "$RUN_CONFIG" <<'PY'
+"$ENV_DIR/bin/python" - "$CONTRACT" "$RUN_CONFIG" <<'PY'
 import hashlib
 import json
 import os
@@ -168,7 +168,7 @@ test "${#SAMPLE_IDS[@]}" -gt 0
 for pages in 1 2 4; do
   for mode in all-kept docprune; do
     output="$GATE_ROOT/sample-${mode}-top${pages}.json"
-    docprune-m3docvqa evaluate \
+    "$ENV_DIR/bin/docprune-m3docvqa" evaluate \
       --config configs/docprune-m3docvqa.toml \
       --pages "$pages" \
       --mode "$mode" \
@@ -177,7 +177,7 @@ for pages in 1 2 4; do
       --output "$GATE_ROOT/sample-${mode}-top${pages}" \
       --factory "$DOCPRUNE_FACTORY" \
       --dry-run > "$output"
-    python - "$output" "$mode" "$pages" <<'PY'
+    "$ENV_DIR/bin/python" - "$output" "$mode" "$pages" <<'PY'
 import json
 import sys
 
@@ -191,7 +191,7 @@ PY
   done
 done
 
-python - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" <<'PY'
+"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" <<'PY'
 import json
 import os
 import sys
@@ -309,7 +309,7 @@ out.write_text(json.dumps({
 }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
 
-python - "$GATE_ROOT/semantic-samples.json" <<'PY'
+"$ENV_DIR/bin/python" - "$GATE_ROOT/semantic-samples.json" <<'PY'
 import json
 import sys
 
@@ -327,7 +327,7 @@ for counts in traces.values():
         raise SystemExit("semantic probe trace is non-monotonic")
 PY
 
-python - "$GATE_ROOT/gate.json" "$CONTRACT" <<'PY'
+"$ENV_DIR/bin/python" - "$GATE_ROOT/gate.json" "$CONTRACT" <<'PY'
 import hashlib
 import json
 import os
@@ -351,9 +351,9 @@ payload = {
 payload["gate_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
-python -m json.tool "$GATE_ROOT/gate.json" >/dev/null
+"$ENV_DIR/bin/python" -m json.tool "$GATE_ROOT/gate.json" >/dev/null
 PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
-  PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
+  PYTHONDONTWRITEBYTECODE=1 "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
   --corpus-root "$CORPUS_ROOT" \
   --processor-contract "$CONTRACT" \
   --gate "$GATE_ROOT/gate.json" \

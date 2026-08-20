@@ -52,6 +52,7 @@ checkout, and makes the record read-only. Do not edit or overwrite this file;
 a failed attempt gets a new attempt root and a new record.
 
 ```bash
+export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
 export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
@@ -60,7 +61,7 @@ mkdir "$ATTEMPT_ROOT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 CONTROL_COMMIT="$(git -C "$PROJECT_DIR" rev-parse HEAD)"
 CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
-python - "$CONTROL_RECORD" "$PROJECT_DIR" "$CONTROL_COMMIT" "$CONTROL_TREE" <<'PY'
+"$ENV_DIR/bin/python" - "$CONTROL_RECORD" "$PROJECT_DIR" "$CONTROL_COMMIT" "$CONTROL_TREE" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -77,9 +78,9 @@ output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding
 PY
 chmod 0444 "$CONTROL_RECORD"
 export CONTROL_COMMIT
-test "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")" = "$CONTROL_COMMIT"
+test "$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")" = "$CONTROL_COMMIT"
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
-test "$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")" = "$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["tree_sha"])' "$CONTROL_RECORD")"
+test "$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")" = "$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["tree_sha"])' "$CONTROL_RECORD")"
 ```
 
 ## Prepare pinned runtime and upstream checkouts
@@ -278,7 +279,7 @@ export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
 export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-d5cefb3/attempt-N
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
-export CONTROL_COMMIT="$(python -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
+export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
 export INPUT_ROOT="$ATTEMPT_ROOT/inputs"
 export RUN_CONFIG="$INPUT_ROOT/gate-top1.json"

@@ -92,7 +92,7 @@ def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
     assert text.index("make_run_configs.py") < text.index("GATE_STATUS=passed")
     assert "GATE_STATUS=passed" in text
     assert text.index("GATE_STATUS=passed") > text.index(
-        'python -m json.tool "$GATE_ROOT/gate.json"'
+        '"$ENV_DIR/bin/python" -m json.tool "$GATE_ROOT/gate.json"'
     )
 
 
@@ -394,3 +394,82 @@ def test_handoff_has_absolute_log_submission_and_no_control_placeholder() -> Non
     assert '--output="$SLURM_LOG_DIR/' in text
     assert '--error="$SLURM_LOG_DIR/' in text
     assert '--chdir="$SLURM_LOG_DIR"' in text
+
+
+def test_launchers_pin_python_and_cli_when_pdf_tools_shadows_path(tmp_path: Path) -> None:
+    """PDF-tools-first PATH must not change the benchmark interpreter or CLI."""
+
+    pinned_pdf_tools = Path("/home/lmalveau/mamba-envs/m3docvqa-acquisition")
+    if not all((pinned_pdf_tools / "bin" / name).is_file() for name in ("pdfinfo", "pdftoppm")):
+        pytest.skip("the pinned Poppler environment is not mounted")
+
+    shadow_bin = tmp_path / "pdf-tools" / "bin"
+    env_bin = tmp_path / "docprune-sol" / "bin"
+    shadow_bin.mkdir(parents=True)
+    env_bin.mkdir(parents=True)
+    for name in ("pdfinfo", "pdftoppm"):
+        shutil.copy2(pinned_pdf_tools / "bin" / name, shadow_bin / name)
+    shadow_marker = tmp_path / "shadow-python-ran"
+    env_marker = tmp_path / "env-python-ran"
+    (shadow_bin / "python").write_text(
+        f"#!/usr/bin/env bash\nprintf shadow > {shadow_marker}\nexit 91\n",
+        encoding="utf-8",
+    )
+    (env_bin / "python").write_text(
+        f"#!/usr/bin/env bash\nprintf env > {env_marker}\n",
+        encoding="utf-8",
+    )
+    (env_bin / "docprune-m3docvqa").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (shadow_bin / "python").chmod(0o755)
+    (env_bin / "python").chmod(0o755)
+    (env_bin / "docprune-m3docvqa").chmod(0o755)
+
+    preflight = ROOT / "examples" / "m3docvqa" / "pdf_tools_preflight.sh"
+    script = f"""
+set -euo pipefail
+export PDFTOOLS_DIR={shadow_bin.parent}
+export ENV_DIR={env_bin.parent}
+export LD_LIBRARY_PATH={pinned_pdf_tools}/lib
+source {preflight}
+test "$(command -v python)" = "$PDFTOOLS_DIR/bin/python"
+set +e
+python -c ignored
+bare_rc=$?
+set -e
+test "$bare_rc" -eq 91
+test -e {shadow_marker}
+rm -f {shadow_marker}
+"$ENV_DIR/bin/python" -c ignored
+test ! -e {shadow_marker}
+test -e {env_marker}
+"""
+    # The copied pinned tools let the preflight complete while the shadow
+    # python models the real PDFTOOLS_DIR-first PATH collision.
+    result = subprocess.run(["bash", "-c", script], text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stderr
+    assert not shadow_marker.exists()
+    assert env_marker.exists()
+
+    for launcher in LAUNCHERS:
+        text = launcher.read_text(encoding="utf-8")
+        assert not re.search(
+            r"(?m)^\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*(?:python|python3|pytest|docprune-m3docvqa)(?:\s|$)",
+            text,
+        )
+        path_pos = text.find('export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"')
+        if path_pos < 0:
+            # The array wrapper delegates all Python/CLI work to launcher 11.
+            assert launcher.name == "14_docprune_m3docvqa_eval_array.sbatch"
+            continue
+        post_path = text[path_pos:]
+        assert not re.search(r"(?m)^\s*python(?:\s|$)", post_path)
+        assert not re.search(r"(?m)^\s*docprune-m3docvqa(?:\s|$)", post_path)
+        if launcher.name != "14_docprune_m3docvqa_eval_array.sbatch":
+            assert '"$ENV_DIR/bin/python"' in post_path
+            assert '"$ENV_DIR/bin/docprune-m3docvqa"' in post_path
+
+    handoff = HANDOFF.read_text(encoding="utf-8")
+    assert not re.search(
+        r"(?m)^\s*(?:[A-Z_][A-Z0-9_]*=\S+\s+)*(?:python|python3|pytest|docprune-m3docvqa)(?:\s|$)",
+        handoff,
+    )

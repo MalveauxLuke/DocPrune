@@ -34,7 +34,7 @@ test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
 test -f "$CONTROL_RECORD"
 CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
-python - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+"$ENV_DIR/bin/python" - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -92,14 +92,14 @@ EMBED_ARGS=(
 if [[ "$RESUME" == 1 ]]; then
   EMBED_ARGS+=(--resume)
 fi
-docprune-m3docvqa embed "${EMBED_ARGS[@]}"
+"$ENV_DIR/bin/docprune-m3docvqa" embed "${EMBED_ARGS[@]}"
 
 MANIFEST="$INDEX_ROOT/$MODE/manifest.json"
 test -f "$MANIFEST"
-docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml \
+"$ENV_DIR/bin/docprune-m3docvqa" inspect --config configs/docprune-m3docvqa.toml \
   --pages "$PAGES" > "$INDEX_ROOT/inspection.json"
 
-python - "$MANIFEST" "$MODE" "$PAGES" <<'PY'
+"$ENV_DIR/bin/python" - "$MANIFEST" "$MODE" "$PAGES" <<'PY'
 import sys
 from pathlib import Path
 from docprune.m3docvqa_factory import _load_index_manifest

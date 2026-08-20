@@ -4,6 +4,11 @@
 : "${PDFTOOLS_DIR:?set PDFTOOLS_DIR to the pinned Poppler environment}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
 
+ENV_PYTHON="$ENV_DIR/bin/python"
+DOCPRUNE_CLI="$ENV_DIR/bin/docprune-m3docvqa"
+test -x "$ENV_PYTHON"
+test -x "$DOCPRUNE_CLI"
+
 test -d "$PDFTOOLS_DIR"
 test ! -L "$PDFTOOLS_DIR"
 PDFINFO="$PDFTOOLS_DIR/bin/pdfinfo"
