@@ -18,6 +18,7 @@ set -euo pipefail
 : "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
+: "${PDFTOOLS_DIR:?set PDFTOOLS_DIR to the pinned Poppler environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
@@ -33,6 +34,11 @@ set -euo pipefail
 : "${COLPALI_REVISION:?set COLPALI_REVISION to the pinned ColPali revision}"
 : "${COLPALI_BACKBONE_MODEL:?set COLPALI_BACKBONE_MODEL to the pinned backbone resource}"
 : "${COLPALI_BACKBONE_REVISION:?set COLPALI_BACKBONE_REVISION to the pinned backbone revision}"
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT
 
 EXPECTED_GATE_SAMPLE_IDS="a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8"
@@ -82,7 +88,7 @@ esac
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
-export PATH="$ENV_DIR/bin:$PATH"
+export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
 export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"
@@ -346,7 +352,8 @@ payload["gate_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True, sepa
 out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
 python -m json.tool "$GATE_ROOT/gate.json" >/dev/null
-PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
+  PYTHONDONTWRITEBYTECODE=1 python "$PROJECT_DIR/examples/m3docvqa/make_run_configs.py" \
   --corpus-root "$CORPUS_ROOT" \
   --processor-contract "$CONTRACT" \
   --gate "$GATE_ROOT/gate.json" \

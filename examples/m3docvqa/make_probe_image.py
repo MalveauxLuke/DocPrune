@@ -5,12 +5,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 from pdf2image import convert_from_path
 
 from docprune.benchmark_config import CorpusIdentity
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pdf_tools import PDFToolsIdentity, validate_pdf_tools  # noqa: E402
+
+
+def _require_pdf_tools() -> PDFToolsIdentity:
+    """Require the handoff's pinned Poppler before invoking pdf2image."""
+
+    return validate_pdf_tools()
 
 
 def _fixed_supporting_pdf(corpus: CorpusIdentity, qid: str) -> Path:
@@ -61,6 +71,7 @@ def render_probe_image(
     prior attempt cannot silently change the processor-probe input.
     """
 
+    _require_pdf_tools()
     corpus_root = Path(corpus_root).resolve()
     if run_config is not None:
         payload = json.loads(Path(run_config).read_text(encoding="utf-8"))

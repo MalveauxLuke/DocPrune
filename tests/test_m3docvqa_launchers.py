@@ -157,6 +157,7 @@ def test_probe_helper_uses_first_pinned_supporting_pdf_and_no_pdf_path_method(
         return [FakePage()]
 
     monkeypatch.setattr(make_probe_image, "convert_from_path", fake_convert)
+    monkeypatch.setenv("PDFTOOLS_DIR", "/home/lmalveau/mamba-envs/m3docvqa-acquisition")
     output = tmp_path / "gate" / "probe-page.png"
     output.parent.mkdir()
     run_config = tmp_path / "gate-top1.json"

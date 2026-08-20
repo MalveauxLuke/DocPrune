@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from docprune.benchmark_config import (
@@ -20,6 +21,9 @@ from docprune.benchmark_config import (
     CorpusIdentity,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pdf_tools import validate_pdf_tools  # noqa: E402
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -28,6 +32,7 @@ def main() -> int:
     parser.add_argument("--m3docrag-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    validate_pdf_tools()
     corpus = CorpusIdentity.from_root(args.corpus_root.resolve())
     payload = {
         "mode": "all-kept",

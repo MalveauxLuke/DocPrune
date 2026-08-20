@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from docprune.benchmark_config import (
@@ -28,6 +29,9 @@ from docprune.m3docvqa_factory import (
     _validate_run_identity,
     validate_processor_contract_file,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pdf_tools import validate_pdf_tools  # noqa: E402
 
 RUNTIME_COMMIT = "d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761"
 MODES = ("all-kept", "docprune")
@@ -256,6 +260,7 @@ def main() -> int:
     parser.add_argument("--m3docrag-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
+    validate_pdf_tools()
 
     contract = _regular_raw_path(args.processor_contract, label="processor contract")
     gate_path = _regular_raw_path(args.gate, label="gate JSON")

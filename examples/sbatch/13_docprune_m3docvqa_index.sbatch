@@ -19,6 +19,7 @@ set -euo pipefail
 : "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
 : "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
 : "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
+: "${PDFTOOLS_DIR:?set PDFTOOLS_DIR to the pinned Poppler environment}"
 : "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
@@ -28,6 +29,12 @@ set -euo pipefail
 : "${INDEX_ROOT:?set INDEX_ROOT to a new attempt-specific index directory}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${RESUME:=0}"
+
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 
 case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
@@ -64,7 +71,7 @@ test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
-export PATH="$ENV_DIR/bin:$PATH"
+export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"
 export PYTHONPATH="$RUNTIME_DIR/src"
 export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"

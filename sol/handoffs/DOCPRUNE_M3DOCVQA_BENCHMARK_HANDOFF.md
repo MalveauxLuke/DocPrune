@@ -22,6 +22,11 @@ control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
 environment: /home/lmalveau/mamba-envs/docprune-sol
+PDF tools: /home/lmalveau/mamba-envs/m3docvqa-acquisition
+Poppler: 26.05.0, build hfdef1ce_3
+Poppler package SHA-256: a5737f253f6301dac019dc9b9cfaefae40d1ee6f846410d43eed56ff7588cbd3
+pdfinfo SHA-256: 5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae
+pdftoppm SHA-256: 1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33
 corpus: /scratch/lmalveau/docprune/datasets/m3docvqa
 factory: docprune.m3docvqa_factory:build_workload
 ```
@@ -32,6 +37,12 @@ silently change the meaning of an already-created attempt. Every Python command
 runs from the detached runtime checkout with `PYTHONPATH=$RUNTIME_DIR/src`.
 The M3DocRAG checkout must be a fresh, dedicated detached worktree, clean at
 its exact commit. The control checkout is used only to submit these wrappers.
+Every launcher also requires `PDFTOOLS_DIR`, validates the two regular
+non-symlink Poppler executables against the hashes above, checks version
+26.05.0, and prepends `$PDFTOOLS_DIR/bin` before `$ENV_DIR/bin` in `PATH`.
+The local gate-config and run-config generators perform the same Python
+preflight. The package/build values above are provenance; the executable
+hashes are the load-bearing job checks.
 
 ## Seal the reviewed control checkout
 
@@ -253,6 +264,7 @@ the Slurm export list. Use a fresh `attempt-N` and never reuse a failed root.
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
 export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-d5cefb3
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
+export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
 export EXPECTED_COMMIT=d5cefb33f7ca97ce0ef2104fa5e63bd3ad8a5761
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -273,9 +285,10 @@ export RUN_CONFIG="$INPUT_ROOT/gate-top1.json"
 export GATE_SAMPLE_IDS=a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8
 export SLURM_LOG_DIR="$ATTEMPT_ROOT/slurm-logs"
 export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
 mkdir -p "$SLURM_LOG_DIR" "$INPUT_ROOT"
 
-PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_gate_config.py" \
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src" "$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/make_gate_config.py" \
   --corpus-root "$CORPUS_ROOT" \
   --processor-contract "$GATE_ROOT/processor-contract.json" \
   --m3docrag-root "$M3DOCRAG_DIR" \
@@ -347,6 +360,10 @@ no weights, caches, datasets, indexes, predictions, profiles, secrets, or
 `DATASET_REVISION` are tracked:
 
 ```bash
+export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
+export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
+export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
 for wrapper in examples/sbatch/{11,12,13,14}_docprune_m3docvqa*.sbatch; do bash -n "$wrapper"; done
 PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q
 /home/lmalveau/mamba-envs/docprune-sol/bin/ruff check src tests examples/m3docvqa

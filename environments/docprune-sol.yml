@@ -10,6 +10,7 @@ dependencies:
   - torchvision=0.19.1
   - pytorch-cuda=12.1
   - numpy=1.26.4
+  - poppler=26.05.0
   - pillow>=11,<13
   - ninja
   - packaging
