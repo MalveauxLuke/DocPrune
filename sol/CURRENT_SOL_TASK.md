@@ -11,7 +11,7 @@ comparison. It also requires complete unpadded ColPali/raster equivalence,
 exact upstream retrieval order, no QA-time ColPali, exact measurement identity,
 and positive stage timing.
 
-Attempt 2 is diagnostic-only: evaluation `61830411` was canceled before work;
+Historical diagnostic attempt-2 at `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/`: evaluation `61830411` was canceled before work;
 indexes `61830405`–`61830410` completed `0:0` under schema 4 and cannot be
 promoted. Preserve those scratch artifacts unchanged. Scheduling-only attempt-1
 (gate `61883512`, indexes `61883881`–`61883886`, eval `61883887`, compare

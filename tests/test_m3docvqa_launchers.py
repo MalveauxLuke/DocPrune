@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -376,36 +377,67 @@ def test_handoff_submission_graph_executes_against_fake_sbatch(tmp_path: Path) -
     )[0]
     snippet = submission[submission.index("GATE_JOB=") : submission.index("printf 'gate=")]
     log = tmp_path / "sbatch.log"
+    export_lines = []
+    in_exports = False
+    for line in submission.splitlines():
+        if line.startswith("export PROJECT_DIR="):
+            in_exports = True
+        if in_exports and line.startswith("export ") and "$(" not in line:
+            export_lines.append(line)
+        if in_exports and line.startswith("source "):
+            break
+    active_root = re.search(r"export ATTEMPT_ROOT=(\S+)", "\n".join(export_lines)).group(1)
     script = f'''set -e
-PROJECT_DIR={ROOT}
-ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2
-RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
-SLURM_LOG_DIR="$ATTEMPT_ROOT/slurm-logs"
+{chr(10).join(export_lines)}
 SBATCH_LOG={log}
-    ID_FILE={tmp_path / "next-id"}
-    printf '1\\n' > "$ID_FILE"
-    sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; printf 'MODE=%s PAGES=%s RUN_CONFIG=%s INDEX_ROOT=%s ATTEMPT_ROOT=%s ARGS=%s\\n' "$MODE" "$PAGES" "$RUN_CONFIG" "$INDEX_ROOT" "$ATTEMPT_ROOT" "$*" >> "$SBATCH_LOG"; printf 'job%s\\n' "$n"; }}
+ID_FILE={tmp_path / "next-id"}
+printf '1\\n' > "$ID_FILE"
+sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; printf 'MODE=%s PAGES=%s RUN_CONFIG=%s INDEX_ROOT=%s RUN_CONFIG_ROOT=%s ALL_ROOT=%s DOC_ROOT=%s COMPARISON_JSON=%s COMPARISON_MARKDOWN=%s ATTEMPT_ROOT=%s ARGS=%s\\n' "$MODE" "$PAGES" "$RUN_CONFIG" "$INDEX_ROOT" "$RUN_CONFIG_ROOT" "$ALL_KEPT_INDEX_ROOT" "$DOCPRUNE_INDEX_ROOT" "$COMPARISON_JSON" "$COMPARISON_MARKDOWN" "$ATTEMPT_ROOT" "$*" >> "$SBATCH_LOG"; printf 'job%s\\n' "$n"; }}
 {snippet}
 '''
     result = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8").splitlines()
     assert len(calls) == 9
+    assert all("--export=ALL" in call for call in calls)
     assert "--partition=htc --time=02:00:00" in calls[0]
     assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[0]
     assert "--dependency" not in calls[0]
+    gate_fields = dict(item.split("=", 1) for item in calls[0].split(" ARGS=", 1)[0].split() if "=" in item)
+    assert gate_fields["RUN_CONFIG"] == f"{active_root}/inputs/gate-top1.json"
+    tuples = set()
     for index, call in enumerate(calls[1:7], start=1):
+        fields = dict(item.split("=", 1) for item in call.split(" ARGS=", 1)[0].split() if "=" in item)
+        tuples.add((fields["MODE"], fields["PAGES"], fields["RUN_CONFIG"], fields["INDEX_ROOT"]))
         assert "--partition=htc --time=04:00:00" in call
         assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in call
-        assert "--dependency=afterok:job1" in call
-        assert "ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2" in call
-        assert "RUN_CONFIG=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/run-configs/" in call
+        args = shlex.split(call.split("ARGS=", 1)[1])
+        assert args.count("--dependency=afterok:job1") == 1
+        assert f"ATTEMPT_ROOT={active_root}" in call
+        assert f"RUN_CONFIG={active_root}/run-configs/" in call
     assert "--partition=public --time=24:00:00" in calls[7]
-    assert "--dependency=afterok:job1:job2:job3:job4:job5:job6:job7" in calls[7]
+    assert tuples == {
+        (mode, str(page), f"{active_root}/run-configs/{mode}-top{page}.json", f"{active_root}/indexes/{mode}/top{page}")
+        for mode in ("all-kept", "docprune") for page in (1, 2, 4)
+    }
+    assert len(tuples) == 6
+    eval_args = shlex.split(calls[7].split("ARGS=", 1)[1])
+    expected_eval_dependency = "--dependency=afterok:job1:job2:job3:job4:job5:job6:job7"
+    assert eval_args.count(expected_eval_dependency) == 1
+    mutated_eval_args = shlex.split(calls[7].replace(expected_eval_dependency, expected_eval_dependency + ":extra").split("ARGS=", 1)[1])
+    assert expected_eval_dependency not in mutated_eval_args
     assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[7]
+    eval_fields = dict(item.split("=", 1) for item in calls[7].split(" ARGS=", 1)[0].split() if "=" in item)
+    assert eval_fields["RUN_CONFIG_ROOT"] == "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/run-configs"
+    assert eval_fields["ALL_ROOT"] == "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/indexes/all-kept"
+    assert eval_fields["DOC_ROOT"] == "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/indexes/docprune"
+    assert eval_fields["COMPARISON_JSON"] == "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/comparison/six-cell.json"
     assert "--partition=htc --time=01:00:00" in calls[8]
-    assert "--dependency=afterok:job8" in calls[8]
+    compare_args = shlex.split(calls[8].split("ARGS=", 1)[1])
+    assert compare_args.count("--dependency=afterok:job8") == 1
     assert "--gres=gpu" not in calls[8]
+    compare_fields = dict(item.split("=", 1) for item in calls[8].split(" ARGS=", 1)[0].split() if "=" in item)
+    assert compare_fields["COMPARISON_MARKDOWN"] == "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/comparison/six-cell.md"
 
 
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:

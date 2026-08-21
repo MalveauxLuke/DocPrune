@@ -16,7 +16,7 @@ ColPali/QTP re-encoding, positive 1/2/4 traces, and positive stage timings.
 The index surface requires schema 5; evaluation completion independently
 validates every cell and then publishes the signed six-cell comparison.
 
-Attempt 2 is diagnostic-only: evaluation array `61830411` was canceled before
+Historical diagnostic attempt-2 at `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/`: evaluation array `61830411` was canceled before
 work, and six schema-4 indexes `61830405`–`61830410` completed `0:0` but
 cannot be promoted. Preserve all scratch artifacts. Scheduling-only attempt-1
 (gate `61883512`, indexes `61883881`–`61883886`, eval `61883887`, compare
