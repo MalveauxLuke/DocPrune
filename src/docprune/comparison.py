@@ -177,14 +177,17 @@ def _actual_pdf_page_count(path: Path) -> int:
 
 
 def _validate_retrieved_pages(
-    run_dir: Path, pdf_dir: Path, document_ids: set[str], errors: list[str]
+    run_dir: Path,
+    pdf_dir: Path,
+    document_ids: set[str],
+    errors: list[str],
+    page_counts: dict[str, int],
 ) -> None:
     try:
         records = _load_result_rows(run_dir / "results.jsonl")
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         errors.append(f"cannot independently read results for {run_dir}: {error}")
         return
-    page_counts: dict[str, int] = {}
     for record in records:
         qid = record.get("question_id")
         pages = record.get("retrieved_pages", ())
@@ -371,6 +374,7 @@ def validate_comparison_matrix(
     try:
         pinned_root, document_ids_path, pdf_dir = _corpus_paths(corpus_root)
         document_ids = set(json.loads(document_ids_path.read_text(encoding="utf-8")))
+        page_counts: dict[str, int] = {}
         for cell, run_dir in paths.items():
             if cell in manifests:
                 _validate_corpus_binding(
@@ -381,7 +385,7 @@ def validate_comparison_matrix(
                     pdf_dir,
                     errors,
                 )
-            _validate_retrieved_pages(run_dir, pdf_dir, document_ids, errors)
+            _validate_retrieved_pages(run_dir, pdf_dir, document_ids, errors, page_counts)
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
         errors.append(f"pinned corpus validation failed: {error}")
 
