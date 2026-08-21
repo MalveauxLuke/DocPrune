@@ -574,7 +574,7 @@ def _fsync_directory(path: Path) -> None:
 
 def _remove_owned_file(path: Path, identity: tuple[int, int]) -> None:
     try:
-        observed = path.stat()
+        observed = path.lstat()
     except FileNotFoundError:
         return
     if (observed.st_dev, observed.st_ino) == identity:

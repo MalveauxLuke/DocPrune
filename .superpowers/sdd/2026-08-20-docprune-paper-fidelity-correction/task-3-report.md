@@ -144,3 +144,43 @@ Final Fix Round 2 commit is recorded after the final code/report staging.
 - Overflow and underflow are rejected before JSON serialization, so no `inf`, `nan`, or zero TFLOPs claim can be emitted.
 - Rollback removes only paths whose current inode equals a staged transaction inode; destination races and preexisting bytes remain protected.
 - Existing strict six-cell, independent run, corpus/page, identity, classification, and CLI no-overwrite gates remain covered by the focused suite.
+
+## Fix Round 3
+
+### RED
+
+Added the exact symlink race regression: the second publication hook creates a foreign symlink at the destination pointing to the staged temporary and then raises. Before the fix, the required comparison command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_comparison.py -v
+```
+
+collected 24 tests and had one intended failure (`test_publication_rollback_preserves_foreign_symlink_inode`); the other 23 passed.
+
+### GREEN
+
+`_remove_owned_file` now uses `Path.lstat()` so symlink directory entries are compared by their own inode and never mistaken for the staged target. The regular link-then-raise rollback, concurrent/preexisting destination protections, and symlink preservation all pass.
+
+Focused required command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_comparison.py tests/test_cli.py tests/test_evaluation.py -q
+```
+
+Result: `94 passed in 4.12s`.
+
+Ruff and diff-check both passed.
+
+Full CPU command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
+```
+
+Result: `376 passed, 1 skipped in 10.59s`; the skip is the pre-existing opt-in cached real-model probe. Final Fix Round 3 commit is recorded after final staging.
+
+### Fix Round 3 self-review
+
+- Rollback now follows no symlink and only removes a destination entry whose own `(st_dev, st_ino)` matches a staged transaction inode.
+- The foreign symlink remains after the injected failure while transaction-created regular outputs are removed.
+- No GPU/Slurm work was started; all prior fail-closed matrix, profiler, corpus/page, identity, and publication checks remain intact.

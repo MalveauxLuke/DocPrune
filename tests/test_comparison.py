@@ -560,3 +560,40 @@ def test_publication_rolls_back_around_concurrent_second_destination(
         )
     assert not json_output.exists()
     assert markdown_output.read_bytes() == concurrent_bytes
+
+
+def test_publication_rollback_preserves_foreign_symlink_inode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    corpus_root, _, runs = _matrix(tmp_path)
+    json_output = tmp_path / "comparison.json"
+    markdown_output = tmp_path / "comparison.md"
+    import docprune.comparison as comparison
+
+    original = comparison._publish_noreplace
+    calls = 0
+    staged_target: Path | None = None
+
+    def symlink_then_fail(source: Path, destination: Path) -> None:
+        nonlocal calls, staged_target
+        calls += 1
+        if calls == 2:
+            staged_target = source
+            destination.symlink_to(source)
+            raise OSError("injected symlink publication failure")
+        original(source, destination)
+
+    monkeypatch.setattr(comparison, "_publish_noreplace", symlink_then_fail)
+    with pytest.raises(OSError, match="injected symlink publication failure"):
+        comparison.write_comparison_report(
+            runs,
+            corpus_root=corpus_root,
+            json_path=json_output,
+            markdown_path=markdown_output,
+            expected_questions=2,
+            allow_fixture=True,
+        )
+    assert not json_output.exists()
+    assert markdown_output.is_symlink()
+    assert staged_target is not None
+    assert markdown_output.readlink() == staged_target
