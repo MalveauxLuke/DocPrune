@@ -283,6 +283,34 @@ def test_complete_profile_reports_exact_shared_identity_and_tflops(tmp_path: Pat
 
 
 @pytest.mark.parametrize(
+    ("flops", "total_seconds"),
+    [(1.0e308, 1.0e-100), (1.0e-300, 1.0e300)],
+)
+def test_matrix_rejects_nonfinite_or_zero_derived_tflops(
+    tmp_path: Path, flops: float, total_seconds: float
+) -> None:
+    corpus_root, corpus, runs = _matrix(tmp_path, profiler_enabled=True)
+    run = runs[("docprune", 1)]
+    records = [json.loads(line) for line in (run / "results.jsonl").read_text().splitlines()]
+    for index, record in enumerate(records):
+        record["timing"]["flops"] = flops if index == 0 else flops / 10
+        record["timing"]["total_sample_seconds"] = total_seconds
+    (run / "results.jsonl").write_text(
+        "".join(json.dumps(record, sort_keys=True) + "\n" for record in records)
+    )
+    _refresh_summary(run, corpus)
+
+    from docprune.comparison import validate_comparison_matrix
+
+    report = validate_comparison_matrix(
+        runs, corpus_root=corpus_root, expected_questions=2, allow_fixture=True
+    )
+    assert not report.valid
+    assert report.payload is None
+    assert any("TFLOPs" in error for error in report.errors)
+
+
+@pytest.mark.parametrize(
     ("mutation", "expected"),
     [
         ("definition", "profiler definition"),
@@ -458,14 +486,14 @@ def test_publication_rolls_back_when_second_publish_fails(tmp_path: Path, monkey
     original = comparison._publish_noreplace
     calls = 0
 
-    def fail_second(source: Path, destination: Path) -> None:
+    def fail_after_second_link(source: Path, destination: Path) -> None:
         nonlocal calls
         calls += 1
+        original(source, destination)
         if calls == 2:
             raise OSError("injected second publish failure")
-        original(source, destination)
 
-    monkeypatch.setattr(comparison, "_publish_noreplace", fail_second)
+    monkeypatch.setattr(comparison, "_publish_noreplace", fail_after_second_link)
     with pytest.raises(OSError, match="injected second publish failure"):
         comparison.write_comparison_report(
             runs,

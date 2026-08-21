@@ -95,3 +95,52 @@ Publication stages and fsyncs both complete files, obtains exclusive lock sentin
 - Full CPU suite: `env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q` — `373 passed, 1 skipped in 11.88s`; the skip is the pre-existing opt-in real-model probe.
 - Final Fix Round 1 commit SHA is recorded below after staging the implementation, tests, and this report.
 - No Slurm/GPU work was started. The original A100 reconstruction classification and independent run/corpus/page/matrix gates remain unchanged.
+
+## Fix Round 2
+
+### RED
+
+Added literal overflow/underflow profiler cases (`1e308` and `1e-300` FLOPs with finite positive timing), plus a publication helper regression that links/unlinks the second destination and then raises. The comparison-only RED command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_comparison.py -v
+```
+
+collected 23 tests and showed the intended three failures: both derived-TFLOPs edge cases and the link-then-raise rollback test; 20 tests passed.
+
+### GREEN
+
+Derived TFLOPs are now computed per cell and rejected unless finite and strictly positive before report construction. Publication records every staged temporary's `(st_dev, st_ino)` before any publish; exception cleanup inspects every destination against those staged identities, so a helper that links/unlinks and raises cannot escape rollback while preexisting/concurrent inode identities remain untouched.
+
+Focused required command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest tests/test_comparison.py tests/test_cli.py tests/test_evaluation.py -q
+```
+
+Result: `93 passed in 4.34s`.
+
+Ruff/diff checks:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m ruff check src tests
+git diff --check
+```
+
+Both passed (`All checks passed!`, no diff-check output).
+
+Full CPU command:
+
+```text
+env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q
+```
+
+Result: `375 passed, 1 skipped in 11.31s`; the skip is the pre-existing opt-in cached real-model probe.
+
+Final Fix Round 2 commit is recorded after the final code/report staging.
+
+### Fix Round 2 self-review
+
+- Overflow and underflow are rejected before JSON serialization, so no `inf`, `nan`, or zero TFLOPs claim can be emitted.
+- Rollback removes only paths whose current inode equals a staged transaction inode; destination races and preexisting bytes remain protected.
+- Existing strict six-cell, independent run, corpus/page, identity, classification, and CLI no-overwrite gates remain covered by the focused suite.

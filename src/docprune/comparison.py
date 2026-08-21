@@ -305,7 +305,7 @@ def _cell_metrics(summary: Mapping[str, object]) -> dict[str, object]:
 
 
 def _profile_payload(cells: Sequence[Mapping[str, object]]) -> dict[str, object] | None:
-    values: list[tuple[float, float]] = []
+    derived_tflops: list[float] = []
     definitions: list[str] = []
     profiler_states: list[bool] = []
     for cell in cells:
@@ -336,12 +336,17 @@ def _profile_payload(cells: Sequence[Mapping[str, object]]) -> dict[str, object]
             raise ValueError("profiler FLOPs must be finite and positive")
         if not _number(total) or float(total) <= 0:
             raise ValueError("profiler timing must be finite and positive")
-        values.append((float(flops), float(total)))
+        flops_value = float(flops)
+        total_value = float(total)
+        derived = flops_value / total_value / 1e12
+        if not math.isfinite(derived) or derived <= 0:
+            raise ValueError("derived TFLOPs must be finite and positive")
+        derived_tflops.append(derived)
     if len(set(definitions)) != 1:
         raise ValueError("profiler definition identity mismatched across comparison cells")
     return {
         "profiler_definition": definitions[0],
-        "tflops": [flops / total / 1e12 for flops, total in values],
+        "tflops": derived_tflops,
     }
 
 
@@ -606,8 +611,8 @@ def write_comparison_report(
     json_bytes = (json.dumps(report.payload, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode()
     markdown_bytes = comparison_markdown(report.payload).encode()
     temporary: list[tuple[Path, Path]] = []
+    staged_publications: list[tuple[Path, Path, tuple[int, int]]] = []
     locks: list[tuple[Path, tuple[int, int]]] = []
-    published: list[tuple[Path, tuple[int, int]]] = []
     try:
         for destination, data in ((json_path, json_bytes), (markdown_path, markdown_bytes)):
             descriptor, raw_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
@@ -626,14 +631,17 @@ def write_comparison_report(
             finally:
                 os.close(descriptor)
         for temporary_path, destination in temporary:
+            staged_stat = temporary_path.stat()
+            staged_publications.append(
+                (temporary_path, destination, (staged_stat.st_dev, staged_stat.st_ino))
+            )
+        for temporary_path, destination, _ in staged_publications:
             _publish_noreplace(temporary_path, destination)
-            destination_stat = destination.stat()
-            published.append((destination, (destination_stat.st_dev, destination_stat.st_ino)))
         _fsync_directory(json_path.parent)
         if markdown_path.parent != json_path.parent:
             _fsync_directory(markdown_path.parent)
     except BaseException:
-        for destination, identity in reversed(published):
+        for _, destination, identity in reversed(staged_publications):
             _remove_owned_file(destination, identity)
         for temporary_path, _ in temporary:
             temporary_path.unlink(missing_ok=True)
