@@ -2,10 +2,9 @@
 # Independently validate all six completed cells, then publish the signed
 # six-cell JSON and Markdown comparison. Submit afterok on the eval array.
 #SBATCH --job-name=docprune-m3docvqa-compare
-#SBATCH --partition=public
-#SBATCH --qos=public
-#SBATCH --cpus-per-task=2
-#SBATCH --mem=8G
+#SBATCH --partition=htc
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=128G
 #SBATCH --time=01:00:00
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err

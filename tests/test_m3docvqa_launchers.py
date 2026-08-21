@@ -273,6 +273,35 @@ def test_evaluation_completion_publishes_six_cell_comparison() -> None:
     assert "docprune-top4" in text
 
 
+def test_nonmeasurement_gate_and_index_surfaces_use_unconstrained_htc_a100() -> None:
+    gate = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    index = (LAUNCHER_DIR / "13_docprune_m3docvqa_index.sbatch").read_text(encoding="utf-8")
+    for text, walltime in ((gate, "02:00:00"), (index, "04:00:00")):
+        assert "#SBATCH --partition=htc" in text
+        assert "#SBATCH --qos=public" not in text
+        assert "#SBATCH --gres=gpu:a100:1" in text
+        assert "#SBATCH --constraint=a100_80" not in text
+        assert "#SBATCH --cpus-per-task=8" in text
+        assert "#SBATCH --mem=128G" in text
+        assert f"#SBATCH --time={walltime}" in text
+
+    for name in ("11_docprune_m3docvqa.sbatch", "14_docprune_m3docvqa_eval_array.sbatch"):
+        text = (LAUNCHER_DIR / name).read_text(encoding="utf-8")
+        assert "#SBATCH --partition=public" in text
+        assert "#SBATCH --gres=gpu:a100:1" in text
+        assert "#SBATCH --constraint=a100_80" in text
+        assert "#SBATCH --cpus-per-task=8" in text
+        assert "#SBATCH --mem=128G" in text
+        assert "#SBATCH --time=24:00:00" in text
+
+    comparator = (LAUNCHER_DIR / "15_docprune_m3docvqa_compare.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert "#SBATCH --partition=htc" in comparator
+    assert "#SBATCH --cpus-per-task=8" in comparator
+    assert "#SBATCH --mem=128G" in comparator
+
+
 def test_launchers_validate_sealed_control_record() -> None:
     for launcher in LAUNCHERS:
         text = launcher.read_text(encoding="utf-8")
@@ -347,7 +376,10 @@ def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() 
     assert "15_docprune_m3docvqa_compare.sbatch" in text
     assert "afterok:$EVAL_JOB" in text
     assert f"/home/lmalveau/DocPrune-runtime-{runtime7}" in text
-    assert f"/scratch/lmalveau/docprune/benchmark-{runtime7}/attempt-2" in text
+    assert runtime_sha.group(1) == "384b330c72ce49ee2272d1602748307c973da37b"
+    assert f"/scratch/lmalveau/docprune/benchmark-{runtime7}/attempt-1" in text
+    assert "61943239" in text
+    assert "61943240" in text and "61943247" in text
 
 
 def test_handoff_hybrid_scheduling_overrides_preserve_hardware_contract() -> None:
@@ -367,8 +399,8 @@ def test_handoff_hybrid_scheduling_overrides_preserve_hardware_contract() -> Non
     assert "--constraint=a100_80" in text
     assert "--cpus-per-task=8" in text
     assert "--mem=128G" in text
-    assert "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2" in text
-    assert "61883512" in text and "61883888" in text
+    assert "/scratch/lmalveau/docprune/benchmark-384b330/attempt-1" in text
+    assert "61943239" in text and "61943247" in text
 
 
 def test_active_authority_docs_have_no_stale_attempt_one_root() -> None:
@@ -379,10 +411,17 @@ def test_active_authority_docs_have_no_stale_attempt_one_root() -> None:
         ROOT / "docs" / "reproduction" / "RECONSTRUCTION_GAPS.md",
     )
     for path in authorities:
-        assert "benchmark-02385b3/attempt-1" not in path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+        assert "benchmark-384b330/attempt-1" in text
     handoff = HANDOFF.read_text(encoding="utf-8")
     active = handoff.split("### Historical failures (not resumable or successful)", 1)[0]
-    assert "benchmark-02385b3/attempt-1" not in active
+    assert "benchmark-384b330/attempt-1" in active
+    submission = handoff.split("## Exact Slurm submission commands", 1)[1]
+    submission_code = submission.split("```bash", 1)[1].split("```", 1)[0]
+    assert "benchmark-02385b3/attempt-2" not in submission_code
+    assert "benchmark-02385b3/attempt-2" in handoff.split(
+        "### Historical failures (not resumable or successful)", 1
+    )[1]
     assert "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2" in handoff
 
 
@@ -402,7 +441,7 @@ def test_handoff_submission_graph_executes_against_fake_sbatch(tmp_path: Path) -
             export_lines.append(line)
         if in_exports and line.startswith("source "):
             break
-    active_root = "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2"
+    active_root = "/scratch/lmalveau/docprune/benchmark-384b330/attempt-1"
     assert f"export ATTEMPT_ROOT={active_root}" in export_lines
     assert 'export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"' in export_lines
     assert 'export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"' in export_lines
@@ -485,17 +524,17 @@ sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; print
     }
     gpu_resources = {
         "--gres": "gpu:a100:1",
-        "--constraint": "a100_80",
         "--cpus-per-task": "8",
         "--mem": "128G",
     }
+    eval_gpu_resources = {**gpu_resources, "--constraint": "a100_80"}
     expected_resources = [
         {"--partition": "htc", "--time": "02:00:00", **gpu_resources},
         *[
             {"--partition": "htc", "--time": "04:00:00", **gpu_resources}
             for _ in range(6)
         ],
-        {"--partition": "public", "--time": "24:00:00", **gpu_resources},
+        {"--partition": "public", "--time": "24:00:00", **eval_gpu_resources},
         {"--partition": "htc", "--time": "01:00:00", "--cpus-per-task": "8", "--mem": "128G"},
     ]
     expected_dependencies = [
@@ -561,7 +600,7 @@ sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; print
 
     validate_graph(calls)
 
-    wrong_root = [line.replace(active_root, active_root.replace("attempt-2", "attempt-9")) for line in export_lines]
+    wrong_root = [line.replace(active_root, active_root.replace("attempt-1", "attempt-9")) for line in export_lines]
     _, wrong_root_calls = run_variant(wrong_root, snippet)
     with pytest.raises(AssertionError):
         validate_graph(wrong_root_calls)
@@ -654,7 +693,7 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
         r"^runtime commit: ([0-9a-f]{40})$", HANDOFF.read_text(encoding="utf-8"), flags=re.MULTILINE
     )
     assert runtime_sha is not None
-    active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-2"
+    active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-1"
     assert active_root in text
     assert "benchmark-6c19bfc/attempt-2" in text
     command_lines = tuple(
@@ -710,8 +749,8 @@ def _complete_prepare_script(source: Path, runtime: Path, destination: Path, com
     end = text.index("```", start)
     return (
         text[start:end]
-        .replace("/home/lmalveau/DocPrune-runtime-02385b3", str(runtime))
-        .replace("02385b3a6fc939f23a8632a7ce58b4cac8bff263", commit)
+        .replace("/home/lmalveau/DocPrune-runtime-384b330", str(runtime))
+        .replace("384b330c72ce49ee2272d1602748307c973da37b", commit)
         .replace("/home/lmalveau/src/m3docrag-runtime-29e6ac2", str(source))
         .replace("/home/lmalveau/src/m3docrag-benchmark-29e6ac2", str(destination))
         .replace("29e6ac2294d6b87075a1d45b8a8df175b214248a", commit)

@@ -64,12 +64,16 @@ cannot be promoted:
 evaluation array `61830411` was canceled before evaluation work, while six
 schema-4 indexes (`61830405`–`61830410`) completed with `0:0` but are invalid
 for the schema-5 contract. Their scratch artifacts are preserved and must not
-be modified or deleted. The fresh active root is
-`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` under the immutable
-runtime checkout `/home/lmalveau/DocPrune-runtime-02385b3`.
+be modified or deleted. The next failed root
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` ran gate `61943239`
+for 29s on `scg011` and failed before GPU/model work because the runtime
+validator hard-coded `attempt-1`; downstream jobs `61943240`–`61943247` were
+auto-canceled. Preserve that root and all IDs unchanged. The fresh active root
+is `/scratch/lmalveau/docprune/benchmark-384b330/attempt-1/` under the
+immutable runtime checkout `/home/lmalveau/DocPrune-runtime-384b330`.
 
 The corrected Phase-A runtime is
-`02385b3a6fc939f23a8632a7ce58b4cac8bff263`; the control identity is sealed in
+`384b330c72ce49ee2272d1602748307c973da37b`; the control identity is sealed in
 the fresh attempt's `control.json`. The gate now persists a fixture-marked
 schema-5 mini-index through the production indexing path and authenticates it
 through the canonical loader. Retrieval returns ordered `(doc_id,page_index)`

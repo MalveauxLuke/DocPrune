@@ -2,13 +2,11 @@
 # Build one page-specific, mode-scoped schema-5 manifest-bound index. Submit this
 # wrapper once for every mode/page pair, with afterok on the semantic gate.
 #SBATCH --job-name=docprune-m3docvqa-index
-#SBATCH --partition=public
-#SBATCH --qos=public
+#SBATCH --partition=htc
 #SBATCH --gres=gpu:a100:1
-#SBATCH --constraint=a100_80
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=3-00:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 

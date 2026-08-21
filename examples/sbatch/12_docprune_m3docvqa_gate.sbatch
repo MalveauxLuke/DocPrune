@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Ordered semantic gate; downstream jobs must depend on this job with afterok.
 #SBATCH --job-name=docprune-m3docvqa-gate
-#SBATCH --partition=public
-#SBATCH --qos=public
+#SBATCH --partition=htc
 #SBATCH --gres=gpu:a100:1
-#SBATCH --constraint=a100_80
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 
