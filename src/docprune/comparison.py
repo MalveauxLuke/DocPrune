@@ -306,22 +306,41 @@ def _cell_metrics(summary: Mapping[str, object]) -> dict[str, object]:
 
 def _profile_payload(cells: Sequence[Mapping[str, object]]) -> dict[str, object] | None:
     values: list[tuple[float, float]] = []
+    definitions: list[str] = []
+    profiler_states: list[bool] = []
     for cell in cells:
         metrics = cell.get("metrics")
         efficiency = metrics.get("efficiency") if isinstance(metrics, Mapping) else None
         measurement = efficiency.get("measurement") if isinstance(efficiency, Mapping) else None
-        if not isinstance(measurement, Mapping) or measurement.get("profiler_enabled") is not True:
-            return None
+        if not isinstance(measurement, Mapping):
+            profiler_states.append(False)
+            continue
+        profiler_states.append(measurement.get("profiler_enabled") is True)
+    if not any(profiler_states):
+        return None
+    if not all(profiler_states):
+        raise ValueError("partial profiling identity across comparison cells")
+    for cell in cells:
+        metrics = cell.get("metrics")
+        efficiency = metrics.get("efficiency") if isinstance(metrics, Mapping) else None
+        measurement = efficiency.get("measurement") if isinstance(efficiency, Mapping) else None
+        if not isinstance(measurement, Mapping):
+            raise ValueError("profiler measurement identity is missing")
         flops = measurement.get("flops")
         definition = measurement.get("profiler_definition")
         total = efficiency.get("timing_seconds", {}).get("total") if isinstance(efficiency, Mapping) else None
-        if not isinstance(definition, str) or not definition or not _number(flops) or float(flops) <= 0:
-            return None
+        if not isinstance(definition, str) or not definition:
+            raise ValueError("profiler definition identity is missing")
+        definitions.append(definition)
+        if not _number(flops) or float(flops) <= 0:
+            raise ValueError("profiler FLOPs must be finite and positive")
         if not _number(total) or float(total) <= 0:
-            return None
+            raise ValueError("profiler timing must be finite and positive")
         values.append((float(flops), float(total)))
+    if len(set(definitions)) != 1:
+        raise ValueError("profiler definition identity mismatched across comparison cells")
     return {
-        "profiler_definition": cells[0]["metrics"]["efficiency"]["measurement"]["profiler_definition"],
+        "profiler_definition": definitions[0],
         "tflops": [flops / total / 1e12 for flops, total in values],
     }
 
@@ -450,9 +469,16 @@ def validate_comparison_matrix(
             "cells": cells,
             "deltas": deltas,
         }
-        profile = _profile_payload(cells)
+        try:
+            profile = _profile_payload(cells)
+        except ValueError as error:
+            errors.append(str(error))
+            profile = None
         if profile is not None:
             payload["profiling"] = profile
+    if errors:
+        payload = None
+    elif payload is not None:
         payload["comparison_sha256"] = _digest(payload)
     return ComparisonValidationReport(not errors, tuple(errors), tuple(cells), tuple(deltas), payload)
 
@@ -526,6 +552,30 @@ def comparison_markdown(payload: Mapping[str, object]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _publish_noreplace(source: Path, destination: Path) -> None:
+    """Publish one staged file atomically without replacing a destination."""
+
+    os.link(source, destination)
+    source.unlink()
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _remove_owned_file(path: Path, identity: tuple[int, int]) -> None:
+    try:
+        observed = path.stat()
+    except FileNotFoundError:
+        return
+    if (observed.st_dev, observed.st_ino) == identity:
+        path.unlink(missing_ok=True)
+
+
 def write_comparison_report(
     runs: Mapping[object, object] | Sequence[object],
     corpus_root: object,
@@ -556,6 +606,8 @@ def write_comparison_report(
     json_bytes = (json.dumps(report.payload, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode()
     markdown_bytes = comparison_markdown(report.payload).encode()
     temporary: list[tuple[Path, Path]] = []
+    locks: list[tuple[Path, tuple[int, int]]] = []
+    published: list[tuple[Path, tuple[int, int]]] = []
     try:
         for destination, data in ((json_path, json_bytes), (markdown_path, markdown_bytes)):
             descriptor, raw_name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
@@ -565,12 +617,32 @@ def write_comparison_report(
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
+        for _, destination in temporary:
+            lock_path = Path(f"{destination}.lock")
+            descriptor = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                lock_stat = os.fstat(descriptor)
+                locks.append((lock_path, (lock_stat.st_dev, lock_stat.st_ino)))
+            finally:
+                os.close(descriptor)
         for temporary_path, destination in temporary:
-            os.replace(temporary_path, destination)
+            _publish_noreplace(temporary_path, destination)
+            destination_stat = destination.stat()
+            published.append((destination, (destination_stat.st_dev, destination_stat.st_ino)))
+        _fsync_directory(json_path.parent)
+        if markdown_path.parent != json_path.parent:
+            _fsync_directory(markdown_path.parent)
     except BaseException:
+        for destination, identity in reversed(published):
+            _remove_owned_file(destination, identity)
         for temporary_path, _ in temporary:
             temporary_path.unlink(missing_ok=True)
         raise
+    finally:
+        for lock_path, identity in reversed(locks):
+            _remove_owned_file(lock_path, identity)
+        for temporary_path, _ in temporary:
+            temporary_path.unlink(missing_ok=True)
     return report
 
 
