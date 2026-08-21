@@ -57,6 +57,13 @@ def _valid_semantic() -> dict[str, object]:
             "transformers": "4.49.0",
             "attn_implementation": "flash_attention_2",
         },
+        "ctp_policy": {
+            "head_aggregation": "arithmetic_mean",
+            "score_scale": "current_visual_token_count",
+            "raw_attention_semantics": "mean_head_attention_scores_before_visual_count_scaling",
+            "transformed_attention_semantics": "raw_mean_times_current_visual_count",
+            "prefill_query_token": "last_prompt_token",
+        },
         "upstream_retrieval_orders": orders,
         "runtime_retrieval_orders": orders,
         "retrieval_orders": orders,
@@ -171,6 +178,13 @@ def test_gate_evidence_rejects_one_of_five_retrieval_mismatches() -> None:
 
 def test_gate_evidence_accepts_valid_sealed_fixture() -> None:
     assert validate_gate_evidence_payload(_valid_semantic(), expected_qids=QIDS) is None
+
+
+def test_gate_evidence_rejects_missing_ctp_policy() -> None:
+    semantic = _valid_semantic()
+    semantic.pop("ctp_policy")
+    with pytest.raises(ValueError, match="CTP policy"):
+        validate_gate_evidence_payload(semantic, expected_qids=QIDS)
 
 
 def test_gate_evidence_accepts_per_qid_trace_records() -> None:

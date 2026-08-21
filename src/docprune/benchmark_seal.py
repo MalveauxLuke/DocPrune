@@ -103,6 +103,16 @@ def validate_gate_evidence_payload(
     for field in ("cuda", "torch", "transformers"):
         if not isinstance(backend.get(field), str) or not backend[field]:
             raise ValueError(f"FlashAttention-2 identity is missing {field}")
+    ctp_policy = semantic.get("ctp_policy")
+    expected_ctp_policy = {
+        "head_aggregation": "arithmetic_mean",
+        "score_scale": "current_visual_token_count",
+        "raw_attention_semantics": "mean_head_attention_scores_before_visual_count_scaling",
+        "transformed_attention_semantics": "raw_mean_times_current_visual_count",
+        "prefill_query_token": "last_prompt_token",
+    }
+    if ctp_policy != expected_ctp_policy:
+        raise ValueError("CTP policy evidence is missing or does not match the sealed reconstruction")
 
     upstream = semantic.get("upstream_retrieval_orders")
     runtime = semantic.get("runtime_retrieval_orders")
@@ -153,7 +163,7 @@ def validate_gate_evidence_payload(
     for values in trace_values:
         if (
             not isinstance(values, Sequence)
-            or isinstance(values, (str, bytes))
+            or isinstance(values, str | bytes)
             or len(values) != 4
             or any(type(value) is not int or value <= 0 for value in values)
             or any(left < right for left, right in zip(values, values[1:]))
@@ -194,7 +204,7 @@ def validate_gate_evidence_payload(
 
 
 def _absolute_path(value: Path | str, *, label: str) -> Path:
-    if not isinstance(value, (str, os.PathLike)) or not value:
+    if not isinstance(value, str | os.PathLike) or not value:
         raise ValueError(f"{label} path must be non-empty")
     path = Path(os.path.abspath(os.fspath(value)))
     current = Path(path.anchor)
@@ -234,7 +244,7 @@ def _validate_retrieval_orders(
             raise ValueError(f"{label} retrieval evidence is incomplete for {qid}")
         for top_k in (1, 2, 4):
             pages = per_qid[str(top_k)]
-            if not isinstance(pages, Sequence) or isinstance(pages, (str, bytes)) or len(pages) != top_k:
+            if not isinstance(pages, Sequence) or isinstance(pages, str | bytes) or len(pages) != top_k:
                 raise ValueError(f"{label} retrieval order is invalid for {qid} top-{top_k}")
             seen: set[tuple[str, int]] = set()
             for page in pages:

@@ -540,6 +540,13 @@ out.write_text(json.dumps({
         "transformers": __import__("transformers").__version__,
         "attn_implementation": attn_implementation,
     },
+    "ctp_policy": {
+        "head_aggregation": "arithmetic_mean",
+        "score_scale": "current_visual_token_count",
+        "raw_attention_semantics": "mean_head_attention_scores_before_visual_count_scaling",
+        "transformed_attention_semantics": "raw_mean_times_current_visual_count",
+        "prefill_query_token": "last_prompt_token",
+    },
     "timings": timing_probes,
 }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY

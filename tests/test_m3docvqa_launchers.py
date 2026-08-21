@@ -48,8 +48,8 @@ def _python_heredocs(path: Path) -> tuple[str, ...]:
 def test_embedded_python_heredocs_are_f821_clean() -> None:
     """Lint each embedded Python program independently, as bash executes it."""
 
-    ruff = shutil.which("ruff")
-    assert ruff, "ruff is required to lint launcher heredocs"
+    ruff = Path("/home/lmalveau/mamba-envs/docprune-sol/bin/ruff")
+    assert ruff.is_file(), "the pinned environment Ruff is required to lint launcher heredocs"
     for launcher in LAUNCHERS:
         snippets = _python_heredocs(launcher)
         assert snippets, f"launcher has no embedded Python: {launcher}"
@@ -438,6 +438,13 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "torch": "2.6.0",
             "transformers": "4.49.0",
             "attn_implementation": "flash_attention_2",
+        },
+        "ctp_policy": {
+            "head_aggregation": "arithmetic_mean",
+            "score_scale": "current_visual_token_count",
+            "raw_attention_semantics": "mean_head_attention_scores_before_visual_count_scaling",
+            "transformed_attention_semantics": "raw_mean_times_current_visual_count",
+            "prefill_query_token": "last_prompt_token",
         },
         "upstream_retrieval_orders": {
             qid: {
