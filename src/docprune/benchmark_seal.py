@@ -131,9 +131,26 @@ def validate_gate_evidence_payload(
         raise ValueError("ColPali query counter is fabricated or empty")
 
     traces = semantic.get("docprune_traces")
-    if not isinstance(traces, Mapping) or set(traces) != {"1", "2", "4"}:
+    if not isinstance(traces, Mapping):
         raise ValueError("semantic evidence lacks the exact page traces")
-    for values in traces.values():
+    if set(traces) == {"1", "2", "4"}:
+        trace_values = tuple(traces.values())
+    elif set(traces) == set(qids):
+        trace_values = tuple(
+            page_values
+            for per_qid in traces.values()
+            if isinstance(per_qid, Mapping)
+            for page_values in (
+                per_qid.get("1"),
+                per_qid.get("2"),
+                per_qid.get("4"),
+            )
+        )
+        if len(trace_values) != len(qids) * 3:
+            raise ValueError("semantic evidence lacks the exact per-QID page traces")
+    else:
+        raise ValueError("semantic evidence lacks the exact page traces")
+    for values in trace_values:
         if (
             not isinstance(values, Sequence)
             or isinstance(values, (str, bytes))

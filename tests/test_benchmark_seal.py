@@ -171,3 +171,11 @@ def test_gate_evidence_rejects_one_of_five_retrieval_mismatches() -> None:
 
 def test_gate_evidence_accepts_valid_sealed_fixture() -> None:
     assert validate_gate_evidence_payload(_valid_semantic(), expected_qids=QIDS) is None
+
+
+def test_gate_evidence_accepts_per_qid_trace_records() -> None:
+    semantic = _valid_semantic()
+    semantic["docprune_traces"] = {
+        qid: {str(page): [100, 80, 60, 40] for page in (1, 2, 4)} for qid in QIDS
+    }
+    assert validate_gate_evidence_payload(semantic, expected_qids=QIDS) is None
