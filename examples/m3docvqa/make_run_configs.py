@@ -33,7 +33,7 @@ from docprune.m3docvqa_factory import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pdf_tools import validate_pdf_tools  # noqa: E402
 
-RUNTIME_COMMIT = "6c19bfcb4fcb73685af5b16ad493097ed6c609a5"
+RUNTIME_COMMIT = "a8d8ca6e32178a2468d729670d7219e3177a9c8b"
 MODES = ("all-kept", "docprune")
 FIXED_GATE_SAMPLE_IDS = (
     "a33985b1e8b2502fc18cc8147dc27db8",

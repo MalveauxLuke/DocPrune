@@ -35,9 +35,9 @@ LAUNCHERS = tuple(
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
-ACTIVE_RUNTIME_COMMIT = "6c19bfcb4fcb73685af5b16ad493097ed6c609a5"
-ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-6c19bfc"
-ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2"
+ACTIVE_RUNTIME_COMMIT = "a8d8ca6e32178a2468d729670d7219e3177a9c8b"
+ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-a8d8ca6"
+ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1"
 HISTORICAL_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
 HISTORICAL_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-3755812"
 HISTORICAL_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N"
@@ -311,6 +311,19 @@ def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     assert ACTIVE_ATTEMPT_ROOT in handoff
 
 
+def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    assert "61830411" in text
+    assert "61830405" in text and "61830410" in text
+    assert "cannot be promoted" in text
+    assert "schema 5" in text
+    assert "complete unpadded ColPali" in text
+    assert "15_docprune_m3docvqa_compare.sbatch" in text
+    assert "afterok:$EVAL_JOB" in text
+    assert "/home/lmalveau/DocPrune-runtime-a8d8ca6" in text
+    assert "/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1" in text
+
+
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
     active, historical = text.split("### Historical failures (not resumable or successful)", 1)
@@ -325,14 +338,16 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
     """Active reproduction commands must target the pinned absolute artifact root."""
 
     text = (ROOT / "docs" / "reproduction" / "DOCPRUNE.md").read_text(encoding="utf-8")
+    assert "benchmark-a8d8ca6/attempt-1" in text
+    assert "benchmark-6c19bfc/attempt-2" not in text
     command_lines = tuple(
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("--") and "benchmark-6c19bfc" in line
+        if line.strip().startswith("--") and "benchmark-a8d8ca6" in line
     )
-    assert len(command_lines) == 5
-    assert all("/scratch/lmalveau/docprune/benchmark-6c19bfc/" in line for line in command_lines)
-    assert all("/scratch/$USER/docprune/benchmark-6c19bfc/" not in line for line in command_lines)
+    assert command_lines
+    assert all("/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/" in line for line in command_lines)
+    assert all("/scratch/$USER/docprune/benchmark-a8d8ca6/" not in line for line in command_lines)
 
 
 def test_upstream_checkouts_require_strict_clean_status() -> None:

@@ -8,12 +8,14 @@ and [supplement](https://openaccess.thecvf.com/content/CVPR2026/supplemental/Cho
 It is not an official implementation. The supplied sources do not link a
 DocPrune code release.
 
-Local validation covers the equations, threshold boundaries, page layouts,
+Local validation covers the equations, threshold boundaries, complete
+unpadded ColPali sequences and raster maps, exact upstream MaxSim retrieval,
 2-by-2 merge groups, sparse Qwen vision execution, original rotary positions,
-prompt-token preservation, one-time CTP, heterogeneous per-layer KV caches,
-greedy generation, the pinned M3DocRAG API boundary, metrics, immutable
-manifests, independent validation, and CLI behavior. The active benchmark
-runtime is pinned in
+prompt-token preservation, reduced-query CTP, heterogeneous per-layer KV
+caches, greedy generation, the pinned M3DocRAG API boundary, exact
+measurement identity, positive stage timing, metrics, immutable manifests,
+independent validation, and CLI behavior. The active benchmark runtime is
+pinned in
 [`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
 No benchmark result is claimed until its gate, index manifests, and 2,441-row
 validation report pass.
@@ -23,9 +25,11 @@ validation report pass.
 1. BTP converts each resized page to grayscale, finds the page-wide modal
    intensity, scores each patch by its near-mode pixel fraction, and rejects
    patches over the page-count-specific threshold.
-2. QTP sums cosine similarity from each visual document token to all question
-   tokens, reshapes and bilinearly resizes the relevance map, smooths it with a
-   Gaussian kernel, and rejects values below the relevance threshold.
+2. QTP consumes the already encoded question and complete persisted ColPali
+   page context from retrieval. It sums cosine similarity from each visual
+   document token to all question tokens, reshapes and bilinearly resizes the
+   relevance map, smooths it with a Gaussian kernel, and rejects values below
+   the relevance threshold. QA never invokes ColPali.
 3. BTP and QTP decisions are lifted to complete 2-by-2 Qwen spatial-merge
    groups before the vision encoder.
 4. CTP observes the last prompt token after each decoder layer. At the first L2
@@ -80,8 +84,12 @@ prediction, ordered retrieved pages, timing, and this trace:
 ```
 
 Counts are merged visual tokens. They must be monotonically nonincreasing.
-Aggregate summaries contain absolute counts, drop rates from the original
-count, retrieval/QA seconds, and original visual tokens per end-to-end second.
+Aggregate summaries contain absolute counts, arithmetic-mean drop rates from
+the original count, retrieval/page-load/QA/total seconds, positive encoder and
+decoder seconds, and samples per encoder/decoder second. Peak allocated GPU
+memory is measured over the complete QA path. TFLOPs are omitted unless
+profiling is explicitly enabled with a valid definition. A100 values are
+reconstruction measurements, not RTX A6000 hardware parity.
 
 ## CLI
 
@@ -92,17 +100,28 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/run-configs/docprune-top4.json \
-  --index-manifest /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run \
+  --run-config /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/run-configs/docprune-top4.json \
+  --index-manifest /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run \
+  --run /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \
-  --results /scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/eval/docprune/top4/run/results.jsonl
+  --results /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run/results.jsonl
+
+docprune-m3docvqa compare-runs \
+  --corpus-root /scratch/lmalveau/docprune/datasets/m3docvqa \
+  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top1/run \
+  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top2/run \
+  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top4/run \
+  --docprune-top1 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top1/run \
+  --docprune-top2 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top2/run \
+  --docprune-top4 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
+  --json-output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/comparison/six-cell.json \
+  --markdown-output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/comparison/six-cell.md
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in
@@ -112,22 +131,24 @@ the six index jobs and six evaluation cells remain separate and manifest-bound.
 
 The evaluation factory is an explicit integration boundary. It must return
 `docprune.cli.EvaluationWorkload` and must pin the official M3DocRAG checkout,
-model revisions, dataset revision, question order, prompt, and generation
-settings. The CLI does not guess these values. Resume is accepted only when
-the existing run manifest exactly equals the requested manifest.
+model revisions, acquired corpus digests, source question order, prompt, and
+generation settings. The CLI does not guess these values. Resume is accepted
+only when the existing run manifest exactly equals the requested manifest.
 
 ## Parity gates
 
 The first SOL task must establish, in order:
 
 1. environment and pinned runtime/source cleanliness;
-2. exact ColPali visual-token slice, grid, and raster mapping;
-3. exact Qwen processor resize and patch/grid correspondence;
-4. all-kept baseline answer equivalence on fixed samples;
-5. one-sample pruning traces for pages 1/2/4 with no empty page;
-6. six separate manifest-bound baseline/DocPrune indexes;
-7. frozen baseline versus DocPrune top-1, top-2, and top-4 evaluation;
-8. independent 2,441-row result validation and summary reproduction.
+2. real CUDA/FlashAttention-2 execution and exact measurement identity;
+3. complete unpadded ColPali all-kept equivalence, grid, and raster mapping;
+4. exact fixed-sample upstream retrieval order and one-time query encoding;
+5. all-kept baseline answer equivalence on fixed samples;
+6. one-sample positive pruning traces and stage timing probes for pages 1/2/4;
+7. six separate schema-5 manifest-bound baseline/DocPrune indexes;
+8. frozen baseline versus DocPrune top-1, top-2, and top-4 evaluation;
+9. independent 2,441-row result validation followed by the signed six-cell
+   JSON and Markdown comparison.
 
 Only after those gates may reports compare EM, F1, throughput, memory, or FLOPs
 with the paper.
