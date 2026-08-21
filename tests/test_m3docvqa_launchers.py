@@ -22,6 +22,8 @@ from make_run_configs import (  # noqa: E402
     validate_gate_evidence,
 )
 
+from docprune.benchmark_seal import validate_attempt_root  # noqa: E402
+
 ROOT = Path(__file__).parents[1]
 LAUNCHER_DIR = ROOT / "examples" / "sbatch"
 LAUNCHERS = tuple(
@@ -316,6 +318,20 @@ def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     assert 'parser.add_argument("--runtime-dir", type=Path, required=True)' in run_config
     assert "a8d8ca6e32178a2468d729670d7219e3177a9c8b" not in gate_config
     assert "a8d8ca6e32178a2468d729670d7219e3177a9c8b" not in run_config
+
+
+def test_handoff_active_attempt_root_runs_through_runtime_validator() -> None:
+    """The active handoff path must be accepted by the actual runtime guard."""
+
+    handoff = HANDOFF.read_text(encoding="utf-8")
+    matches = re.findall(
+        r"^export ATTEMPT_ROOT=(/scratch/lmalveau/docprune/benchmark-[0-9a-f]{7,40}/attempt-[1-9][0-9]*)$",
+        handoff,
+        flags=re.MULTILINE,
+    )
+    assert matches
+    active_root = matches[0]
+    assert validate_attempt_root(active_root, active_root) == active_root
 
 
 def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() -> None:

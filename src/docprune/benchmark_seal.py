@@ -39,10 +39,19 @@ def validate_runtime_identity(runtime_commit: object, runtime_dir: Path | str) -
 
 
 def validate_attempt_root(attempt_root: Path | str, expected_attempt_root: Path | str) -> str:
-    actual = os.path.abspath(os.fspath(attempt_root))
-    expected = os.path.abspath(os.fspath(expected_attempt_root))
-    if actual != expected or not re.fullmatch(
-        r"/scratch/lmalveau/docprune/benchmark-[0-9a-f]{7,40}/attempt-1", expected
+    actual_path = _absolute_path(attempt_root, label="attempt root")
+    expected_path = _absolute_path(expected_attempt_root, label="expected attempt root")
+    actual = str(actual_path)
+    expected = str(expected_path)
+    if (
+        os.fspath(attempt_root) != actual
+        or os.fspath(expected_attempt_root) != expected
+        or actual != expected
+        or re.fullmatch(
+            r"/scratch/lmalveau/docprune/benchmark-[0-9a-f]{7,40}/attempt-[1-9][0-9]*",
+            expected,
+        )
+        is None
     ):
         raise ValueError(f"attempt root is not the exact fresh attempt root: {actual}")
     return actual

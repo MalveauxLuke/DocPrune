@@ -119,16 +119,38 @@ def test_runtime_identity_rejects_wrong_sha_and_dirty_checkout(tmp_path: Path) -
         )
 
 
-def test_attempt_root_rejects_historical_or_arbitrary_root() -> None:
-    expected = "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-1"
-    assert validate_attempt_root(expected, expected) == expected
-    for candidate in (
-        "/scratch/lmalveau/docprune/benchmark-runtime7/attempt-2",
-        "/scratch/lmalveau/docprune/benchmark-old/attempt-1",
+def test_attempt_root_accepts_canonical_positive_decimal_attempts() -> None:
+    for attempt in ("1", "2", "10", "999999999999999999999999"):
+        expected = f"/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-{attempt}"
+        assert validate_attempt_root(expected, expected) == expected
+
+
+def test_attempt_root_rejects_malformed_alias_or_mismatched_roots(tmp_path: Path) -> None:
+    expected = "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-2"
+    candidates = (
+        "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-0",
+        "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-01",
+        "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-00",
+        "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-2/../attempt-2",
+        "/scratch/lmalveau/docprune/benchmark-aaaaaaa/attempt-2/",
+        "/scratch/lmalveau/docprune/benchmark-ggggggg/attempt-2",
+        "/scratch/lmalveau/docprune/benchmark-aaaaaa/attempt-2",
+        "/scratch/lmalveau/docprune/benchmark-" + "a" * 41 + "/attempt-2",
+        "/scratch/lmalveau/other/benchmark-aaaaaaa/attempt-2",
         "/tmp/arbitrary",
-    ):
+    )
+    for candidate in candidates:
         with pytest.raises(ValueError, match="attempt root"):
             validate_attempt_root(candidate, expected)
+
+    with pytest.raises(ValueError, match="attempt root"):
+        validate_attempt_root(expected, expected.replace("attempt-2", "attempt-3"))
+
+    symlinked_root = tmp_path / "benchmark-aaaaaaa"
+    symlinked_root.symlink_to("/scratch/lmalveau/docprune/benchmark-aaaaaaa", target_is_directory=True)
+    symlinked_attempt = symlinked_root / "attempt-2"
+    with pytest.raises(ValueError, match="symlink"):
+        validate_attempt_root(symlinked_attempt, symlinked_attempt)
 
 
 def test_schema_four_mini_index_is_rejected_and_sealed_fixture_is_accepted() -> None:
