@@ -9,20 +9,39 @@ mutation, and no browser download. Large artifacts, model weights, HF caches,
 page images, indexes, predictions, and raw profiles remain under
 `/scratch/lmalveau/docprune/`.
 
+The six-cell matrix is strictly DocPrune-vs-all-kept at top-1/top-2/top-4;
+FastV, DivPrune, VTW, and full Table 2 baselines are excluded. The pinned
+reconstruction corpus is 2,441 questions / 3,366 PDFs / 44,638 pages; the
+paper's 2,441 / 3,368 / 41,005 counts are recorded as a known identity gap,
+not silently substituted. CTP policy is arithmetic head mean scaled by the
+current visual-token count, using the last prompt token during prefill; BT.601,
+sigma 1.0 replicate padding, any-member group retention, and sparse-map `-1`
+holes are reconstruction choices. Gate evidence records raw and transformed
+CTP semantics, while the canonical schema-5 loader validates page offsets and
+ledger integrity. ACC is outside the active metric contract (EM/F1,
+modality-F1, hop-F1) and is not inferred.
+
 Attempt 2 is diagnostic-only: evaluation array `61830411` was canceled before
 evaluation work, and six schema-4 indexes (`61830405`–`61830410`) completed
 with `0:0` but cannot be promoted to the corrected schema-5 benchmark. Their
 scratch artifacts remain preserved and must not be modified, deleted, or
 reported. The active root is the fresh
-`benchmark-a8d8ca6/attempt-1`; submit only from the clean control checkout
+`benchmark-02385b3/attempt-1`; submit only from the clean control checkout
 after the local checks at the end of this document pass.
+
+The pre-execution seals `a8d8ca6` (runtime) and `6228d06` (control/docs) are
+superseded by runtime `02385b3a6fc939f23a8632a7ce58b4cac8bff263` and this
+control revision. No Slurm job used either superseded seal. The corrected
+generators now require an externally supplied runtime SHA and clean checkout,
+verify that SHA against `git rev-parse HEAD`, and serialize the verified value;
+they never self-reference a commit that contains the generator.
 
 ## Immutable sources
 
 ```text
 control checkout: /home/lmalveau/DocPrune-benchmark
-runtime checkout: /home/lmalveau/DocPrune-runtime-a8d8ca6 (detached, clean)
-runtime commit: a8d8ca6e32178a2468d729670d7219e3177a9c8b
+runtime checkout: /home/lmalveau/DocPrune-runtime-02385b3 (detached, clean)
+runtime commit: 02385b3a6fc939f23a8632a7ce58b4cac8bff263
 control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -33,6 +52,8 @@ Poppler package SHA-256: a5737f253f6301dac019dc9b9cfaefae40d1ee6f846410d43eed56f
 pdfinfo SHA-256: 5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae
 pdftoppm SHA-256: 1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33
 corpus: /scratch/lmalveau/docprune/datasets/m3docvqa
+HF cache: /scratch/lmalveau/hf_cache
+Hugging Face Hub cache: /scratch/lmalveau/hf_cache/hub
 factory: docprune.m3docvqa_factory:build_workload
 ```
 
@@ -59,7 +80,8 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1
+export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
 mkdir "$ATTEMPT_ROOT"
@@ -99,8 +121,8 @@ config generator require a strictly empty upstream status. All jobs set
 `PYTHONDONTWRITEBYTECODE=1` so the dedicated checkout remains clean.
 
 ```bash
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-a8d8ca6
-export EXPECTED_COMMIT=a8d8ca6e32178a2468d729670d7219e3177a9c8b
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-02385b3
+export EXPECTED_COMMIT=02385b3a6fc939f23a8632a7ce58b4cac8bff263
 export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -158,7 +180,7 @@ SHA-256.
 ## Resources and artifacts
 
 Every job requests one A100 80 GB, 8 CPUs, and 128 GB RAM on `public`/`public`.
-Use `/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/` for the fresh
+Use `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` for the fresh
 attempt; never reuse diagnostic attempt-2 or any historical root.
 
 ```text
@@ -174,6 +196,11 @@ $ATTEMPT_ROOT/eval/{all-kept,docprune}/top{1,2,4}/run/
 
 The six index roots are distinct because BTP is page-count-specific. A
 manifest from one mode/page count is never reused for another.
+The canonical `_load_index_manifest`/`IndexManifest.validate_files` path is
+the authority for substantive page-offset, complete-sequence, raster-map, and
+completion-ledger validation; the wrappers only perform the identity and
+schema-5 preflight around that loader. The legacy no-raster production branch
+remains deferred and is not a valid schema-5 evaluation input.
 
 ## Run-config construction
 
@@ -195,7 +222,7 @@ corpus identity shown in the Corpus section:
 {
   "mode": "all-kept",
   "page_count": 1,
-  "runtime_commit": "a8d8ca6e32178a2468d729670d7219e3177a9c8b",
+  "runtime_commit": "02385b3a6fc939f23a8632a7ce58b4cac8bff263",
   "m3docrag_commit": "29e6ac2294d6b87075a1d45b8a8df175b214248a",
   "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
   "qwen_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
@@ -236,8 +263,13 @@ model resource/revision variables. The launchers are:
    all-kept equivalence and exact span/grid/raster checks, compares indexed
    fixed-sample retrieval order with pinned upstream, verifies one-time query
    encoding/no QA-time ColPali, runs all six deterministic dry-run selectors,
-   repeated all-kept fixed answers, and positive DocPrune traces plus
-   encoder/decoder/page-load/total timing at pages 1/2/4. It
+   repeated all-kept fixed answers, measured ColPali processor/model counters
+   (one actual query encode per fixed QID and no counter change during QA), and
+   positive DocPrune traces plus
+   encoder/decoder/page-load/total timing at pages 1/2/4. Its small
+   gate-local fixture is persisted by the real schema-5 `build_index` path,
+   then loaded by the canonical schema-5 loader/retriever; it is explicitly
+   fixture-marked and never accepted as a production evaluation index. It
    writes/authenticates `gate.json`, produces the six final configs, and only
    then reports `status=passed`.
 
@@ -279,13 +311,15 @@ diagnostic attempt-2 root.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-a8d8ca6
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-02385b3
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
-export EXPECTED_COMMIT=a8d8ca6e32178a2468d729670d7219e3177a9c8b
+export EXPECTED_COMMIT=02385b3a6fc939f23a8632a7ce58b4cac8bff263
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
+export HF_HOME=/scratch/lmalveau/hf_cache
+export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
 export DOCPRUNE_FACTORY=docprune.m3docvqa_factory:build_workload
 export QWEN_MODEL=Qwen/Qwen2-VL-7B-Instruct
 export QWEN_REVISION=eed13092ef92e448dd6875b2a00151bd3f7db0ac
@@ -293,7 +327,8 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1
+export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
 export GATE_ROOT="$ATTEMPT_ROOT/gate"
@@ -311,6 +346,8 @@ PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src" "$ENV_DIR/bin/pytho
   --corpus-root "$CORPUS_ROOT" \
   --processor-contract "$GATE_ROOT/processor-contract.json" \
   --m3docrag-root "$M3DOCRAG_DIR" \
+  --runtime-commit "$EXPECTED_COMMIT" \
+  --runtime-dir "$RUNTIME_DIR" \
   --output "$RUN_CONFIG"
 
 GATE_JOB="$(sbatch --parsable \
@@ -401,13 +438,13 @@ The three `benchmark-3755812` rows above are failed overall attempts: none is a 
 DocPrune indexes do not make the attempts successful. Both `benchmark-6c19bfc`
 rows are historical and cannot be resumed or promoted; in particular,
 attempt-2's schema-4 indexes are not valid corrected artifacts. The next active
-root is the fresh `/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/`.
+root is the fresh `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/`.
 
 These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-d5cefb3/`,
 `/scratch/lmalveau/docprune/benchmark-bd16c04/`, and
 `/scratch/lmalveau/docprune/benchmark-6c19bfc/`; all new benchmark work uses
-`/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/` and the runtime
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` and the runtime
 commit pinned at the top of this handoff.
 
 On preemption or time limit, use `--resume` only when the run/index manifest,
@@ -465,5 +502,5 @@ exact commits and strictly clean; and the control checkout contains only
 reviewed source/docs/launchers.
 
 The runtime remains pinned separately to
-`a8d8ca6e32178a2468d729670d7219e3177a9c8b`; the reviewed control commit is
+`02385b3a6fc939f23a8632a7ce58b4cac8bff263`; the reviewed control commit is
 always the full SHA sealed in each attempt's `control.json`.

@@ -20,6 +20,21 @@ pinned in
 No benchmark result is claimed until its gate, index manifests, and 2,441-row
 validation report pass.
 
+The six-cell result scope is DocPrune versus all-kept only (top-1/top-2/top-4);
+FastV, DivPrune, VTW, and the full paper Table 2 are out of scope. The active
+reconstruction corpus is intentionally immutable at 2,441 questions, 3,366
+PDFs, and 44,638 pages, even though the paper reports 2,441 / 3,368 / 41,005.
+
+The current Phase-A seal uses `/home/lmalveau/mamba-envs/docprune-sol`, PDF
+tools from `/home/lmalveau/mamba-envs/m3docvqa-acquisition`, the acquired
+corpus at `/scratch/lmalveau/docprune/datasets/m3docvqa`, and runtime
+`02385b3a6fc939f23a8632a7ce58b4cac8bff263` from
+`/home/lmalveau/DocPrune-runtime-02385b3`. Its immutable attempt root is
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1`; control identity is
+sealed in that root's `control.json`. Attempt-2 remains diagnostic-only:
+evaluation `61830411` was canceled before work and indexes `61830405`–`61830410`
+are schema-4 artifacts that cannot be promoted.
+
 ## Implemented method
 
 1. BTP converts each resized page to grayscale, finds the page-wide modal
@@ -100,28 +115,28 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/run-configs/docprune-top4.json \
-  --index-manifest /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
+  --run-config /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/run-configs/docprune-top4.json \
+  --index-manifest /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
+  --run /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \
-  --results /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run/results.jsonl
+  --results /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run/results.jsonl
 
 docprune-m3docvqa compare-runs \
   --corpus-root /scratch/lmalveau/docprune/datasets/m3docvqa \
-  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top1/run \
-  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top2/run \
-  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/all-kept/top4/run \
-  --docprune-top1 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top1/run \
-  --docprune-top2 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top2/run \
-  --docprune-top4 /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/eval/docprune/top4/run \
-  --json-output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/comparison/six-cell.json \
-  --markdown-output /scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/comparison/six-cell.md
+  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top1/run \
+  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top2/run \
+  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top4/run \
+  --docprune-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top1/run \
+  --docprune-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top2/run \
+  --docprune-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
+  --json-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/comparison/six-cell.json \
+  --markdown-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/comparison/six-cell.md
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in

@@ -22,6 +22,30 @@ prevents local choices from being misreported as author-provided details.
 | Measurement identity | Paper does not define an executable identity | Record GPU/compute capability, software, precision, FlashAttention-2, allocator, timer boundaries, warmup, and sample identity; classify A100 as reconstruction | Paired six-cell validator requires exact shared identity |
 | FLOP accounting | TFLOPs reported; profiler definition absent | Omit TFLOPs unless profiling is explicitly enabled with one valid definition and positive FLOPs in every cell | Comparator fails closed on partial, mixed, nonfinite, or nonpositive profiler data |
 
+## Explicit reconstruction policies
+
+CTP uses an arithmetic mean over attention heads, then scales the raw mean by
+the current visual-token count. Gate evidence records both semantics as
+`mean_head_attention_scores_before_visual_count_scaling` and
+`raw_mean_times_current_visual_count`, respectively, and records the last
+prompt token during prefill as the timing/query boundary. QTP uses BT.601
+rounded-uint8 grayscale, Gaussian sigma 1.0 with replicate padding, and
+any-member-keeps 2-by-2 groups. Sparse raster maps retain `-1` holes for
+nonvisual rows; only verified visual rows are eligible for QTP and pruning.
+These are reconstruction choices, not paper claims; the canonical schema-5
+loader performs substantive page-offset and ledger validation.
+
+The acquired reconstruction corpus validates 2,441 questions, 3,366 PDFs, and
+44,638 pages. The paper reports 2,441 / 3,368 / 41,005; the discrepancy is
+documented rather than corrected in the corpus, so this benchmark must not be
+described as paper-identical data.
+
+The six-cell comparison is deliberately only DocPrune versus all-kept at
+top-1, top-2, and top-4 retrieval. It is not a reproduction of FastV,
+DivPrune, VTW, or the paper's full Table 2. ACC is likewise not added: the
+active source metric definitions and comparison contract unambiguously expose
+EM, F1, modality F1, and hop F1, but no unambiguous paper ACC definition.
+
 ## Hard stops
 
 - Do not silently retain or remove ColPali tokens to make a shape fit.
@@ -39,5 +63,15 @@ evaluation array `61830411` was canceled before evaluation work, while six
 schema-4 indexes (`61830405`–`61830410`) completed with `0:0` but are invalid
 for the schema-5 contract. Their scratch artifacts are preserved and must not
 be modified or deleted. The fresh active root is
-`/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/` under the immutable
-runtime checkout `/home/lmalveau/DocPrune-runtime-a8d8ca6`.
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` under the immutable
+runtime checkout `/home/lmalveau/DocPrune-runtime-02385b3`.
+
+The corrected Phase-A runtime is
+`02385b3a6fc939f23a8632a7ce58b4cac8bff263`; the control identity is sealed in
+the fresh attempt's `control.json`. The gate now persists a fixture-marked
+schema-5 mini-index through the production indexing path and authenticates it
+through the canonical loader. Retrieval returns ordered `(doc_id,page_index)`
+rows, and QA image loading/features are asserted against those exact rows.
+Actual ColPali processor/model counters prove one query encode per fixed QID
+and no QA-time calls. The legacy no-raster production branch remains deferred;
+schema-5 production cannot enter it.
