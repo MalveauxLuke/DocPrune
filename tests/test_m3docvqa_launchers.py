@@ -522,6 +522,28 @@ def test_handoff_documents_pinned_upstream_checkout_contract() -> None:
     assert "only the explicitly permitted untracked Python" not in text
 
 
+def test_handoff_secret_scan_is_precise_and_excludes_normal_token_names() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    scan_line = next(line for line in text.splitlines() if "git ls-files | rg -i" in line)
+    assert "token|secret|password|credential" in scan_line
+    assert ".*(token|secret|password|credential)" not in scan_line
+    pattern = r"(^|/)(\.env(\..*)?|token|secret|password|credential)(\.[^/]*)?$"
+    tracked = subprocess.run(["git", "ls-files"], check=True, capture_output=True, text=True).stdout
+    result = subprocess.run(["rg", "-i", pattern], input=tracked, check=False, capture_output=True, text=True)
+    assert result.returncode == 1
+    representative = "x/.env\nx/token.txt\nx/secret\nx/password.json\nx/credential\n"
+    result = subprocess.run(["rg", "-i", pattern], input=representative, check=False, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert set(result.stdout.splitlines()) == set(representative.splitlines())
+
+
+def test_handoff_clean_smoke_uses_real_git_checkout() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    assert 'git clone --quiet --no-local "$PROJECT_DIR" "$SMOKE_ROOT"' in text
+    assert 'git archive HEAD | tar -x -C "$SMOKE_ROOT"' not in text
+    assert 'git -C "$SMOKE_ROOT" status --porcelain --untracked-files=all' in text
+
+
 def test_submission_does_not_precreate_gate_or_run_final_generator() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
     submission = text.split("## Exact Slurm submission commands", 1)[1].split(

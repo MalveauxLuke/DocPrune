@@ -480,7 +480,7 @@ env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/d
 env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q tests/test_cli.py -k dry_run
 git diff --check
 test -z "$(git ls-files | rg 'DATASET_REVISION|(^|/)(weights?|checkpoints?|.*\\.(safetensors|bin|pt|ckpt|gguf|onnx|npz|npy|faiss|parquet|arrow|sqlite|db))$' || true)"
-test -z "$(git ls-files | rg -i '(^|/)(\\.env|.*(token|secret|password|credential).*)$' || true)"
+test -z "$(git ls-files | rg -i '(^|/)(\\.env(\\..*)?|token|secret|password|credential)(\\.[^/]*)?$' || true)"
 env PYTHONPATH=/home/lmalveau/DocPrune-benchmark/src /home/lmalveau/mamba-envs/docprune-sol/bin/python - <<'PY'
 from pathlib import Path
 import re
@@ -494,7 +494,7 @@ for path in Path("docs").rglob("*.md"):
             raise SystemExit(f"broken Markdown link: {path}: {link}")
 PY
 SMOKE_ROOT="$(mktemp -d /tmp/docprune-clean-checkout.XXXXXX)"
-git archive HEAD | tar -x -C "$SMOKE_ROOT"
+git clone --quiet --no-local "$PROJECT_DIR" "$SMOKE_ROOT"
 test -z "$(git -C "$SMOKE_ROOT" status --porcelain --untracked-files=all)"
 env PYTHONPATH="$SMOKE_ROOT/src" /home/lmalveau/mamba-envs/docprune-sol/bin/python -m pytest -q "$SMOKE_ROOT/tests/test_m3docvqa_launchers.py"
 rm -rf "$SMOKE_ROOT"
