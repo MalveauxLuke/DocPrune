@@ -26,7 +26,7 @@ evaluation work, and six schema-4 indexes (`61830405`–`61830410`) completed
 with `0:0` but cannot be promoted to the corrected schema-5 benchmark. Their
 scratch artifacts remain preserved and must not be modified, deleted, or
 reported. The active root is the fresh
-`benchmark-02385b3/attempt-1`; submit only from the clean control checkout
+`benchmark-02385b3/attempt-2`; submit only from the clean control checkout
 after the local checks at the end of this document pass.
 
 The pre-execution seals `a8d8ca6` (runtime) and `6228d06` (control/docs) are
@@ -35,6 +35,14 @@ control revision. No Slurm job used either superseded seal. The corrected
 generators now require an externally supplied runtime SHA and clean checkout,
 verify that SHA against `git rev-parse HEAD`, and serialize the verified value;
 they never self-reference a commit that contains the generator.
+
+Scheduling-only attempt-1 (`61883512` gate, `61883881`–`61883886` indexes,
+`61883887` evaluation, and `61883888` comparator) was canceled before any job
+started; all had elapsed time `00:00:00` at `2026-08-21T13:17:23`. Preserve it
+as immutable scheduling history and do not reuse its root.
+Non-submitting HTC request probes accepted the exact gate (2-hour) and index
+(4-hour) requests with estimated start `2026-08-21T13:36:12` on `scg010`;
+these probes did not submit benchmark work.
 
 ## Immutable sources
 
@@ -80,7 +88,7 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2
 export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
@@ -183,9 +191,11 @@ SHA-256.
 
 ## Resources and artifacts
 
-Every job requests one A100 80 GB, 8 CPUs, and 128 GB RAM on `public`/`public`.
-Use `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` for the fresh
-attempt; never reuse diagnostic attempt-2 or any historical root.
+Every GPU job requests one A100 80 GB, 8 CPUs, and 128 GB RAM. HTC is used for
+the gate/index scheduling requests and public is retained for the measured
+evaluation array; scheduling partition is not measurement hardware identity.
+Use `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` for the fresh
+attempt; never reuse diagnostic attempt-2 artifacts or any historical root.
 
 ```text
 $ATTEMPT_ROOT/inputs/gate-top1.json
@@ -310,8 +320,8 @@ This block supplies every launcher variable and directs logs to an absolute
 artifact directory outside the control checkout. `--export=ALL` carries the
 explicitly exported values into each job; comma-separated sample IDs remain
 safe because they are exported through the environment rather than embedded in
-the Slurm export list. Use the fresh `attempt-1` root and never reuse the
-diagnostic attempt-2 root.
+the Slurm export list. Use the fresh `attempt-2` root and never reuse the
+scheduling-only attempt-1 root or historical diagnostic attempt-2 artifacts.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
@@ -331,7 +341,7 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2
 export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
@@ -355,6 +365,8 @@ PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src" "$ENV_DIR/bin/pytho
   --output "$RUN_CONFIG"
 
 GATE_JOB="$(sbatch --parsable \
+  --partition=htc --time=02:00:00 \
+  --gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G \
   --chdir="$SLURM_LOG_DIR" \
   --output="$SLURM_LOG_DIR/gate-%j.out" \
   --error="$SLURM_LOG_DIR/gate-%j.err" \
@@ -370,6 +382,8 @@ for MODE in all-kept docprune; do
     export RUN_CONFIG="$RUN_CONFIG_ROOT/${MODE}-top${PAGES}.json"
     export INDEX_ROOT="$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}"
     INDEX_JOB_IDS+=("$(sbatch --parsable \
+      --partition=htc --time=04:00:00 \
+      --gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G \
       --dependency="afterok:$GATE_JOB" \
       --chdir="$SLURM_LOG_DIR" \
       --output="$SLURM_LOG_DIR/index-${MODE}-top${PAGES}-%j.out" \
@@ -382,6 +396,8 @@ done
 export ALL_KEPT_INDEX_ROOT DOCPRUNE_INDEX_ROOT ATTEMPT_ROOT RUN_CONFIG_ROOT
 INDEX_DEPENDENCY="$(IFS=:; echo "${INDEX_JOB_IDS[*]}")"
 EVAL_JOB="$(sbatch --parsable \
+  --partition=public --time=24:00:00 \
+  --gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G \
   --dependency="afterok:$GATE_JOB:$INDEX_DEPENDENCY" \
   --chdir="$SLURM_LOG_DIR" \
   --output="$SLURM_LOG_DIR/eval-%A_%a.out" \
@@ -389,6 +405,7 @@ EVAL_JOB="$(sbatch --parsable \
   --export=ALL \
   "$PROJECT_DIR/examples/sbatch/14_docprune_m3docvqa_eval_array.sbatch")"
 COMPARE_JOB="$(sbatch --parsable \
+  --partition=htc --time=01:00:00 --cpus-per-task=8 --mem=128G \
   --dependency="afterok:$EVAL_JOB" \
   --chdir="$SLURM_LOG_DIR" \
   --output="$SLURM_LOG_DIR/compare-%j.out" \
@@ -437,18 +454,19 @@ not rewrite, delete, resume, or describe these artifacts as successful:
 | `benchmark-3755812/attempt-3` | `61792435` | gate `61792435`; all-kept indexes `61792436`-`61792438`; DocPrune indexes `61792439`-`61792441`; eval `61792442` | gate passed; all-kept indexes failed identically at final manifest mode/path validation; DocPrune indexes passed; eval canceled |
 | `benchmark-6c19bfc/attempt-1` | `61820163` | gate `61820163`; indexes `61820164`-`61820169`; eval `61820170` | gate and all indexes passed; eval tasks 0-2 failed with `/var/spool/slurmd/job*/slurm_script: line 78: /var/spool/slurmd/job*/11_docprune_m3docvqa.sbatch: No such file or directory` before evaluation work; tasks 3-5 were canceled; no eval artifacts or results exist |
 | `benchmark-6c19bfc/attempt-2` | `61830404` | indexes `61830405`-`61830410`; eval `61830411` | six schema-4 indexes completed `0:0` but are invalid under schema 5; evaluation was canceled before work; diagnostic-only and cannot be promoted |
+| `benchmark-02385b3/attempt-1` | `61883512` | gate `61883512`; indexes `61883881`-`61883886`; eval `61883887`; compare `61883888` | scheduling-only HTC/public graph canceled before any job started; all elapsed `00:00:00` at `2026-08-21T13:17:23`; preserve unchanged |
 
 The three `benchmark-3755812` rows above are failed overall attempts: none is a complete benchmark result or resumable active attempt. Their passed gates or
 DocPrune indexes do not make the attempts successful. Both `benchmark-6c19bfc`
 rows are historical and cannot be resumed or promoted; in particular,
 attempt-2's schema-4 indexes are not valid corrected artifacts. The next active
-root is the fresh `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/`.
+root is the fresh `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/`.
 
 These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-d5cefb3/`,
 `/scratch/lmalveau/docprune/benchmark-bd16c04/`, and
 `/scratch/lmalveau/docprune/benchmark-6c19bfc/`; all new benchmark work uses
-`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` and the runtime
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` and the runtime
 commit pinned at the top of this handoff.
 
 On preemption or time limit, use `--resume` only when the run/index manifest,

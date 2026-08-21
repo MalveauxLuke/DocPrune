@@ -330,7 +330,28 @@ def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() 
     assert "15_docprune_m3docvqa_compare.sbatch" in text
     assert "afterok:$EVAL_JOB" in text
     assert f"/home/lmalveau/DocPrune-runtime-{runtime7}" in text
-    assert f"/scratch/lmalveau/docprune/benchmark-{runtime7}/attempt-1" in text
+    assert f"/scratch/lmalveau/docprune/benchmark-{runtime7}/attempt-2" in text
+
+
+def test_handoff_hybrid_scheduling_overrides_preserve_hardware_contract() -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    submission = text.split("## Exact Slurm submission commands", 1)[1].split(
+        "## Pass conditions", 1
+    )[0]
+    assert "--partition=htc" in submission
+    assert "--time=02:00:00" in submission
+    assert "--time=04:00:00" in submission
+    assert "--partition=public" in submission
+    assert "--time=24:00:00" in submission
+    assert "--time=01:00:00" in submission
+    assert submission.count("--gres=gpu:a100:1") == 3
+    for launcher in ("12_docprune_m3docvqa_gate.sbatch", "13_docprune_m3docvqa_index.sbatch"):
+        assert launcher in submission
+    assert "--constraint=a100_80" in text
+    assert "--cpus-per-task=8" in text
+    assert "--mem=128G" in text
+    assert "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2" in text
+    assert "61883512" in text and "61883888" in text
 
 
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
@@ -351,7 +372,7 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
         r"^runtime commit: ([0-9a-f]{40})$", HANDOFF.read_text(encoding="utf-8"), flags=re.MULTILINE
     )
     assert runtime_sha is not None
-    active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-1"
+    active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-2"
     assert active_root in text
     assert "benchmark-6c19bfc/attempt-2" not in text
     command_lines = tuple(

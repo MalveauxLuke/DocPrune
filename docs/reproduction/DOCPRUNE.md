@@ -30,10 +30,12 @@ tools from `/home/lmalveau/mamba-envs/m3docvqa-acquisition`, the acquired
 corpus at `/scratch/lmalveau/docprune/datasets/m3docvqa`, and runtime
 `02385b3a6fc939f23a8632a7ce58b4cac8bff263` from
 `/home/lmalveau/DocPrune-runtime-02385b3`. Its immutable attempt root is
-`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1`; control identity is
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2`; control identity is
 sealed in that root's `control.json`. Attempt-2 remains diagnostic-only:
 evaluation `61830411` was canceled before work and indexes `61830405`–`61830410`
-are schema-4 artifacts that cannot be promoted.
+are schema-4 artifacts that cannot be promoted. Scheduling-only attempt-1
+(61883512, 61883881–61883886, 61883887, 61883888) was canceled before work
+and remains immutable history.
 
 ## Implemented method
 
@@ -115,28 +117,28 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/run-configs/docprune-top4.json \
-  --index-manifest /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
+  --run-config /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/run-configs/docprune-top4.json \
+  --index-manifest /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
+  --run /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \
-  --results /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run/results.jsonl
+  --results /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top4/run/results.jsonl
 
 docprune-m3docvqa compare-runs \
   --corpus-root /scratch/lmalveau/docprune/datasets/m3docvqa \
-  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top1/run \
-  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top2/run \
-  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/all-kept/top4/run \
-  --docprune-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top1/run \
-  --docprune-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top2/run \
-  --docprune-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/eval/docprune/top4/run \
-  --json-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/comparison/six-cell.json \
-  --markdown-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/comparison/six-cell.md
+  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/all-kept/top1/run \
+  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/all-kept/top2/run \
+  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/all-kept/top4/run \
+  --docprune-top1 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top1/run \
+  --docprune-top2 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top2/run \
+  --docprune-top4 /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/eval/docprune/top4/run \
+  --json-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/comparison/six-cell.json \
+  --markdown-output /scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/comparison/six-cell.md
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in
