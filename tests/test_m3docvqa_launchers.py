@@ -380,7 +380,84 @@ def test_upstream_checkouts_require_strict_clean_status() -> None:
     assert "non-bytecode" not in generator
 
 
-def test_handoff_creates_fresh_dedicated_upstream_worktree() -> None:
+def _upstream_prepare_script(source: Path, destination: Path, commit: str) -> str:
+    text = HANDOFF.read_text(encoding="utf-8")
+    start = text.index("export M3DOCRAG_SOURCE=")
+    block = text[start : text.index("```", start)]
+    runtime_checks = (
+        'if [[ ! -e "$RUNTIME_DIR" ]]; then\n'
+        '  git -C "$PROJECT_DIR" worktree add --detach "$RUNTIME_DIR" "$EXPECTED_COMMIT"\n'
+        'fi\n'
+        'test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"\n'
+        'test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"\n'
+    )
+    block = block.replace(runtime_checks, "").removesuffix(")\n")
+    return (
+        "set -e\n"
+        + block.replace("/home/lmalveau/src/m3docrag-runtime-29e6ac2", str(source))
+        .replace("/home/lmalveau/src/m3docrag-benchmark-29e6ac2", str(destination))
+        .replace("29e6ac2294d6b87075a1d45b8a8df175b214248a", commit)
+    )
+
+
+def _upstream_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    subprocess.run(["git", "init", "--quiet", str(source)], check=True)
+    subprocess.run(["git", "-C", str(source), "config", "user.email", "test@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(source), "config", "user.name", "Test"], check=True)
+    (source / "README").write_text("pinned\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m", "pinned"], check=True)
+    commit = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    return source, destination, commit
+
+
+def test_handoff_upstream_prep_creates_absent_destination(tmp_path: Path) -> None:
+    source, destination, commit = _upstream_fixture(tmp_path)
+    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
+    assert result.returncode == 0
+    assert destination.is_dir()
+    assert not subprocess.run(
+        ["git", "-C", str(destination), "status", "--porcelain", "--untracked-files=all"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_handoff_upstream_prep_reuses_exact_clean_destination(tmp_path: Path) -> None:
+    source, destination, commit = _upstream_fixture(tmp_path)
+    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
+    before = (destination / "README").read_text(encoding="utf-8")
+    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
+    assert result.returncode == 0
+    assert (destination / "README").read_text(encoding="utf-8") == before
+
+
+def test_handoff_upstream_prep_rejects_wrong_sha_without_mutation(tmp_path: Path) -> None:
+    source, destination, commit = _upstream_fixture(tmp_path)
+    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
+    before = (destination / "README").read_text(encoding="utf-8")
+    wrong = "0" * 40
+    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, wrong)], check=False)
+    assert result.returncode != 0
+    assert (destination / "README").read_text(encoding="utf-8") == before
+
+
+def test_handoff_upstream_prep_rejects_dirty_destination_without_mutation(tmp_path: Path) -> None:
+    source, destination, commit = _upstream_fixture(tmp_path)
+    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
+    marker = destination / "untracked.txt"
+    marker.write_text("preserve\n", encoding="utf-8")
+    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
+    assert result.returncode != 0
+    assert marker.read_text(encoding="utf-8") == "preserve\n"
+
+
+def test_handoff_documents_pinned_upstream_checkout_contract() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
     assert "M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2" in text
     assert "M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2" in text

@@ -121,6 +121,8 @@ config generator require a strictly empty upstream status. All jobs set
 `PYTHONDONTWRITEBYTECODE=1` so the dedicated checkout remains clean.
 
 ```bash
+(
+set -e
 export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-02385b3
 export EXPECTED_COMMIT=02385b3a6fc939f23a8632a7ce58b4cac8bff263
 export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
@@ -138,6 +140,7 @@ if [[ ! -e "$M3DOCRAG_DIR" ]]; then
 fi
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+)
 ```
 
 ## Corpus identity
