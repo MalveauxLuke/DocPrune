@@ -67,6 +67,44 @@ def test_validate_run_prints_report_and_returns_nonzero_for_invalid_run(tmp_path
     assert json.loads(capsys.readouterr().out)["valid"] is False
 
 
+def test_compare_writes_signed_json_and_markdown_without_overwrite(tmp_path, capsys) -> None:
+    import importlib.util
+
+    fixture_path = Path(__file__).with_name("test_comparison.py")
+    spec = importlib.util.spec_from_file_location("comparison_fixture", fixture_path)
+    assert spec is not None and spec.loader is not None
+    fixture = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixture)
+
+    corpus_root, _, runs = fixture._matrix(tmp_path)
+    json_output = tmp_path / "comparison.json"
+    markdown_output = tmp_path / "comparison.md"
+    argv = [
+        "compare",
+        "--corpus-root",
+        str(corpus_root),
+        "--json-output",
+        str(json_output),
+        "--markdown-output",
+        str(markdown_output),
+        "--expected-questions",
+        "2",
+        "--allow-fixture",
+    ]
+    for mode in ("all-kept", "docprune"):
+        for pages in (1, 2, 4):
+            argv.extend([f"--{mode}-{pages}", str(runs[(mode, pages)])])
+
+    assert main(argv) == 0
+    payload = json.loads(json_output.read_text())
+    assert len(payload["cells"]) == 6
+    assert len(payload["deltas"]) == 3
+    assert "A100" in markdown_output.read_text()
+    capsys.readouterr()
+    assert main(argv) == 2
+    assert "already exists" in capsys.readouterr().err
+
+
 def test_evaluate_dry_run_refuses_existing_output(tmp_path, capsys) -> None:
     output = tmp_path / "run"
     output.mkdir()

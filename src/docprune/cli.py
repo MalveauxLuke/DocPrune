@@ -313,6 +313,34 @@ def _parser() -> argparse.ArgumentParser:
     validate_run.add_argument("--run", type=Path, required=True)
     validate_run.add_argument("--expected-questions", type=int, default=2441)
 
+    compare = subparsers.add_parser(
+        "compare", aliases=("compare-runs",), help="validate and report the six-cell benchmark matrix"
+    )
+    compare.add_argument("--corpus-root", type=Path, required=True)
+    for mode in ("all-kept", "docprune"):
+        for pages in (1, 2, 4):
+            compare.add_argument(
+                f"--{mode}-{pages}",
+                f"--{mode}-top-{pages}",
+                f"--{mode}-top{pages}",
+                dest=f"{mode.replace('-', '_')}_{pages}",
+                type=Path,
+                required=True,
+            )
+    compare.add_argument(
+        "--json-output", "--output-json", "--json", dest="json_output", type=Path, required=True
+    )
+    compare.add_argument(
+        "--markdown-output",
+        "--output-markdown",
+        "--markdown",
+        dest="markdown_output",
+        type=Path,
+        required=True,
+    )
+    compare.add_argument("--expected-questions", type=int, default=2441)
+    compare.add_argument("--allow-fixture", action="store_true")
+
     probe = subparsers.add_parser(
         "probe-processors", help="record the pinned Qwen and ColPali processor contract"
     )
@@ -1018,6 +1046,24 @@ def main(argv: list[str] | None = None) -> int:
             report = validate_benchmark_run(args.run, args.expected_questions)
             print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
             return 0 if report.valid else 2
+        if args.command in {"compare", "compare-runs"}:
+            from docprune.comparison import write_comparison_report
+
+            runs = {
+                (mode, pages): getattr(args, f"{mode.replace('-', '_')}_{pages}")
+                for mode in ("all-kept", "docprune")
+                for pages in (1, 2, 4)
+            }
+            report = write_comparison_report(
+                runs,
+                corpus_root=args.corpus_root,
+                json_path=args.json_output,
+                markdown_path=args.markdown_output,
+                expected_questions=args.expected_questions,
+                allow_fixture=args.allow_fixture,
+            )
+            print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+            return 0
         if args.command == "probe-processors":
             from docprune import processor_probe
 
