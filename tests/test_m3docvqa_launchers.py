@@ -388,6 +388,13 @@ def test_handoff_submission_graph_executes_against_fake_sbatch(tmp_path: Path) -
             break
     active_root = "/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2"
     assert f"export ATTEMPT_ROOT={active_root}" in export_lines
+    assert 'export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"' in export_lines
+    assert 'export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"' in export_lines
+    assert 'export GATE_ROOT="$ATTEMPT_ROOT/gate"' in export_lines
+    assert 'export INPUT_ROOT="$ATTEMPT_ROOT/inputs"' in export_lines
+    assert 'export RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"' in export_lines
+    assert 'export COMPARISON_JSON="$ATTEMPT_ROOT/comparison/six-cell.json"' in export_lines
+    assert 'export COMPARISON_MARKDOWN="$ATTEMPT_ROOT/comparison/six-cell.md"' in export_lines
     control_record = tmp_path / "control.json"
     control_record.write_text(
         json.dumps({"control_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()}),
@@ -405,7 +412,7 @@ def test_handoff_submission_graph_executes_against_fake_sbatch(tmp_path: Path) -
 SBATCH_LOG={log}
 ID_FILE={tmp_path / "next-id"}
 printf '1\\n' > "$ID_FILE"
-sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; printf 'MODE=%s PAGES=%s RUN_CONFIG=%s INDEX_ROOT=%s RUN_CONFIG_ROOT=%s ALL_ROOT=%s DOC_ROOT=%s COMPARISON_JSON=%s COMPARISON_MARKDOWN=%s ATTEMPT_ROOT=%s CONTROL_COMMIT=%s ARGS=%s\\n' "$MODE" "$PAGES" "$RUN_CONFIG" "$INDEX_ROOT" "$RUN_CONFIG_ROOT" "$ALL_KEPT_INDEX_ROOT" "$DOCPRUNE_INDEX_ROOT" "$COMPARISON_JSON" "$COMPARISON_MARKDOWN" "$ATTEMPT_ROOT" "$CONTROL_COMMIT" "$*" >> "$SBATCH_LOG"; printf 'job%s\\n' "$n"; }}
+sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; printf 'MODE=%s PAGES=%s RUN_CONFIG=%s INDEX_ROOT=%s ATTEMPT_ROOT=%s EXPECTED_ATTEMPT_ROOT=%s CONTROL_RECORD=%s GATE_ROOT=%s INPUT_ROOT=%s RUN_CONFIG_ROOT=%s ALL_KEPT_INDEX_ROOT=%s DOCPRUNE_INDEX_ROOT=%s COMPARISON_JSON=%s COMPARISON_MARKDOWN=%s CONTROL_COMMIT=%s ARGS=%s\\n' "$MODE" "$PAGES" "$RUN_CONFIG" "$INDEX_ROOT" "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" "$CONTROL_RECORD" "$GATE_ROOT" "$INPUT_ROOT" "$RUN_CONFIG_ROOT" "$ALL_KEPT_INDEX_ROOT" "$DOCPRUNE_INDEX_ROOT" "$COMPARISON_JSON" "$COMPARISON_MARKDOWN" "$CONTROL_COMMIT" "$*" >> "$SBATCH_LOG"; printf 'job%s\\n' "$n"; }}
 {launch}
 '''
         result = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
@@ -415,84 +422,202 @@ sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; print
     assert result.returncode == 0, result.stderr
     assert len(calls) == 9
     current_control = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    assert all(f"CONTROL_COMMIT={current_control}" in call for call in calls)
-    parsed_calls = [shlex.split(call.split("ARGS=", 1)[1]) for call in calls]
-    assert all([arg for arg in args if arg.startswith("--export=")] == ["--export=ALL"] for args in parsed_calls)
-    assert "--partition=htc --time=02:00:00" in calls[0]
-    assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[0]
-    assert [arg for arg in parsed_calls[0] if arg.startswith("--dependency")] == []
-    gate_fields = dict(item.split("=", 1) for item in calls[0].split(" ARGS=", 1)[0].split() if "=" in item)
-    assert gate_fields["RUN_CONFIG"] == f"{active_root}/inputs/gate-top1.json"
-    tuples = set()
-    for index, call in enumerate(calls[1:7], start=1):
-        fields = dict(item.split("=", 1) for item in call.split(" ARGS=", 1)[0].split() if "=" in item)
-        tuples.add((fields["MODE"], fields["PAGES"], fields["RUN_CONFIG"], fields["INDEX_ROOT"]))
-        assert "--partition=htc --time=04:00:00" in call
-        assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in call
-        args = parsed_calls[index]
-        assert [arg for arg in args if arg.startswith("--dependency")] == ["--dependency=afterok:job1"]
-        assert f"ATTEMPT_ROOT={active_root}" in call
-        assert f"RUN_CONFIG={active_root}/run-configs/" in call
-    assert "--partition=public --time=24:00:00" in calls[7]
-    expected_tuples = {
-        (mode, str(page), f"{active_root}/run-configs/{mode}-top{page}.json", f"{active_root}/indexes/{mode}/top{page}")
-        for mode in ("all-kept", "docprune") for page in (1, 2, 4)
-    }
-    assert tuples == expected_tuples
-    assert len(tuples) == 6
-    eval_args = parsed_calls[7]
-    expected_eval_dependency = "--dependency=afterok:job1:job2:job3:job4:job5:job6:job7"
-    assert [arg for arg in eval_args if arg.startswith("--dependency")] == [expected_eval_dependency]
-    assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[7]
-    eval_fields = dict(item.split("=", 1) for item in calls[7].split(" ARGS=", 1)[0].split() if "=" in item)
-    assert eval_fields["RUN_CONFIG_ROOT"] == f"{active_root}/run-configs"
-    assert eval_fields["ALL_ROOT"] == f"{active_root}/indexes/all-kept"
-    assert eval_fields["DOC_ROOT"] == f"{active_root}/indexes/docprune"
-    assert eval_fields["COMPARISON_JSON"] == f"{active_root}/comparison/six-cell.json"
-    assert "--partition=htc --time=01:00:00" in calls[8]
-    compare_args = parsed_calls[8]
-    assert [arg for arg in compare_args if arg.startswith("--dependency")] == ["--dependency=afterok:job8"]
-    assert "--gres=gpu" not in calls[8]
-    compare_fields = dict(item.split("=", 1) for item in calls[8].split(" ARGS=", 1)[0].split() if "=" in item)
-    assert compare_fields["COMPARISON_MARKDOWN"] == f"{active_root}/comparison/six-cell.md"
 
-    def reject_mutated(actual_calls: list[str]) -> None:
-        actual_args = [shlex.split(call.split("ARGS=", 1)[1]) for call in actual_calls]
+    def call_fields(call: str) -> dict[str, str]:
+        metadata = call.split(" ARGS=", 1)[0]
+        return dict(item.split("=", 1) for item in shlex.split(metadata) if "=" in item)
+
+    def option_multimap(args: list[str]) -> dict[str, list[str | None]]:
+        options: dict[str, list[str | None]] = {}
+        for arg in args:
+            if not arg.startswith("--"):
+                continue
+            key, separator, value = arg.partition("=")
+            options.setdefault(key, []).append(value if separator else None)
+        return options
+
+    expected_path_fields = {
+        "ATTEMPT_ROOT": active_root,
+        "EXPECTED_ATTEMPT_ROOT": active_root,
+        "CONTROL_RECORD": str(control_record),
+        "GATE_ROOT": f"{active_root}/gate",
+        "INPUT_ROOT": f"{active_root}/inputs",
+        "RUN_CONFIG_ROOT": f"{active_root}/run-configs",
+        "COMPARISON_JSON": f"{active_root}/comparison/six-cell.json",
+        "COMPARISON_MARKDOWN": f"{active_root}/comparison/six-cell.md",
+    }
+    expected_index_root_fields = {
+        "ALL_KEPT_INDEX_ROOT": f"{active_root}/indexes/all-kept",
+        "DOCPRUNE_INDEX_ROOT": f"{active_root}/indexes/docprune",
+    }
+    resource_keys = {
+        "--partition",
+        "--time",
+        "--gres",
+        "--constraint",
+        "--cpus-per-task",
+        "--mem",
+    }
+    allowed_option_keys = {
+        "--parsable",
+        *resource_keys,
+        "--dependency",
+        "--chdir",
+        "--output",
+        "--error",
+        "--export",
+    }
+    gpu_resources = {
+        "--gres": "gpu:a100:1",
+        "--constraint": "a100_80",
+        "--cpus-per-task": "8",
+        "--mem": "128G",
+    }
+    expected_resources = [
+        {"--partition": "htc", "--time": "02:00:00", **gpu_resources},
+        *[
+            {"--partition": "htc", "--time": "04:00:00", **gpu_resources}
+            for _ in range(6)
+        ],
+        {"--partition": "public", "--time": "24:00:00", **gpu_resources},
+        {"--partition": "htc", "--time": "01:00:00", "--cpus-per-task": "8", "--mem": "128G"},
+    ]
+    expected_dependencies = [
+        None,
+        *["afterok:job1" for _ in range(6)],
+        "afterok:job1:job2:job3:job4:job5:job6:job7",
+        "afterok:job8",
+    ]
+    expected_call_paths = [
+        {"RUN_CONFIG": f"{active_root}/inputs/gate-top1.json"},
+        *[
+            {
+                "RUN_CONFIG": f"{active_root}/run-configs/{mode}-top{page}.json",
+                "INDEX_ROOT": f"{active_root}/indexes/{mode}/top{page}",
+            }
+            for mode in ("all-kept", "docprune")
+            for page in (1, 2, 4)
+        ],
+    ]
+
+    def validate_graph(actual_calls: list[str]) -> None:
         assert len(actual_calls) == 9
-        assert all(
-            [arg for arg in args if arg.startswith("--export=")] == ["--export=ALL"]
-            for args in actual_args
-        )
-        assert all(f"ATTEMPT_ROOT={active_root}" in call for call in actual_calls)
-        assert [arg for arg in actual_args[0] if arg.startswith("--dependency")] == []
-        assert [arg for arg in actual_args[7] if arg.startswith("--dependency")] == [expected_eval_dependency]
-        assert [arg for arg in actual_args[8] if arg.startswith("--dependency")] == ["--dependency=afterok:job8"]
-        mutated = {
-            (dict(item.split("=", 1) for item in call.split(" ARGS=", 1)[0].split() if "=" in item)["MODE"],
-             dict(item.split("=", 1) for item in call.split(" ARGS=", 1)[0].split() if "=" in item)["PAGES"])
+        actual_args = [shlex.split(call.split("ARGS=", 1)[1]) for call in actual_calls]
+        for index, (call, args) in enumerate(zip(actual_calls, actual_args)):
+            fields = call_fields(call)
+            assert fields["CONTROL_COMMIT"] == current_control
+            assert {key: fields[key] for key in expected_path_fields} == expected_path_fields
+            if index >= 7:
+                assert {
+                    key: fields[key] for key in expected_index_root_fields
+                } == expected_index_root_fields
+            options = option_multimap(args)
+            assert set(options) <= allowed_option_keys
+            assert options.get("--export") == ["ALL"]
+            expected_dependency = expected_dependencies[index]
+            assert options.get("--dependency", []) == (
+                [] if expected_dependency is None else [expected_dependency]
+            )
+            expected_resource_map = expected_resources[index]
+            assert {key for key in options if key in resource_keys} == set(expected_resource_map)
+            for key in resource_keys:
+                assert options.get(key, []) == (
+                    [expected_resource_map[key]] if key in expected_resource_map else []
+                )
+            if index < len(expected_call_paths):
+                for key, value in expected_call_paths[index].items():
+                    assert fields[key] == value
+
+        index_tuples = {
+            (
+                call_fields(call)["MODE"],
+                call_fields(call)["PAGES"],
+                call_fields(call)["RUN_CONFIG"],
+                call_fields(call)["INDEX_ROOT"],
+            )
             for call in actual_calls[1:7]
         }
-        assert mutated == {(mode, str(page)) for mode in ("all-kept", "docprune") for page in (1, 2, 4)}
+        assert index_tuples == {
+            (mode, str(page), f"{active_root}/run-configs/{mode}-top{page}.json", f"{active_root}/indexes/{mode}/top{page}")
+            for mode in ("all-kept", "docprune")
+            for page in (1, 2, 4)
+        }
+
+    validate_graph(calls)
 
     wrong_root = [line.replace(active_root, active_root.replace("attempt-2", "attempt-9")) for line in export_lines]
     _, wrong_root_calls = run_variant(wrong_root, snippet)
     with pytest.raises(AssertionError):
-        reject_mutated(wrong_root_calls)
+        validate_graph(wrong_root_calls)
     extra_dependency = snippet.replace(
         '--dependency="afterok:$EVAL_JOB"',
         '--dependency="afterok:$EVAL_JOB" --dependency=afterok:extra',
     )
     _, extra_dependency_calls = run_variant(export_lines, extra_dependency)
     with pytest.raises(AssertionError):
-        reject_mutated(extra_dependency_calls)
+        validate_graph(extra_dependency_calls)
     conflicting_export = snippet.replace("--export=ALL", "--export=ALL --export=FOO=bar", 1)
     _, conflicting_export_calls = run_variant(export_lines, conflicting_export)
     with pytest.raises(AssertionError):
-        reject_mutated(conflicting_export_calls)
+        validate_graph(conflicting_export_calls)
     duplicate_cell = snippet.replace("for PAGES in 1 2 4", "for PAGES in 1 1 4")
     _, duplicate_cell_calls = run_variant(export_lines, duplicate_cell)
     with pytest.raises(AssertionError):
-        reject_mutated(duplicate_cell_calls)
+        validate_graph(duplicate_cell_calls)
+    duplicate_partition = snippet.replace(
+        "--partition=htc --time=02:00:00",
+        "--partition=htc --partition=htc --time=02:00:00",
+        1,
+    )
+    _, duplicate_partition_calls = run_variant(export_lines, duplicate_partition)
+    with pytest.raises(AssertionError):
+        validate_graph(duplicate_partition_calls)
+    conflicting_partition = snippet.replace(
+        "--partition=htc --time=02:00:00",
+        "--partition=htc --partition=public --time=02:00:00",
+        1,
+    )
+    _, conflicting_partition_calls = run_variant(export_lines, conflicting_partition)
+    with pytest.raises(AssertionError):
+        validate_graph(conflicting_partition_calls)
+    duplicate_mem = snippet.replace(
+        "--cpus-per-task=8 --mem=128G",
+        "--cpus-per-task=8 --mem=128G --mem=128G",
+        1,
+    )
+    _, duplicate_mem_calls = run_variant(export_lines, duplicate_mem)
+    with pytest.raises(AssertionError):
+        validate_graph(duplicate_mem_calls)
+    conflicting_gres = snippet.replace(
+        "--gres=gpu:a100:1",
+        "--gres=gpu:a100:1 --gres=gpu:a100:2",
+        1,
+    )
+    _, conflicting_gres_calls = run_variant(export_lines, conflicting_gres)
+    with pytest.raises(AssertionError):
+        validate_graph(conflicting_gres_calls)
+    wrong_expected_attempt_root_exports = [
+        line.replace(
+            'export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"',
+            f"export EXPECTED_ATTEMPT_ROOT={active_root}/wrong-expected",
+        )
+        for line in export_lines
+    ]
+    _, wrong_expected_attempt_root_calls = run_variant(
+        wrong_expected_attempt_root_exports, snippet
+    )
+    with pytest.raises(AssertionError):
+        validate_graph(wrong_expected_attempt_root_calls)
+    wrong_gate_root_exports = [
+        line.replace(
+            'export GATE_ROOT="$ATTEMPT_ROOT/gate"',
+            f"export GATE_ROOT={active_root}/wrong-gate",
+        )
+        for line in export_lines
+    ]
+    _, wrong_gate_root_calls = run_variant(wrong_gate_root_exports, snippet)
+    with pytest.raises(AssertionError):
+        validate_graph(wrong_gate_root_calls)
 
 
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
