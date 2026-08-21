@@ -346,8 +346,8 @@ class ComparisonValidationReport:
 
 def validate_comparison_matrix(
     runs: Mapping[object, object] | Sequence[object],
-    *,
     corpus_root: object,
+    *,
     expected_questions: int = 2441,
     allow_fixture: bool = False,
 ) -> ComparisonValidationReport:
@@ -528,8 +528,8 @@ def comparison_markdown(payload: Mapping[str, object]) -> str:
 
 def write_comparison_report(
     runs: Mapping[object, object] | Sequence[object],
-    *,
     corpus_root: object,
+    *,
     json_path: Path,
     markdown_path: Path,
     expected_questions: int = 2441,
