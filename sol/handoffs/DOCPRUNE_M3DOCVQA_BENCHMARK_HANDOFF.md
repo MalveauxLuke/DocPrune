@@ -21,9 +21,11 @@ CTP semantics, while the canonical schema-5 loader validates page offsets and
 ledger integrity. ACC is outside the active metric contract (EM/F1,
 modality-F1, hop-F1) and is not inferred.
 
-Attempt 2 is diagnostic-only: evaluation array `61830411` was canceled before
-evaluation work, and six schema-4 indexes (`61830405`–`61830410`) completed
-with `0:0` but cannot be promoted to the corrected schema-5 benchmark. Their
+Historical diagnostic attempt-2 at
+`/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/` is not the active
+root: evaluation array `61830411` was canceled before evaluation work, and six
+schema-4 indexes (`61830405`–`61830410`) completed with `0:0` but cannot be
+promoted to the corrected schema-5 benchmark. Their
 scratch artifacts remain preserved and must not be modified, deleted, or
 reported. The active root is the fresh
 `benchmark-02385b3/attempt-2`; submit only from the clean control checkout

@@ -33,7 +33,8 @@ corpus at `/scratch/lmalveau/docprune/datasets/m3docvqa`, and runtime
 `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2`; control identity is
 sealed in that root's `control.json`. Attempt-2 remains diagnostic-only:
 evaluation `61830411` was canceled before work and indexes `61830405`–`61830410`
-are schema-4 artifacts that cannot be promoted. Scheduling-only attempt-1
+are schema-4 artifacts at `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/`
+that cannot be promoted. Scheduling-only attempt-1
 (61883512, 61883881–61883886, 61883887, 61883888) was canceled before work
 and remains immutable history.
 

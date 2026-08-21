@@ -58,12 +58,14 @@ EM, F1, modality F1, and hop F1, but no unambiguous paper ACC definition.
 
 ## Correction attempt history
 
-The prior corrected-control attempt is diagnostic-only and cannot be promoted:
+The prior corrected-control attempt at
+`/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/` is diagnostic-only and
+cannot be promoted:
 evaluation array `61830411` was canceled before evaluation work, while six
 schema-4 indexes (`61830405`–`61830410`) completed with `0:0` but are invalid
 for the schema-5 contract. Their scratch artifacts are preserved and must not
 be modified or deleted. The fresh active root is
-`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-1/` under the immutable
+`/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` under the immutable
 runtime checkout `/home/lmalveau/DocPrune-runtime-02385b3`.
 
 The corrected Phase-A runtime is

@@ -354,6 +354,60 @@ def test_handoff_hybrid_scheduling_overrides_preserve_hardware_contract() -> Non
     assert "61883512" in text and "61883888" in text
 
 
+def test_active_authority_docs_have_no_stale_attempt_one_root() -> None:
+    authorities = (
+        ROOT / "agent-context" / "CURRENT_TASK.md",
+        ROOT / "sol" / "CURRENT_SOL_TASK.md",
+        ROOT / "docs" / "reproduction" / "DOCPRUNE.md",
+        ROOT / "docs" / "reproduction" / "RECONSTRUCTION_GAPS.md",
+    )
+    for path in authorities:
+        assert "benchmark-02385b3/attempt-1" not in path.read_text(encoding="utf-8")
+    handoff = HANDOFF.read_text(encoding="utf-8")
+    active = handoff.split("### Historical failures (not resumable or successful)", 1)[0]
+    assert "benchmark-02385b3/attempt-1" not in active
+    assert "/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2" in handoff
+
+
+def test_handoff_submission_graph_executes_against_fake_sbatch(tmp_path: Path) -> None:
+    text = HANDOFF.read_text(encoding="utf-8")
+    submission = text.split("## Exact Slurm submission commands", 1)[1].split(
+        "## Pass conditions", 1
+    )[0]
+    snippet = submission[submission.index("GATE_JOB=") : submission.index("printf 'gate=")]
+    log = tmp_path / "sbatch.log"
+    script = f'''set -e
+PROJECT_DIR={ROOT}
+ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2
+RUN_CONFIG_ROOT="$ATTEMPT_ROOT/run-configs"
+SLURM_LOG_DIR="$ATTEMPT_ROOT/slurm-logs"
+SBATCH_LOG={log}
+    ID_FILE={tmp_path / "next-id"}
+    printf '1\\n' > "$ID_FILE"
+    sbatch() {{ n=$(cat "$ID_FILE"); printf '%s\\n' "$((n + 1))" > "$ID_FILE"; printf 'MODE=%s PAGES=%s RUN_CONFIG=%s INDEX_ROOT=%s ATTEMPT_ROOT=%s ARGS=%s\\n' "$MODE" "$PAGES" "$RUN_CONFIG" "$INDEX_ROOT" "$ATTEMPT_ROOT" "$*" >> "$SBATCH_LOG"; printf 'job%s\\n' "$n"; }}
+{snippet}
+'''
+    result = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert len(calls) == 9
+    assert "--partition=htc --time=02:00:00" in calls[0]
+    assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[0]
+    assert "--dependency" not in calls[0]
+    for index, call in enumerate(calls[1:7], start=1):
+        assert "--partition=htc --time=04:00:00" in call
+        assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in call
+        assert "--dependency=afterok:job1" in call
+        assert "ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2" in call
+        assert "RUN_CONFIG=/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/run-configs/" in call
+    assert "--partition=public --time=24:00:00" in calls[7]
+    assert "--dependency=afterok:job1:job2:job3:job4:job5:job6:job7" in calls[7]
+    assert "--gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G" in calls[7]
+    assert "--partition=htc --time=01:00:00" in calls[8]
+    assert "--dependency=afterok:job8" in calls[8]
+    assert "--gres=gpu" not in calls[8]
+
+
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
     active, historical = text.split("### Historical failures (not resumable or successful)", 1)
@@ -374,7 +428,7 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
     assert runtime_sha is not None
     active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-2"
     assert active_root in text
-    assert "benchmark-6c19bfc/attempt-2" not in text
+    assert "benchmark-6c19bfc/attempt-2" in text
     command_lines = tuple(
         line.strip()
         for line in text.splitlines()
