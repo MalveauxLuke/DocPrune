@@ -482,11 +482,31 @@ def test_handoff_complete_subshell_preserves_caller_state(tmp_path: Path) -> Non
     runtime = tmp_path / "runtime"
     subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(runtime), commit], check=True)
     script = _complete_prepare_script(source, runtime, destination, commit)
-    probe = "set +e\nCALLER_SENTINEL=preserved\n" + script
-    probe += "rc=$?\nprintf 'sentinel=%s errexit=%s rc=%s\\n' \"$CALLER_SENTINEL\" \"$-\" \"$rc\"\nexit \"$rc\"\n"
+    probe = (
+        "set +e\n"
+        "CALLER_SENTINEL=preserved\n"
+        "RUNTIME_DIR=caller-runtime\n"
+        "EXPECTED_COMMIT=caller-expected\n"
+        "M3DOCRAG_SOURCE=caller-source\n"
+        "M3DOCRAG_DIR=caller-dir\n"
+        "M3DOCRAG_COMMIT=caller-commit\n"
+        + script
+    )
+    probe += (
+        "rc=$?\n"
+        "printf 'sentinel=%s runtime=%s expected=%s source=%s dir=%s commit=%s errexit=%s rc=%s\\n' "
+        "\"$CALLER_SENTINEL\" \"$RUNTIME_DIR\" \"$EXPECTED_COMMIT\" "
+        "\"$M3DOCRAG_SOURCE\" \"$M3DOCRAG_DIR\" \"$M3DOCRAG_COMMIT\" \"$-\" \"$rc\"\n"
+        "exit \"$rc\"\n"
+    )
     result = subprocess.run(["bash", "-c", probe], check=False, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "sentinel=preserved" in result.stdout
+    assert "runtime=caller-runtime" in result.stdout
+    assert "expected=caller-expected" in result.stdout
+    assert "source=caller-source" in result.stdout
+    assert "dir=caller-dir" in result.stdout
+    assert "commit=caller-commit" in result.stdout
     assert "errexit=" in result.stdout
     assert "e" not in result.stdout.split("errexit=", 1)[1].split()[0]
 
