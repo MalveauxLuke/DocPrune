@@ -400,23 +400,44 @@ def _upstream_prepare_script(source: Path, destination: Path, commit: str) -> st
     )
 
 
-def _upstream_fixture(tmp_path: Path) -> tuple[Path, Path, str]:
+def _complete_prepare_script(source: Path, runtime: Path, destination: Path, commit: str) -> str:
+    text = HANDOFF.read_text(encoding="utf-8")
+    heading = text.index("## Prepare pinned runtime and upstream checkouts")
+    start = text.index("(\nset -e\n", heading)
+    end = text.index("```", start)
+    return (
+        text[start:end]
+        .replace("/home/lmalveau/DocPrune-runtime-02385b3", str(runtime))
+        .replace("02385b3a6fc939f23a8632a7ce58b4cac8bff263", commit)
+        .replace("/home/lmalveau/src/m3docrag-runtime-29e6ac2", str(source))
+        .replace("/home/lmalveau/src/m3docrag-benchmark-29e6ac2", str(destination))
+        .replace("29e6ac2294d6b87075a1d45b8a8df175b214248a", commit)
+    )
+
+
+def _upstream_fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     source = tmp_path / "source"
     destination = tmp_path / "destination"
     subprocess.run(["git", "init", "--quiet", str(source)], check=True)
     subprocess.run(["git", "-C", str(source), "config", "user.email", "test@example.invalid"], check=True)
     subprocess.run(["git", "-C", str(source), "config", "user.name", "Test"], check=True)
-    (source / "README").write_text("pinned\n", encoding="utf-8")
+    (source / "README").write_text("commit-a\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(source), "add", "README"], check=True)
-    subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m", "pinned"], check=True)
-    commit = subprocess.run(
+    subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m", "commit-a"], check=True)
+    commit_a = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
     ).stdout.strip()
-    return source, destination, commit
+    (source / "README").write_text("commit-b\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m", "commit-b"], check=True)
+    commit_b = subprocess.run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    return source, destination, commit_a, commit_b
 
 
 def test_handoff_upstream_prep_creates_absent_destination(tmp_path: Path) -> None:
-    source, destination, commit = _upstream_fixture(tmp_path)
+    source, destination, _, commit = _upstream_fixture(tmp_path)
     result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
     assert result.returncode == 0
     assert destination.is_dir()
@@ -429,7 +450,7 @@ def test_handoff_upstream_prep_creates_absent_destination(tmp_path: Path) -> Non
 
 
 def test_handoff_upstream_prep_reuses_exact_clean_destination(tmp_path: Path) -> None:
-    source, destination, commit = _upstream_fixture(tmp_path)
+    source, destination, _, commit = _upstream_fixture(tmp_path)
     subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
     before = (destination / "README").read_text(encoding="utf-8")
     result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
@@ -438,23 +459,36 @@ def test_handoff_upstream_prep_reuses_exact_clean_destination(tmp_path: Path) ->
 
 
 def test_handoff_upstream_prep_rejects_wrong_sha_without_mutation(tmp_path: Path) -> None:
-    source, destination, commit = _upstream_fixture(tmp_path)
-    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
+    source, destination, commit_a, commit_b = _upstream_fixture(tmp_path)
+    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit_a], check=True)
     before = (destination / "README").read_text(encoding="utf-8")
-    wrong = "0" * 40
-    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, wrong)], check=False)
+    result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit_b)], check=False)
     assert result.returncode != 0
     assert (destination / "README").read_text(encoding="utf-8") == before
 
 
 def test_handoff_upstream_prep_rejects_dirty_destination_without_mutation(tmp_path: Path) -> None:
-    source, destination, commit = _upstream_fixture(tmp_path)
+    source, destination, _, commit = _upstream_fixture(tmp_path)
     subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(destination), commit], check=True)
     marker = destination / "untracked.txt"
     marker.write_text("preserve\n", encoding="utf-8")
     result = subprocess.run(["bash", "-c", _upstream_prepare_script(source, destination, commit)], check=False)
     assert result.returncode != 0
     assert marker.read_text(encoding="utf-8") == "preserve\n"
+
+
+def test_handoff_complete_subshell_preserves_caller_state(tmp_path: Path) -> None:
+    source, destination, _, commit = _upstream_fixture(tmp_path)
+    runtime = tmp_path / "runtime"
+    subprocess.run(["git", "-C", str(source), "worktree", "add", "--detach", str(runtime), commit], check=True)
+    script = _complete_prepare_script(source, runtime, destination, commit)
+    probe = "set +e\nCALLER_SENTINEL=preserved\n" + script
+    probe += "rc=$?\nprintf 'sentinel=%s errexit=%s rc=%s\\n' \"$CALLER_SENTINEL\" \"$-\" \"$rc\"\nexit \"$rc\"\n"
+    result = subprocess.run(["bash", "-c", probe], check=False, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "sentinel=preserved" in result.stdout
+    assert "errexit=" in result.stdout
+    assert "e" not in result.stdout.split("errexit=", 1)[1].split()[0]
 
 
 def test_handoff_documents_pinned_upstream_checkout_contract() -> None:
