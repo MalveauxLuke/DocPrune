@@ -133,8 +133,9 @@ test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test -d "$M3DOCRAG_SOURCE"
 test "$(git -C "$M3DOCRAG_SOURCE" rev-parse "$M3DOCRAG_COMMIT^{commit}")" = "$M3DOCRAG_COMMIT"
-test ! -e "$M3DOCRAG_DIR"
-git -C "$M3DOCRAG_SOURCE" worktree add --detach "$M3DOCRAG_DIR" "$M3DOCRAG_COMMIT"
+if [[ ! -e "$M3DOCRAG_DIR" ]]; then
+  git -C "$M3DOCRAG_SOURCE" worktree add --detach "$M3DOCRAG_DIR" "$M3DOCRAG_COMMIT"
+fi
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 ```

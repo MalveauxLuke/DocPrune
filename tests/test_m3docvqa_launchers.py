@@ -384,8 +384,10 @@ def test_handoff_creates_fresh_dedicated_upstream_worktree() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
     assert "M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2" in text
     assert "M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2" in text
-    assert 'test ! -e "$M3DOCRAG_DIR"' in text
+    assert 'if [[ ! -e "$M3DOCRAG_DIR" ]]; then' in text
     assert 'git -C "$M3DOCRAG_SOURCE" worktree add --detach' in text
+    assert 'test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"' in text
+    assert 'test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"' in text
     assert "only the explicitly permitted untracked Python" not in text
 
 
