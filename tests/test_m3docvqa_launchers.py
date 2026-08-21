@@ -31,6 +31,7 @@ LAUNCHERS = tuple(
         "12_docprune_m3docvqa_gate.sbatch",
         "13_docprune_m3docvqa_index.sbatch",
         "14_docprune_m3docvqa_eval_array.sbatch",
+        "15_docprune_m3docvqa_compare.sbatch",
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
@@ -223,6 +224,47 @@ def test_index_seals_resume_and_uses_production_manifest_loader() -> None:
     assert "--resume" in text
     assert "_load_index_manifest" in text
     assert "IndexManifest.validate_files" not in text
+
+
+def test_index_surface_requires_schema_five_complete_sequence_and_raster_maps() -> None:
+    text = (LAUNCHER_DIR / "13_docprune_m3docvqa_index.sbatch").read_text(encoding="utf-8")
+    assert 'payload.get("schema_version") != 5' in text
+    assert '"raster_indices"' in text
+    assert '"page_offsets"' in text
+    assert "complete unpadded ColPali" in text
+    assert "schema 4" not in text
+
+
+def test_gate_surface_requires_cuda_flash_and_context_reuse_checks() -> None:
+    text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    for required in (
+        "torch.cuda.is_available()",
+        'attn_implementation == "flash_attention_2"',
+        "complete_colpali_equivalence",
+        "upstream_retrieval_order",
+        "qtp_reencoding_count",
+        '"encoder_seconds"',
+        '"decoder_seconds"',
+        '"page_load_seconds"',
+        '"total_sample_seconds"',
+        '"retrieval_seconds"',
+    ):
+        assert required in text
+    assert "retrieval_output=retrieval_context" in text
+
+
+def test_evaluation_completion_publishes_six_cell_comparison() -> None:
+    compare = LAUNCHER_DIR / "15_docprune_m3docvqa_compare.sbatch"
+    assert compare.is_file()
+    text = compare.read_text(encoding="utf-8")
+    assert "validate-run" in text
+    assert "compare-runs" in text
+    assert "--json-output" in text
+    assert "--markdown-output" in text
+    assert "test ! -e \"$COMPARISON_JSON\"" in text
+    assert "test ! -e \"$COMPARISON_MARKDOWN\"" in text
+    assert "all-kept-top1" in text
+    assert "docprune-top4" in text
 
 
 def test_launchers_validate_sealed_control_record() -> None:

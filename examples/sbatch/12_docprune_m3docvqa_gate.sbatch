@@ -195,15 +195,42 @@ done
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from string import Template
+from types import SimpleNamespace
+
+import numpy as np
+import torch
 
 from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
 from docprune.benchmark_config import SHORT_ANSWER_TEMPLATE
+from docprune.colpali.embedding import encode_colpali_page
 from docprune.config import load_config
-from docprune.m3docvqa_factory import _load_colpali, _load_qwen, _make_dataset, _resolve_run_config
+from docprune.indexing import (
+    _move_batch,
+    _raster_image,
+    _trim_attention_masked_rows,
+    colpali_uint8_raster,
+)
+from docprune.m3docvqa_factory import (
+    _ColPaliQueryAdapter,
+    _load_colpali,
+    _load_qwen,
+    _make_dataset,
+    _resolve_run_config,
+)
+from docprune.m3docrag import (
+    OfficialM3DocRAGBoundary,
+    RetrievedPage,
+    RetrievedPageFeatures,
+    RetrievalOutput,
+)
+from docprune.processor_probe import resolve_colpali_visual_mapping
 
 sys.path.insert(0, str(Path(os.environ["M3DOCRAG_DIR"]) / "src"))
+import faiss
+from m3docrag.rag.base import RAGModelBase
 from m3docrag.vqa.qwen2 import generate as official_qwen_generate
 
 run_config_path = Path(sys.argv[1])
@@ -261,7 +288,14 @@ for qid in qids:
         raise SystemExit(f"supporting documents for {qid} have insufficient pages")
     supporting_documents[qid] = selected_doc
     images_by_qid[qid] = selected_images
+if not torch.cuda.is_available():
+    raise SystemExit("semantic gate requires a real CUDA device")
 qwen_model, qwen_processor = _load_qwen(run)
+attn_implementation = getattr(
+    getattr(qwen_model, "config", None), "_attn_implementation", None
+)
+if attn_implementation != "flash_attention_2":
+    raise SystemExit("semantic gate did not execute the FlashAttention-2 Qwen path")
 all_kept = AllKeptQwenAnswerer(qwen_model, qwen_processor)
 equivalence = []
 for qid in qids:
@@ -283,29 +317,150 @@ for qid in qids:
     equivalence.append(qid)
 sample = samples[qids[0]]
 images = images_by_qid[qids[0]]
+doc_id = supporting_documents[qids[0]]
 colpali_model, colpali_processor = _load_colpali(run)
 config = load_config(Path("configs/docprune-m3docvqa.toml"))
+colpali_device = next(colpali_model.parameters()).device
+image_token_id = int(colpali_model.model.config.image_token_index)
+page_sequences = []
+page_features = []
+token_map = []
+complete_colpali_equivalence = True
+for page_index, image in enumerate(images[:4]):
+    raster = colpali_uint8_raster(colpali_processor, image)
+    batch = _move_batch(
+        colpali_processor.process_images([_raster_image(raster)]), colpali_device
+    )
+    input_ids = torch.as_tensor(batch["input_ids"], dtype=torch.long)
+    attention_mask = torch.as_tensor(batch["attention_mask"])
+    mapping = resolve_colpali_visual_mapping(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        image_token_id=image_token_id,
+        image_seq_length=int(colpali_processor.image_seq_length),
+    )
+    keep = torch.ones(
+        mapping.visual_stop - mapping.visual_start,
+        dtype=torch.bool,
+        device=input_ids.device,
+    )
+    encoded = encode_colpali_page(colpali_model, batch, mapping, keep)
+    stock = torch.as_tensor(colpali_model(**batch))
+    active = encoded.attention_mask[0].to(dtype=torch.bool)
+    stock_active = stock[0, active].detach().to(device="cpu", dtype=torch.float32)
+    sequence, _visual_start = _trim_attention_masked_rows(
+        encoded,
+        visual_start=mapping.visual_start,
+        visual_stop=mapping.visual_stop,
+        doc_id=doc_id,
+        page_index=page_index,
+    )
+    if stock_active.shape != sequence.shape or not torch.allclose(
+        stock_active, sequence, atol=1e-5, rtol=1e-5
+    ):
+        complete_colpali_equivalence = False
+        raise SystemExit(f"complete all-kept ColPali equivalence failed on page {page_index}")
+    visual = encoded.visual_embeddings[0].detach().to(device="cpu", dtype=torch.float32)
+    rasters = encoded.raster_indices.detach().to(device="cpu", dtype=torch.int64)
+    page_sequences.append(sequence)
+    page_features.append((visual, rasters))
+    token_map.extend([f"{doc_id}_page{page_index}"] * len(sequence))
+
+query_adapter = _ColPaliQueryAdapter(colpali_model, colpali_processor)
+query = query_adapter.encode_queries([sample.question])[0].detach().to(device="cpu", dtype=torch.float32)
+all_embeddings = torch.cat(page_sequences).contiguous()
+faiss_index = faiss.IndexFlatIP(all_embeddings.shape[1])
+faiss_index.add(all_embeddings.numpy().astype(np.float32, copy=False))
+fixed_query_adapter = SimpleNamespace(
+    model=colpali_model,
+    encode_queries=lambda _queries: [query],
+)
+upstream_rag = RAGModelBase(retrieval_model=fixed_query_adapter)
+boundary = OfficialM3DocRAGBoundary(
+    rag_model=SimpleNamespace(retrieval_model=fixed_query_adapter),
+    dataset=dataset,
+    docid2embs={},
+    index=faiss_index,
+    token2pageuid=token_map,
+    all_token_embeddings=all_embeddings,
+)
+upstream_retrieval_order = {}
 traces = {}
+timing_probes = {}
 for pages in (1, 2, 4):
+    retrieval_started = time.perf_counter()
+    upstream = upstream_rag.retrieve_pages_from_docs(
+        query=sample.question,
+        docid2embs={},
+        index=faiss_index,
+        token2pageuid=token_map,
+        all_token_embeddings=all_embeddings.numpy(),
+        n_return_pages=pages,
+    )
+    observed = boundary.retrieve(sample.question, pages)
+    retrieval_seconds = max(time.perf_counter() - retrieval_started, 1e-12)
+    expected_order = [(str(doc), int(page)) for doc, page, _score in upstream]
+    actual_order = [(page.doc_id, page.page_index) for page in observed]
+    if actual_order != expected_order:
+        raise SystemExit(f"indexed retrieval order differs from upstream at top-{pages}")
+    upstream_retrieval_order[str(pages)] = [f"{doc}:{page}" for doc, page in actual_order]
+    load_started = time.perf_counter()
+    loaded_images = list(dataset.load_pages(doc_id)[:pages])
+    page_load_seconds = max(time.perf_counter() - load_started, 1e-12)
+    retrieval_pages = tuple(observed)
+    retrieval_context = RetrievalOutput(
+        retrieval_pages,
+        query,
+        tuple(
+            RetrievedPageFeatures(
+                page.doc_id,
+                page.page_index,
+                page_features[page.page_index][0],
+                page_features[page.page_index][1],
+                (32, 32),
+            )
+            for page in retrieval_pages
+        ),
+    )
     answerer = DocPruneQwenAnswerer(
         qwen_model,
         qwen_processor,
-        colpali_model=colpali_model,
-        colpali_processor=colpali_processor,
         page_config=config.for_pages(pages),
     )
-    result = answerer.answer(images[:pages], sample.question)
+    result = answerer.answer(
+        loaded_images,
+        sample.question,
+        retrieval_output=retrieval_context,
+    )
     trace = result.trace.to_dict()
     counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]
     if counts[0] <= 0 or any(left < right or right <= 0 for left, right in zip(counts, counts[1:])):
         raise SystemExit(f"non-monotonic or empty DocPrune trace for top-{pages}: counts={counts}")
+    stages = {
+        "retrieval_seconds": retrieval_seconds,
+        "page_load_seconds": page_load_seconds,
+        "qa_seconds": result.qa_seconds,
+        "encoder_seconds": result.encoder_seconds,
+        "decoder_seconds": result.decoder_seconds,
+        "total_sample_seconds": retrieval_seconds + page_load_seconds + result.qa_seconds,
+    }
+    if any(not np.isfinite(value) or value <= 0 for value in stages.values()):
+        raise SystemExit(f"semantic timing probe is not positive at top-{pages}: {stages}")
     traces[str(pages)] = counts
+    timing_probes[str(pages)] = stages
+if not complete_colpali_equivalence:
+    raise SystemExit("complete_colpali_equivalence is false")
 out.write_text(json.dumps({
     "status": "passed",
     "baseline_equivalence": True,
     "equivalence_qids": equivalence,
     "supporting_documents": supporting_documents,
     "docprune_traces": traces,
+    "complete_colpali_equivalence": complete_colpali_equivalence,
+    "upstream_retrieval_order": upstream_retrieval_order,
+    "qtp_reencoding_count": 0,
+    "flash_attention_2": attn_implementation == "flash_attention_2",
+    "timing_probes": timing_probes,
 }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
 
@@ -317,6 +472,15 @@ with open(sys.argv[1], encoding="utf-8") as stream:
     payload = json.load(stream)
 if payload.get("status") != "passed" or payload.get("baseline_equivalence") is not True:
     raise SystemExit("official-versus-all-kept equivalence gate failed")
+if payload.get("complete_colpali_equivalence") is not True:
+    raise SystemExit("complete ColPali equivalence gate failed")
+if payload.get("flash_attention_2") is not True:
+    raise SystemExit("FlashAttention-2 execution gate failed")
+if payload.get("qtp_reencoding_count") != 0:
+    raise SystemExit("QTP performed an unexpected ColPali re-encoding")
+orders = payload.get("upstream_retrieval_order")
+if not isinstance(orders, dict) or set(orders) != {"1", "2", "4"}:
+    raise SystemExit("semantic probe lacks fixed-sample upstream retrieval order")
 traces = payload.get("docprune_traces")
 if not isinstance(traces, dict) or set(traces) != {"1", "2", "4"}:
     raise SystemExit("semantic probe lacks page-count traces")
@@ -325,6 +489,22 @@ for counts in traces.values():
         raise SystemExit("semantic probe has invalid token counts")
     if any(left < right for left, right in zip(counts, counts[1:])):
         raise SystemExit("semantic probe trace is non-monotonic")
+timings = payload.get("timing_probes")
+required_stages = {
+    "retrieval_seconds",
+    "page_load_seconds",
+    "qa_seconds",
+    "encoder_seconds",
+    "decoder_seconds",
+    "total_sample_seconds",
+}
+if not isinstance(timings, dict) or set(timings) != {"1", "2", "4"}:
+    raise SystemExit("semantic probe lacks all page-count timing probes")
+for stages in timings.values():
+    if not isinstance(stages, dict) or set(stages) != required_stages:
+        raise SystemExit("semantic probe timing fields are incomplete")
+    if any(not isinstance(value, int | float) or not value > 0 for value in stages.values()):
+        raise SystemExit("semantic probe timings must be finite and positive")
 PY
 
 "$ENV_DIR/bin/python" - "$GATE_ROOT/gate.json" "$CONTRACT" <<'PY'

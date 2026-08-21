@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build one page-specific, mode-scoped manifest-bound index. Submit this
+# Build one page-specific, mode-scoped schema-5 manifest-bound index. Submit this
 # wrapper once for every mode/page pair, with afterok on the semantic gate.
 #SBATCH --job-name=docprune-m3docvqa-index
 #SBATCH --partition=public
@@ -107,10 +107,21 @@ from docprune.m3docvqa_factory import _load_index_manifest
 mode = sys.argv[2]
 pages = int(sys.argv[3])
 manifest_path = Path(sys.argv[1]).resolve()
+payload = __import__("json").loads(manifest_path.read_text(encoding="utf-8"))
+if payload.get("schema_version") != 5:
+    raise SystemExit("index manifest schema_version must equal 5")
 manifest = _load_index_manifest(manifest_path)
 if manifest.mode != mode or manifest.page_count != pages:
     raise SystemExit("index manifest mode/page mismatch")
 if manifest_path.parent != manifest.artifact_root:
     raise SystemExit("index manifest artifact root mismatch")
+from safetensors.torch import load_file
+
+tensors = load_file(str(manifest.embeddings_path), device="cpu")
+if set(tensors) != {"embeddings", "raster_indices"}:
+    raise SystemExit("schema-5 embeddings must include complete rows and raster_indices")
+ledger = __import__("json").loads(manifest.completion_ledger_path.read_text(encoding="utf-8"))
+if not isinstance(ledger, list) or any("page_offsets" not in entry for entry in ledger):
+    raise SystemExit("schema-5 completion ledger must bind complete unpadded ColPali page offsets")
 print({"status": "passed", "manifest": str(manifest_path)})
 PY
