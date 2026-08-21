@@ -26,6 +26,8 @@ set -euo pipefail
 : "${RUN_CONFIG:?set RUN_CONFIG to the complete immutable run-config JSON}"
 : "${MODE:?set MODE to all-kept or docprune}"
 : "${PAGES:?set PAGES to 1, 2, or 4}"
+: "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the fresh benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
 : "${INDEX_ROOT:?set INDEX_ROOT to a new attempt-specific index directory}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${RESUME:=0}"
@@ -47,6 +49,12 @@ if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.
 if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
     raise SystemExit("sealed control record project path mismatch")
 PY
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
 source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
 pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
 pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
@@ -56,6 +64,8 @@ test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776
 case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
 case "$RESUME" in 0|1) ;; *) echo "RESUME must be 0 or 1" >&2; exit 2 ;; esac
+test "$RUN_CONFIG" = "$ATTEMPT_ROOT/run-configs/${MODE}-top${PAGES}.json"
+test "$INDEX_ROOT" = "$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}"
 if [[ "$RESUME" == 0 ]]; then
   test ! -e "$INDEX_ROOT"
 else
@@ -68,6 +78,14 @@ test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$EXPECTED_COMMIT" <<'PY'
+import json
+import sys
+
+payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+if payload.get("runtime_commit") != sys.argv[2]:
+    raise SystemExit("run configuration runtime identity does not equal EXPECTED_COMMIT")
+PY
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
@@ -113,6 +131,8 @@ if payload.get("schema_version") != 5:
 manifest = _load_index_manifest(manifest_path)
 if manifest.mode != mode or manifest.page_count != pages:
     raise SystemExit("index manifest mode/page mismatch")
+if manifest.runtime_commit != __import__("os").environ["EXPECTED_COMMIT"]:
+    raise SystemExit("index manifest runtime identity does not equal EXPECTED_COMMIT")
 if manifest_path.parent != manifest.artifact_root:
     raise SystemExit("index manifest artifact root mismatch")
 from safetensors.torch import load_file

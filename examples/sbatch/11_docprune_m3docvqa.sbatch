@@ -26,6 +26,8 @@ set -euo pipefail
 : "${INDEX_MANIFEST:?set INDEX_MANIFEST to the matching mode/page index manifest}"
 : "${MODE:?set MODE to all-kept or docprune}"
 : "${PAGES:?set PAGES to 1, 2, or 4}"
+: "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the fresh benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
 : "${CELL_ROOT:?set CELL_ROOT to a new attempt-specific cell directory}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 
@@ -56,6 +58,15 @@ test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776
 
 case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
 case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
+test "$CELL_ROOT" = "$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
+test "$RUN_CONFIG" = "$ATTEMPT_ROOT/run-configs/${MODE}-top${PAGES}.json"
+test "$INDEX_MANIFEST" = "$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}/${MODE}/manifest.json"
 test -d "$RUNTIME_DIR"
 test -f "$RUN_CONFIG"
 test -f "$INDEX_MANIFEST"
@@ -64,6 +75,18 @@ test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$INDEX_MANIFEST" "$EXPECTED_COMMIT" <<'PY'
+import json
+import sys
+
+run_config = json.loads(open(sys.argv[1], encoding="utf-8").read())
+manifest = json.loads(open(sys.argv[2], encoding="utf-8").read())
+expected = sys.argv[3]
+if run_config.get("runtime_commit") != expected:
+    raise SystemExit("run configuration runtime identity does not equal EXPECTED_COMMIT")
+if manifest.get("runtime_commit") != expected:
+    raise SystemExit("index manifest runtime identity does not equal EXPECTED_COMMIT")
+PY
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1

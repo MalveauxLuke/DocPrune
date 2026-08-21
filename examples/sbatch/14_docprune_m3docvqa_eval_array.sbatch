@@ -29,6 +29,7 @@ set -euo pipefail
 : "${ALL_KEPT_INDEX_ROOT:?set ALL_KEPT_INDEX_ROOT to the validated all-kept index family}"
 : "${DOCPRUNE_INDEX_ROOT:?set DOCPRUNE_INDEX_ROOT to the validated docprune index family}"
 : "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${SLURM_ARRAY_TASK_ID:?submit this wrapper as a Slurm array}"
 
@@ -58,6 +59,15 @@ test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776
 
 test "$SLURM_ARRAY_TASK_ID" -ge 0
 test "$SLURM_ARRAY_TASK_ID" -le 5
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
+test "$RUN_CONFIG_ROOT" = "$ATTEMPT_ROOT/run-configs"
+test "$ALL_KEPT_INDEX_ROOT" = "$ATTEMPT_ROOT/indexes/all-kept"
+test "$DOCPRUNE_INDEX_ROOT" = "$ATTEMPT_ROOT/indexes/docprune"
 case "$SLURM_ARRAY_TASK_ID" in
   0) MODE=all-kept; PAGES=1; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top1" ;;
   1) MODE=all-kept; PAGES=2; INDEX_ROOT="$ALL_KEPT_INDEX_ROOT/top2" ;;
@@ -71,6 +81,9 @@ export MODE PAGES
 export RUN_CONFIG="$RUN_CONFIG_ROOT/${MODE}-top${PAGES}.json"
 export INDEX_MANIFEST="$INDEX_ROOT/$MODE/manifest.json"
 export CELL_ROOT="$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
+test "$RUN_CONFIG" = "$ATTEMPT_ROOT/run-configs/${MODE}-top${PAGES}.json"
+test "$INDEX_MANIFEST" = "$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}/${MODE}/manifest.json"
+test "$CELL_ROOT" = "$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
 test -f "$RUN_CONFIG"
 test -f "$INDEX_MANIFEST"
 

@@ -195,6 +195,9 @@ def test_manifest_validates_contract_and_embedding_metadata_sidecars(
             "embeddings": torch.zeros(12, 128, dtype=torch.float32),
             "raster_indices": torch.arange(11, dtype=torch.int64),
         },
+        {
+            "embeddings": torch.zeros(12, 128, dtype=torch.float32),
+        },
     ],
 )
 def test_manifest_validates_physical_safetensors_shape_dtype_and_raster_rows(

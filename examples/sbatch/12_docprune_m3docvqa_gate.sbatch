@@ -23,6 +23,8 @@ set -euo pipefail
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
 : "${CORPUS_ROOT:?set CORPUS_ROOT to the pinned M3DocVQA corpus}"
+: "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the fresh benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
 : "${GATE_ROOT:?set GATE_ROOT to a new immutable gate-attempt directory}"
 : "${RUN_CONFIG:?set RUN_CONFIG to the complete immutable run-config JSON}"
 : "${RUN_CONFIG_ROOT:?set RUN_CONFIG_ROOT to the final six run-config directory}"
@@ -35,6 +37,16 @@ set -euo pipefail
 : "${COLPALI_BACKBONE_MODEL:?set COLPALI_BACKBONE_MODEL to the pinned backbone resource}"
 : "${COLPALI_BACKBONE_REVISION:?set COLPALI_BACKBONE_REVISION to the pinned backbone revision}"
 export PROJECT_DIR CONTROL_RECORD CORPUS_ROOT RUN_CONFIG_ROOT
+
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
+test "$GATE_ROOT" = "$ATTEMPT_ROOT/gate"
+test "$RUN_CONFIG" = "$ATTEMPT_ROOT/inputs/gate-top1.json"
+test "$RUN_CONFIG_ROOT" = "$ATTEMPT_ROOT/run-configs"
 
 EXPECTED_GATE_SAMPLE_IDS="a33985b1e8b2502fc18cc8147dc27db8,710a6d2254076ea58756c6c7cc211f1e,0d8f2779137fb47db953c4af5247ffe5,e240f5fe65b39eee70d3576cff88fe5a,18ecd2ac6c0ac69993b92dc4b30137e8"
 test "$GATE_SAMPLE_IDS" = "$EXPECTED_GATE_SAMPLE_IDS"
@@ -191,7 +203,8 @@ PY
   done
 done
 
-"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" <<'PY'
+"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" "$GATE_ROOT/mini-index" <<'PY'
+import hashlib
 import json
 import os
 import sys
@@ -204,37 +217,39 @@ import numpy as np
 import torch
 
 from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
+from docprune.benchmark_seal import align_retrieved_page_context
 from docprune.benchmark_config import SHORT_ANSWER_TEMPLATE
-from docprune.colpali.embedding import encode_colpali_page
 from docprune.config import load_config
 from docprune.indexing import (
+    IndexBuildConfig,
     _move_batch,
     _raster_image,
     _trim_attention_masked_rows,
+    build_index,
     colpali_uint8_raster,
 )
 from docprune.m3docvqa_factory import (
     _ColPaliQueryAdapter,
     _load_colpali,
+    _load_index_manifest,
     _load_qwen,
     _make_dataset,
     _resolve_run_config,
 )
-from docprune.m3docrag import (
-    OfficialM3DocRAGBoundary,
-    RetrievedPage,
-    RetrievedPageFeatures,
-    RetrievalOutput,
-)
+from docprune.m3docrag import OfficialM3DocRAGBoundary
+from docprune.colpali.embedding import encode_colpali_page
 from docprune.processor_probe import resolve_colpali_visual_mapping
 
 sys.path.insert(0, str(Path(os.environ["M3DOCRAG_DIR"]) / "src"))
 import faiss
 from m3docrag.rag.base import RAGModelBase
 from m3docrag.vqa.qwen2 import generate as official_qwen_generate
+from safetensors.torch import load_file
 
 run_config_path = Path(sys.argv[1])
 qids = tuple(value.strip() for value in sys.argv[2].split(",") if value.strip())
+out = Path(sys.argv[3])
+mini_root = Path(sys.argv[4])
 expected_qids = (
     "a33985b1e8b2502fc18cc8147dc27db8",
     "710a6d2254076ea58756c6c7cc211f1e",
@@ -244,18 +259,17 @@ expected_qids = (
 )
 if qids != expected_qids or len(set(qids)) != len(qids):
     raise SystemExit("gate sample IDs do not equal the exact fixed tuple")
-out = Path(sys.argv[3])
 run = _resolve_run_config(run_config_path, mode="all-kept", page_count=1)
 dataset = _make_dataset(run)
 samples = {sample.question_id: sample for sample in dataset}
-if not qids or any(qid not in samples for qid in qids):
+if any(qid not in samples for qid in qids):
     raise SystemExit("fixed gate qids are not present in the corpus")
 source_rows = {}
 with run.corpus.questions_path.open(encoding="utf-8") as stream:
-    for line in stream:
-        if line.strip():
-            row = json.loads(line)
-            source_rows[str(row["qid"])] = row
+    for row in stream:
+        if row.strip():
+            item = json.loads(row)
+            source_rows[str(item["qid"])] = item
 if any(qid not in source_rows for qid in qids):
     raise SystemExit("fixed gate qids are missing from source-order questions")
 source_positions = [
@@ -263,248 +277,290 @@ source_positions = [
 ]
 if source_positions != sorted(source_positions):
     raise SystemExit("fixed gate qids are not in source order")
+
 supporting_documents = {}
-images_by_qid = {}
+images_by_doc = {}
 for qid in qids:
     contexts = source_rows[qid].get("supporting_context")
     if not isinstance(contexts, list):
         raise SystemExit(f"source row {qid} has no supporting_context list")
-    candidates = []
+    selected = None
     for context in contexts:
         doc_id = context.get("doc_id") if isinstance(context, dict) else None
-        if isinstance(doc_id, str) and doc_id in dataset.document_ids and doc_id not in candidates:
-            candidates.append(doc_id)
-    if not candidates:
-        raise SystemExit(f"source row {qid} has no supporting document in the corpus")
-    selected_doc = None
-    selected_images = None
-    for doc_id in candidates:
-        loaded = dataset.load_pages(doc_id)
-        if len(loaded) >= 4:
-            selected_doc = doc_id
-            selected_images = loaded
-            break
-    if selected_doc is None or selected_images is None:
+        if isinstance(doc_id, str) and doc_id in dataset.document_ids:
+            loaded = tuple(dataset.load_pages(doc_id))
+            if len(loaded) >= 4:
+                selected = (doc_id, loaded[:4])
+                break
+    if selected is None:
         raise SystemExit(f"supporting documents for {qid} have insufficient pages")
-    supporting_documents[qid] = selected_doc
-    images_by_qid[qid] = selected_images
+    doc_id, images = selected
+    supporting_documents[qid] = doc_id
+    images_by_doc[doc_id] = images
+
 if not torch.cuda.is_available():
     raise SystemExit("semantic gate requires a real CUDA device")
 qwen_model, qwen_processor = _load_qwen(run)
-attn_implementation = getattr(
-    getattr(qwen_model, "config", None), "_attn_implementation", None
-)
+attn_implementation = getattr(getattr(qwen_model, "config", None), "_attn_implementation", None)
 if attn_implementation != "flash_attention_2":
     raise SystemExit("semantic gate did not execute the FlashAttention-2 Qwen path")
 all_kept = AllKeptQwenAnswerer(qwen_model, qwen_processor)
 equivalence = []
 for qid in qids:
     sample = samples[qid]
-    images = images_by_qid[qid]
+    images = images_by_doc[supporting_documents[qid]]
     first = all_kept.answer(images[:1], sample.question)
     second = all_kept.answer(images[:1], sample.question)
     if first.answer != second.answer or first.trace.to_dict() != second.trace.to_dict():
         raise SystemExit(f"all-kept repeated output differs for fixed sample {qid}")
     official_prompt = Template(SHORT_ANSWER_TEMPLATE).substitute(question=sample.question)
     official = official_qwen_generate(
-        model=qwen_model,
-        processor=qwen_processor,
-        question=official_prompt,
-        images=images[:1],
+        model=qwen_model, processor=qwen_processor, question=official_prompt, images=images[:1]
     )[0].strip()
     if first.answer != official:
         raise SystemExit(f"official-versus-all-kept answer equivalence failed for {qid}")
     equivalence.append(qid)
-sample = samples[qids[0]]
-images = images_by_qid[qids[0]]
-doc_id = supporting_documents[qids[0]]
-colpali_model, colpali_processor = _load_colpali(run)
-config = load_config(Path("configs/docprune-m3docvqa.toml"))
-colpali_device = next(colpali_model.parameters()).device
-image_token_id = int(colpali_model.model.config.image_token_index)
-page_sequences = []
-page_features = []
-token_map = []
-complete_colpali_equivalence = True
-for page_index, image in enumerate(images[:4]):
-    raster = colpali_uint8_raster(colpali_processor, image)
-    batch = _move_batch(
-        colpali_processor.process_images([_raster_image(raster)]), colpali_device
-    )
-    input_ids = torch.as_tensor(batch["input_ids"], dtype=torch.long)
-    attention_mask = torch.as_tensor(batch["attention_mask"])
-    mapping = resolve_colpali_visual_mapping(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-        image_token_id=image_token_id,
-        image_seq_length=int(colpali_processor.image_seq_length),
-    )
-    keep = torch.ones(
-        mapping.visual_stop - mapping.visual_start,
-        dtype=torch.bool,
-        device=input_ids.device,
-    )
-    encoded = encode_colpali_page(colpali_model, batch, mapping, keep)
-    stock = torch.as_tensor(colpali_model(**batch))
-    active = encoded.attention_mask[0].to(dtype=torch.bool)
-    stock_active = stock[0, active].detach().to(device="cpu", dtype=torch.float32)
-    sequence, _visual_start = _trim_attention_masked_rows(
-        encoded,
-        visual_start=mapping.visual_start,
-        visual_stop=mapping.visual_stop,
-        doc_id=doc_id,
-        page_index=page_index,
-    )
-    if stock_active.shape != sequence.shape or not torch.allclose(
-        stock_active, sequence, atol=1e-5, rtol=1e-5
-    ):
-        complete_colpali_equivalence = False
-        raise SystemExit(f"complete all-kept ColPali equivalence failed on page {page_index}")
-    visual = encoded.visual_embeddings[0].detach().to(device="cpu", dtype=torch.float32)
-    rasters = encoded.raster_indices.detach().to(device="cpu", dtype=torch.int64)
-    page_sequences.append(sequence)
-    page_features.append((visual, rasters))
-    token_map.extend([f"{doc_id}_page{page_index}"] * len(sequence))
 
-query_adapter = _ColPaliQueryAdapter(colpali_model, colpali_processor)
-query = query_adapter.encode_queries([sample.question])[0].detach().to(device="cpu", dtype=torch.float32)
-all_embeddings = torch.cat(page_sequences).contiguous()
-faiss_index = faiss.IndexFlatIP(all_embeddings.shape[1])
-faiss_index.add(all_embeddings.numpy().astype(np.float32, copy=False))
-fixed_query_adapter = SimpleNamespace(
-    model=colpali_model,
-    encode_queries=lambda _queries: [query],
+class ColPaliCounters:
+    def __init__(self):
+        self.processor_queries = 0
+        self.processor_images = 0
+        self.model_forwards = 0
+
+    def snapshot(self):
+        return {
+            "processor_queries": self.processor_queries,
+            "processor_images": self.processor_images,
+            "model_forwards": self.model_forwards,
+        }
+
+counters = ColPaliCounters()
+colpali_model, colpali_processor = _load_colpali(run)
+model_type = type(colpali_model)
+original_model_call = model_type.__call__
+def counted_model_call(self, *args, **kwargs):
+    counters.model_forwards += 1
+    return original_model_call(self, *args, **kwargs)
+model_type.__call__ = counted_model_call
+original_process_images = colpali_processor.process_images
+original_process_queries = colpali_processor.process_queries
+def counted_images(*args, **kwargs):
+    counters.processor_images += 1
+    return original_process_images(*args, **kwargs)
+def counted_queries(*args, **kwargs):
+    counters.processor_queries += 1
+    return original_process_queries(*args, **kwargs)
+colpali_processor.process_images = counted_images
+colpali_processor.process_queries = counted_queries
+
+class MiniDataset:
+    def __init__(self, docs, images):
+        self.document_ids = tuple(docs)
+        self.source_order_sha256 = hashlib.sha256("\n".join(self.document_ids).encode()).hexdigest()
+        self._images = images
+
+    def load_pages(self, doc_id):
+        return tuple(self._images[doc_id])
+
+    def get_images_from_doc_id(self, doc_id):
+        return self.load_pages(doc_id)
+
+mini_dataset = MiniDataset(tuple(dict.fromkeys(supporting_documents.values())), images_by_doc)
+config = load_config(Path("configs/docprune-m3docvqa.toml"))
+mini_result = build_index(
+    IndexBuildConfig(
+        run_config=run,
+        dataset=mini_dataset,
+        model=colpali_model,
+        processor=colpali_processor,
+        pruning_config=config,
+    ),
+    "all-kept",
+    mini_root,
 )
-upstream_rag = RAGModelBase(retrieval_model=fixed_query_adapter)
-boundary = OfficialM3DocRAGBoundary(
-    rag_model=SimpleNamespace(retrieval_model=fixed_query_adapter),
-    dataset=dataset,
-    docid2embs={},
-    index=faiss_index,
-    token2pageuid=token_map,
-    all_token_embeddings=all_embeddings,
+mini_manifest = _load_index_manifest(mini_result.manifest_path)
+mini_tensors = load_file(mini_manifest.embeddings_path, device="cpu")
+if set(mini_tensors) != {"embeddings", "raster_indices"}:
+    raise SystemExit("schema-5 mini-index tensors are incomplete")
+all_embeddings = mini_tensors["embeddings"]
+raster_indices = mini_tensors["raster_indices"]
+token_map = json.loads(mini_manifest.token2pageuid_path.read_text(encoding="utf-8"))
+if not isinstance(token_map, list) or len(token_map) != len(all_embeddings):
+    raise SystemExit("schema-5 mini-index token ledger is not aligned")
+faiss_index = faiss.read_index(str(mini_manifest.index_path))
+upstream_token_map = [f"{row['doc_id']}_page{row['page_index']}" for row in token_map]
+
+# Independently compare one persisted complete sequence with the stock model
+# output. The real indexing path above already produced every page artifact.
+first_doc = mini_dataset.document_ids[0]
+first_image = mini_dataset.load_pages(first_doc)[0]
+raster = colpali_uint8_raster(colpali_processor, first_image)
+batch = _move_batch(colpali_processor.process_images([_raster_image(raster)]), next(colpali_model.parameters()).device)
+mapping = resolve_colpali_visual_mapping(
+    input_ids=torch.as_tensor(batch["input_ids"], dtype=torch.long),
+    attention_mask=torch.as_tensor(batch["attention_mask"]),
+    image_token_id=int(colpali_model.model.config.image_token_index),
+    image_seq_length=int(colpali_processor.image_seq_length),
 )
-upstream_retrieval_order = {}
-traces = {}
+keep = torch.ones(mapping.visual_stop - mapping.visual_start, dtype=torch.bool, device=batch["input_ids"].device)
+encoded = encode_colpali_page(colpali_model, batch, mapping, keep)
+stock = torch.as_tensor(colpali_model(**batch))
+active = encoded.attention_mask[0].to(dtype=torch.bool)
+stock_active = stock[0, active].detach().to(device="cpu", dtype=torch.float32)
+persisted_end = int(json.loads(mini_manifest.completion_ledger_path.read_text(encoding="utf-8"))[0]["page_offsets"][1])
+if stock_active.shape != all_embeddings[:persisted_end].shape or not torch.allclose(
+    stock_active, all_embeddings[:persisted_end], atol=1e-5, rtol=1e-5
+):
+    raise SystemExit("complete all-kept ColPali equivalence failed for the persisted mini-index")
+
+before_retrieval = counters.snapshot()
+upstream_orders = {}
+runtime_orders = {}
+contexts = {}
 timing_probes = {}
-for pages in (1, 2, 4):
-    retrieval_started = time.perf_counter()
-    upstream = upstream_rag.retrieve_pages_from_docs(
-        query=sample.question,
+traces = {}
+for qid in qids:
+    sample = samples[qid]
+    query_adapter = _ColPaliQueryAdapter(colpali_model, colpali_processor)
+    query = query_adapter.encode_queries([sample.question])[0].detach().to(device="cpu", dtype=torch.float32)
+    fixed_query_adapter = SimpleNamespace(model=colpali_model, encode_queries=lambda _queries, query=query: [query])
+    upstream_rag = RAGModelBase(retrieval_model=fixed_query_adapter)
+    boundary = OfficialM3DocRAGBoundary(
+        rag_model=SimpleNamespace(retrieval_model=fixed_query_adapter),
+        dataset=dataset,
         docid2embs={},
         index=faiss_index,
         token2pageuid=token_map,
-        all_token_embeddings=all_embeddings.numpy(),
-        n_return_pages=pages,
+        all_token_embeddings=all_embeddings,
+        raster_indices=raster_indices,
     )
-    observed = boundary.retrieve(sample.question, pages)
-    retrieval_seconds = max(time.perf_counter() - retrieval_started, 1e-12)
-    expected_order = [(str(doc), int(page)) for doc, page, _score in upstream]
-    actual_order = [(page.doc_id, page.page_index) for page in observed]
-    if actual_order != expected_order:
-        raise SystemExit(f"indexed retrieval order differs from upstream at top-{pages}")
-    upstream_retrieval_order[str(pages)] = [f"{doc}:{page}" for doc, page in actual_order]
-    load_started = time.perf_counter()
-    loaded_images = list(dataset.load_pages(doc_id)[:pages])
-    page_load_seconds = max(time.perf_counter() - load_started, 1e-12)
-    retrieval_pages = tuple(observed)
-    retrieval_context = RetrievalOutput(
-        retrieval_pages,
-        query,
-        tuple(
-            RetrievedPageFeatures(
-                page.doc_id,
-                page.page_index,
-                page_features[page.page_index][0],
-                page_features[page.page_index][1],
-                (32, 32),
-            )
-            for page in retrieval_pages
-        ),
-    )
-    answerer = DocPruneQwenAnswerer(
-        qwen_model,
-        qwen_processor,
-        page_config=config.for_pages(pages),
-    )
-    result = answerer.answer(
-        loaded_images,
-        sample.question,
-        retrieval_output=retrieval_context,
-    )
-    trace = result.trace.to_dict()
-    counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]
-    if counts[0] <= 0 or any(left < right or right <= 0 for left, right in zip(counts, counts[1:])):
-        raise SystemExit(f"non-monotonic or empty DocPrune trace for top-{pages}: counts={counts}")
-    stages = {
-        "retrieval_seconds": retrieval_seconds,
-        "page_load_seconds": page_load_seconds,
-        "qa_seconds": result.qa_seconds,
-        "encoder_seconds": result.encoder_seconds,
-        "decoder_seconds": result.decoder_seconds,
-        "total_sample_seconds": retrieval_seconds + page_load_seconds + result.qa_seconds,
-    }
-    if any(not np.isfinite(value) or value <= 0 for value in stages.values()):
-        raise SystemExit(f"semantic timing probe is not positive at top-{pages}: {stages}")
-    traces[str(pages)] = counts
-    timing_probes[str(pages)] = stages
-if not complete_colpali_equivalence:
-    raise SystemExit("complete_colpali_equivalence is false")
+    upstream_orders[qid] = {}
+    runtime_orders[qid] = {}
+    contexts[qid] = {}
+    timing_probes[qid] = {}
+    traces[qid] = {}
+    for pages in (1, 2, 4):
+        reference_started = time.perf_counter()
+        upstream = upstream_rag.retrieve_pages_from_docs(
+            query=sample.question,
+            docid2embs={},
+            index=faiss_index,
+            token2pageuid=upstream_token_map,
+            all_token_embeddings=all_embeddings.numpy(),
+            n_return_pages=pages,
+        )
+        reference_seconds = max(time.perf_counter() - reference_started, 1e-12)
+        retrieval_started = time.perf_counter()
+        observed = boundary.retrieve(sample.question, pages)
+        retrieval_seconds = max(time.perf_counter() - retrieval_started, 1e-12)
+        expected_order = [(str(doc), int(page)) for doc, page, _score in upstream]
+        actual_order = [(page.doc_id, page.page_index) for page in observed.pages]
+        if actual_order != expected_order:
+            raise SystemExit(f"indexed retrieval order differs from upstream for {qid} top-{pages}")
+        upstream_orders[qid][str(pages)] = [
+            {"doc_id": doc, "page_index": page} for doc, page in expected_order
+        ]
+        runtime_orders[qid][str(pages)] = [
+            {"doc_id": doc, "page_index": page} for doc, page in actual_order
+        ]
+        contexts[qid][str(pages)] = (observed, query)
+        timing_probes[qid][str(pages)] = {
+            "retrieval_seconds": retrieval_seconds,
+            "reference_retrieval_seconds": reference_seconds,
+        }
+after_retrieval = counters.snapshot()
+
+for qid in qids:
+    sample = samples[qid]
+    for pages in (1, 2, 4):
+        observed, query = contexts[qid][str(pages)]
+        page_pairs = tuple((page.doc_id, page.page_index) for page in observed.pages)
+        feature_rows = tuple(
+            {"doc_id": feature.doc_id, "page_index": feature.page_index}
+            for feature in observed.features
+        )
+        load_started = time.perf_counter()
+        loaded_images = align_retrieved_page_context(
+            page_pairs,
+            feature_rows,
+            lambda doc_id, page_index: dataset.get_images_from_doc_id(doc_id)[page_index],
+        )
+        page_load_seconds = max(time.perf_counter() - load_started, 1e-12)
+        answerer = DocPruneQwenAnswerer(qwen_model, qwen_processor, page_config=config.for_pages(pages))
+        qa_started = time.perf_counter()
+        result = answerer.answer(
+            loaded_images,
+            sample.question,
+            retrieval_output=observed,
+        )
+        qa_seconds = max(time.perf_counter() - qa_started, 1e-12)
+        trace = result.trace.to_dict()
+        counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]
+        if any(type(value) is not int or value <= 0 for value in counts) or any(left < right for left, right in zip(counts, counts[1:])):
+            raise SystemExit(f"non-monotonic or empty DocPrune trace for {qid} top-{pages}: counts={counts}")
+        stages = {
+            **timing_probes[qid][str(pages)],
+            "page_load_seconds": page_load_seconds,
+            "qa_seconds": qa_seconds,
+            "encoder_seconds": result.encoder_seconds,
+            "decoder_seconds": result.decoder_seconds,
+            "total_sample_seconds": timing_probes[qid][str(pages)]["retrieval_seconds"] + page_load_seconds + qa_seconds,
+        }
+        if any(not np.isfinite(value) or value <= 0 for value in stages.values()):
+            raise SystemExit(f"semantic timing probe is not positive at {qid} top-{pages}: {stages}")
+        timing_probes[qid][str(pages)] = stages
+        traces[qid][str(pages)] = counts
+after_qa = counters.snapshot()
+if after_qa != after_retrieval:
+    raise SystemExit("ColPali processor/model counters changed during QA")
 out.write_text(json.dumps({
     "status": "passed",
     "baseline_equivalence": True,
     "equivalence_qids": equivalence,
     "supporting_documents": supporting_documents,
     "docprune_traces": traces,
-    "complete_colpali_equivalence": complete_colpali_equivalence,
-    "upstream_retrieval_order": upstream_retrieval_order,
-    "qtp_reencoding_count": 0,
-    "flash_attention_2": attn_implementation == "flash_attention_2",
-    "timing_probes": timing_probes,
+    "complete_colpali_equivalence": True,
+    "schema5_mini_index": {
+        "status": "passed",
+        "schema_version": mini_manifest.to_dict()["schema_version"],
+        "fixture": True,
+        "manifest_path": str(mini_result.manifest_path.resolve()),
+    },
+    "upstream_retrieval_orders": upstream_orders,
+    "runtime_retrieval_orders": runtime_orders,
+    "retrieval_orders": runtime_orders,
+    "colpali_counters": {
+        "before_retrieval": before_retrieval,
+        "after_retrieval": after_retrieval,
+        "after_qa": after_qa,
+    },
+    "flash_attention_2": {
+        "cuda": str(torch.version.cuda or ""),
+        "torch": str(torch.__version__),
+        "transformers": __import__("transformers").__version__,
+        "attn_implementation": attn_implementation,
+    },
+    "timings": timing_probes,
 }, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 PY
 
-"$ENV_DIR/bin/python" - "$GATE_ROOT/semantic-samples.json" <<'PY'
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$GATE_ROOT/semantic-samples.json" <<'PY'
 import json
 import sys
+from docprune.benchmark_seal import validate_gate_evidence_payload
 
 with open(sys.argv[1], encoding="utf-8") as stream:
     payload = json.load(stream)
-if payload.get("status") != "passed" or payload.get("baseline_equivalence") is not True:
-    raise SystemExit("official-versus-all-kept equivalence gate failed")
-if payload.get("complete_colpali_equivalence") is not True:
-    raise SystemExit("complete ColPali equivalence gate failed")
-if payload.get("flash_attention_2") is not True:
-    raise SystemExit("FlashAttention-2 execution gate failed")
-if payload.get("qtp_reencoding_count") != 0:
-    raise SystemExit("QTP performed an unexpected ColPali re-encoding")
-orders = payload.get("upstream_retrieval_order")
-if not isinstance(orders, dict) or set(orders) != {"1", "2", "4"}:
-    raise SystemExit("semantic probe lacks fixed-sample upstream retrieval order")
-traces = payload.get("docprune_traces")
-if not isinstance(traces, dict) or set(traces) != {"1", "2", "4"}:
-    raise SystemExit("semantic probe lacks page-count traces")
-for counts in traces.values():
-    if not isinstance(counts, list) or len(counts) != 4 or any(not isinstance(value, int) or value <= 0 for value in counts):
-        raise SystemExit("semantic probe has invalid token counts")
-    if any(left < right for left, right in zip(counts, counts[1:])):
-        raise SystemExit("semantic probe trace is non-monotonic")
-timings = payload.get("timing_probes")
-required_stages = {
-    "retrieval_seconds",
-    "page_load_seconds",
-    "qa_seconds",
-    "encoder_seconds",
-    "decoder_seconds",
-    "total_sample_seconds",
-}
-if not isinstance(timings, dict) or set(timings) != {"1", "2", "4"}:
-    raise SystemExit("semantic probe lacks all page-count timing probes")
-for stages in timings.values():
-    if not isinstance(stages, dict) or set(stages) != required_stages:
-        raise SystemExit("semantic probe timing fields are incomplete")
-    if any(not isinstance(value, int | float) or not value > 0 for value in stages.values()):
-        raise SystemExit("semantic probe timings must be finite and positive")
+validate_gate_evidence_payload(
+    payload,
+    expected_qids=(
+        "a33985b1e8b2502fc18cc8147dc27db8",
+        "710a6d2254076ea58756c6c7cc211f1e",
+        "0d8f2779137fb47db953c4af5247ffe5",
+        "e240f5fe65b39eee70d3576cff88fe5a",
+        "18ecd2ac6c0ac69993b92dc4b30137e8",
+    ),
+)
 PY
 
 "$ENV_DIR/bin/python" - "$GATE_ROOT/gate.json" "$CONTRACT" <<'PY'
@@ -539,6 +595,8 @@ PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
   --gate "$GATE_ROOT/gate.json" \
   --control-record "$CONTROL_RECORD" \
   --m3docrag-root "$M3DOCRAG_DIR" \
+  --runtime-commit "$EXPECTED_COMMIT" \
+  --runtime-dir "$RUNTIME_DIR" \
   --output-root "$RUN_CONFIG_ROOT"
 for mode in all-kept docprune; do
   for pages in 1 2 4; do

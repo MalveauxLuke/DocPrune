@@ -22,10 +22,20 @@ set -euo pipefail
 : "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
 : "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
 : "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
 : "${CORPUS_ROOT:?set CORPUS_ROOT to the pinned M3DocVQA corpus}"
 : "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
 : "${COMPARISON_JSON:?set COMPARISON_JSON to a new signed JSON report path}"
 : "${COMPARISON_MARKDOWN:?set COMPARISON_MARKDOWN to a new Markdown report path}"
+
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
+test "$COMPARISON_JSON" = "$ATTEMPT_ROOT/comparison/six-cell.json"
+test "$COMPARISON_MARKDOWN" = "$ATTEMPT_ROOT/comparison/six-cell.md"
 
 test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
 test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"

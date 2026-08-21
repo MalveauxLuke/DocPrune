@@ -24,6 +24,7 @@ from docprune.benchmark_config import (
     SHORT_ANSWER_TEMPLATE,
     CorpusIdentity,
 )
+from docprune.benchmark_seal import validate_gate_evidence_payload, validate_runtime_identity
 from docprune.m3docvqa_factory import (
     _normalise_run_config_mapping,
     _validate_run_identity,
@@ -33,7 +34,6 @@ from docprune.m3docvqa_factory import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pdf_tools import validate_pdf_tools  # noqa: E402
 
-RUNTIME_COMMIT = "a8d8ca6e32178a2468d729670d7219e3177a9c8b"
 MODES = ("all-kept", "docprune")
 FIXED_GATE_SAMPLE_IDS = (
     "a33985b1e8b2502fc18cc8147dc27db8",
@@ -131,7 +131,12 @@ def _validate_m3docrag_checkout(path: Path) -> None:
         raise SystemExit(f"M3DocRAG checkout is not clean: {dirty.splitlines()[0]}")
 
 
-def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, object]:
+def validate_gate_evidence(
+    gate_path: Path,
+    contract_path: Path,
+    *,
+    expected_runtime_commit: str,
+) -> dict[str, object]:
     """Authenticate the complete gate evidence before producing final configs."""
 
     gate_path = _regular_raw_path(gate_path, label="gate JSON")
@@ -154,7 +159,7 @@ def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, ob
         raise ValueError("gate canonical SHA-256 is invalid")
     if gate.get("schema_version") != 1 or gate.get("status") != "passed":
         raise ValueError("gate schema/status is not passed")
-    if gate.get("runtime_commit") != RUNTIME_COMMIT:
+    if gate.get("runtime_commit") != expected_runtime_commit:
         raise ValueError("gate runtime commit is not pinned")
     if gate.get("m3docrag_commit") != M3DOCRAG_COMMIT:
         raise ValueError("gate M3DocRAG commit is not pinned")
@@ -183,28 +188,7 @@ def validate_gate_evidence(gate_path: Path, contract_path: Path) -> dict[str, ob
         raise ValueError("semantic evidence is invalid JSON") from error
     if not isinstance(semantic, dict):
         raise ValueError("semantic evidence must be an object")
-    if semantic.get("status") != "passed" or semantic.get("baseline_equivalence") is not True:
-        raise ValueError("semantic evidence did not pass baseline equivalence")
-    if semantic.get("equivalence_qids") != list(FIXED_GATE_SAMPLE_IDS):
-        raise ValueError("semantic evidence qids are not the exact fixed tuple")
-    supporting = semantic.get("supporting_documents")
-    if (
-        not isinstance(supporting, dict)
-        or set(supporting) != set(FIXED_GATE_SAMPLE_IDS)
-        or any(not isinstance(value, str) or not value for value in supporting.values())
-    ):
-        raise ValueError("semantic evidence supporting documents are incomplete")
-    traces = semantic.get("docprune_traces")
-    if not isinstance(traces, dict) or set(traces) != {"1", "2", "4"}:
-        raise ValueError("semantic evidence lacks the exact page traces")
-    for counts in traces.values():
-        if (
-            not isinstance(counts, list)
-            or len(counts) != 4
-            or any(type(value) is not int or value <= 0 for value in counts)
-            or any(left < right for left, right in zip(counts, counts[1:]))
-        ):
-            raise ValueError("semantic evidence has invalid or non-monotonic traces")
+    validate_gate_evidence_payload(semantic, expected_qids=FIXED_GATE_SAMPLE_IDS)
     return gate
 
 
@@ -220,11 +204,12 @@ def _payload(
     control: dict[str, object],
     gate: dict[str, object],
     gate_path: Path,
+    runtime_commit: str,
 ) -> dict[str, object]:
     return {
         "mode": mode,
         "page_count": page_count,
-        "runtime_commit": RUNTIME_COMMIT,
+        "runtime_commit": runtime_commit,
         "m3docrag_commit": M3DOCRAG_COMMIT,
         "m3docrag_root": str(m3docrag_root.resolve()),
         "qwen_model": QWEN_MODEL,
@@ -258,13 +243,21 @@ def main() -> int:
     parser.add_argument("--gate", type=Path, required=True)
     parser.add_argument("--control-record", type=Path, required=True)
     parser.add_argument("--m3docrag-root", type=Path, required=True)
+    parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     args = parser.parse_args()
     validate_pdf_tools()
+    try:
+        runtime_commit = validate_runtime_identity(args.runtime_commit, args.runtime_dir)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
     contract = _regular_raw_path(args.processor_contract, label="processor contract")
     gate_path = _regular_raw_path(args.gate, label="gate JSON")
-    gate = validate_gate_evidence(gate_path, contract)
+    gate = validate_gate_evidence(
+        gate_path, contract, expected_runtime_commit=runtime_commit
+    )
     contract_sha256 = _sha256(contract)
     corpus = CorpusIdentity.from_root(args.corpus_root.resolve())
     corpus.validate()
@@ -289,6 +282,7 @@ def main() -> int:
                 control=control,
                 gate=gate,
                 gate_path=gate_path,
+                runtime_commit=runtime_commit,
             )
             resolved = _normalise_run_config_mapping(payload)
             if str(resolved.mode) != mode or int(resolved.page_count) != page_count:

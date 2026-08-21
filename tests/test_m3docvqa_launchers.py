@@ -18,7 +18,6 @@ from make_probe_image import render_probe_image  # noqa: E402
 from make_run_configs import (  # noqa: E402
     FIXED_GATE_SAMPLE_IDS,
     M3DOCRAG_COMMIT,
-    RUNTIME_COMMIT,
     validate_gate_evidence,
 )
 
@@ -35,9 +34,7 @@ LAUNCHERS = tuple(
     )
 )
 HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
-ACTIVE_RUNTIME_COMMIT = "a8d8ca6e32178a2468d729670d7219e3177a9c8b"
-ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-a8d8ca6"
-ACTIVE_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1"
+TEST_RUNTIME_COMMIT = "a" * 40
 HISTORICAL_RUNTIME_COMMIT = "3755812cc3dc1a6205671202894cdf7915bc95a9"
 HISTORICAL_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-3755812"
 HISTORICAL_ATTEMPT_ROOT = "/scratch/lmalveau/docprune/benchmark-3755812/attempt-N"
@@ -80,7 +77,9 @@ def test_embedded_python_heredocs_are_f821_clean() -> None:
 def test_gate_binds_qids_to_supporting_documents_and_checks_fixed_set() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     assert "supporting_context" in text
-    assert "dataset.document_ids[0]" not in text
+    assert "MiniDataset" in text
+    assert "build_index" in text
+    assert "_load_index_manifest" in text
     assert "for qid in qids" in text
     assert "insufficient pages" in text
     assert ",".join(FIXED_GATE_SAMPLE_IDS) in text
@@ -91,7 +90,7 @@ def test_gate_binds_qids_to_supporting_documents_and_checks_fixed_set() -> None:
 def test_gate_trace_failure_reports_all_four_token_counts() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     assert 'counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]' in text
-    assert 'f"non-monotonic or empty DocPrune trace for top-{pages}: counts={counts}"' in text
+    assert 'f"non-monotonic or empty DocPrune trace for {qid} top-{pages}: counts={counts}"' in text
 
 
 def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
@@ -239,10 +238,13 @@ def test_gate_surface_requires_cuda_flash_and_context_reuse_checks() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     for required in (
         "torch.cuda.is_available()",
-        'attn_implementation == "flash_attention_2"',
+        'attn_implementation != "flash_attention_2"',
         "complete_colpali_equivalence",
-        "upstream_retrieval_order",
-        "qtp_reencoding_count",
+        "upstream_retrieval_orders",
+        "runtime_retrieval_orders",
+        "colpali_counters",
+        "after_qa",
+        "schema5_mini_index",
         '"encoder_seconds"',
         '"decoder_seconds"',
         '"page_load_seconds"',
@@ -250,7 +252,8 @@ def test_gate_surface_requires_cuda_flash_and_context_reuse_checks() -> None:
         '"retrieval_seconds"',
     ):
         assert required in text
-    assert "retrieval_output=retrieval_context" in text
+    assert "retrieval_output=observed" in text
+    assert "qtp_reencoding_count" not in text
 
 
 def test_evaluation_completion_publishes_six_cell_comparison() -> None:
@@ -298,21 +301,27 @@ def test_run_config_generator_is_executable_and_documented() -> None:
 
 
 def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
-    """The generators and handoff must agree on the detached runtime pin."""
+    """Generators accept only the externally supplied detached runtime pin."""
 
-    assert RUNTIME_COMMIT == ACTIVE_RUNTIME_COMMIT
     gate_config = (ROOT / "examples" / "m3docvqa" / "make_gate_config.py").read_text(
         encoding="utf-8"
     )
-    handoff = HANDOFF.read_text(encoding="utf-8")
-    assert ACTIVE_RUNTIME_COMMIT in gate_config
-    assert ACTIVE_RUNTIME_COMMIT in handoff
-    assert ACTIVE_RUNTIME_DIR in handoff
-    assert ACTIVE_ATTEMPT_ROOT in handoff
+    run_config = (ROOT / "examples" / "m3docvqa" / "make_run_configs.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'parser.add_argument("--runtime-commit", required=True)' in gate_config
+    assert 'parser.add_argument("--runtime-commit", required=True)' in run_config
+    assert 'parser.add_argument("--runtime-dir", type=Path, required=True)' in gate_config
+    assert 'parser.add_argument("--runtime-dir", type=Path, required=True)' in run_config
+    assert "a8d8ca6e32178a2468d729670d7219e3177a9c8b" not in gate_config
+    assert "a8d8ca6e32178a2468d729670d7219e3177a9c8b" not in run_config
 
 
 def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() -> None:
     text = HANDOFF.read_text(encoding="utf-8")
+    runtime_sha = re.search(r"^runtime commit: ([0-9a-f]{40})$", text, flags=re.MULTILINE)
+    assert runtime_sha is not None
+    runtime7 = runtime_sha.group(1)[:7]
     assert "61830411" in text
     assert "61830405" in text and "61830410" in text
     assert "cannot be promoted" in text
@@ -320,8 +329,8 @@ def test_corrected_handoff_records_diagnostic_attempt_and_schema_five_surface() 
     assert "complete unpadded ColPali" in text
     assert "15_docprune_m3docvqa_compare.sbatch" in text
     assert "afterok:$EVAL_JOB" in text
-    assert "/home/lmalveau/DocPrune-runtime-a8d8ca6" in text
-    assert "/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1" in text
+    assert f"/home/lmalveau/DocPrune-runtime-{runtime7}" in text
+    assert f"/scratch/lmalveau/docprune/benchmark-{runtime7}/attempt-1" in text
 
 
 def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
@@ -338,16 +347,21 @@ def test_reproduction_commands_use_literal_active_benchmark_root() -> None:
     """Active reproduction commands must target the pinned absolute artifact root."""
 
     text = (ROOT / "docs" / "reproduction" / "DOCPRUNE.md").read_text(encoding="utf-8")
-    assert "benchmark-a8d8ca6/attempt-1" in text
+    runtime_sha = re.search(
+        r"^runtime commit: ([0-9a-f]{40})$", HANDOFF.read_text(encoding="utf-8"), flags=re.MULTILINE
+    )
+    assert runtime_sha is not None
+    active_root = f"benchmark-{runtime_sha.group(1)[:7]}/attempt-1"
+    assert active_root in text
     assert "benchmark-6c19bfc/attempt-2" not in text
     command_lines = tuple(
         line.strip()
         for line in text.splitlines()
-        if line.strip().startswith("--") and "benchmark-a8d8ca6" in line
+        if line.strip().startswith("--") and active_root in line
     )
     assert command_lines
-    assert all("/scratch/lmalveau/docprune/benchmark-a8d8ca6/attempt-1/" in line for line in command_lines)
-    assert all("/scratch/$USER/docprune/benchmark-a8d8ca6/" not in line for line in command_lines)
+    assert all(f"/scratch/lmalveau/docprune/{active_root}/" in line for line in command_lines)
+    assert all(f"/scratch/$USER/docprune/{active_root.split('/')[0]}/" not in line for line in command_lines)
 
 
 def test_upstream_checkouts_require_strict_clean_status() -> None:
@@ -417,6 +431,47 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
         "baseline_equivalence": True,
         "equivalence_qids": list(FIXED_GATE_SAMPLE_IDS),
         "supporting_documents": {qid: "doc" for qid in FIXED_GATE_SAMPLE_IDS},
+        "complete_colpali_equivalence": True,
+        "schema5_mini_index": {"status": "passed", "schema_version": 5, "fixture": True},
+        "flash_attention_2": {
+            "cuda": "12.4",
+            "torch": "2.6.0",
+            "transformers": "4.49.0",
+            "attn_implementation": "flash_attention_2",
+        },
+        "upstream_retrieval_orders": {
+            qid: {
+                str(top_k): [{"doc_id": "doc", "page_index": index} for index in range(top_k)]
+                for top_k in (1, 2, 4)
+            }
+            for qid in FIXED_GATE_SAMPLE_IDS
+        },
+        "runtime_retrieval_orders": {
+            qid: {
+                str(top_k): [{"doc_id": "doc", "page_index": index} for index in range(top_k)]
+                for top_k in (1, 2, 4)
+            }
+            for qid in FIXED_GATE_SAMPLE_IDS
+        },
+        "colpali_counters": {
+            "before_retrieval": {"processor_queries": 0, "processor_images": 20, "model_forwards": 20},
+            "after_retrieval": {"processor_queries": 5, "processor_images": 20, "model_forwards": 25},
+            "after_qa": {"processor_queries": 5, "processor_images": 20, "model_forwards": 25},
+        },
+        "timings": {
+            qid: {
+                field: 0.01
+                for field in (
+                    "retrieval_seconds",
+                    "page_load_seconds",
+                    "qa_seconds",
+                    "total_sample_seconds",
+                    "encoder_seconds",
+                    "decoder_seconds",
+                )
+            }
+            for qid in FIXED_GATE_SAMPLE_IDS
+        },
         "docprune_traces": {str(page): [100, 80, 60, 40] for page in (1, 2, 4)},
     }
     semantic_path = tmp_path / "semantic-samples.json"
@@ -427,7 +482,7 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
     gate = {
         "schema_version": 1,
         "status": "passed",
-        "runtime_commit": RUNTIME_COMMIT,
+        "runtime_commit": TEST_RUNTIME_COMMIT,
         "m3docrag_commit": M3DOCRAG_COMMIT,
         "processor_contract_path": str(contract_path.resolve()),
         "processor_contract_sha256": hashlib.sha256(contract_path.read_bytes()).hexdigest(),
@@ -448,7 +503,9 @@ def _gate_fixture(tmp_path: Path) -> tuple[Path, Path]:
 def test_gate_evidence_accepts_sort_key_reordered_supporting_documents(tmp_path: Path) -> None:
     gate_path, contract_path = _gate_fixture(tmp_path)
 
-    evidence = validate_gate_evidence(gate_path, contract_path)
+    evidence = validate_gate_evidence(
+        gate_path, contract_path, expected_runtime_commit=TEST_RUNTIME_COMMIT
+    )
 
     assert evidence["sample_ids"] == list(FIXED_GATE_SAMPLE_IDS)
 
@@ -463,7 +520,9 @@ def test_gate_evidence_rejects_symlinked_declared_paths(tmp_path: Path, kind: st
         gate_path.unlink()
         gate_path.symlink_to(target)
         with pytest.raises(ValueError, match="regular|symlink"):
-            validate_gate_evidence(gate_path, contract_path)
+            validate_gate_evidence(
+                gate_path, contract_path, expected_runtime_commit=TEST_RUNTIME_COMMIT
+            )
         return
     if kind == "contract":
         target = tmp_path / "contract-real.json"
@@ -485,7 +544,9 @@ def test_gate_evidence_rejects_symlinked_declared_paths(tmp_path: Path, kind: st
     ).hexdigest()
     gate_path.write_text(json.dumps(gate), encoding="utf-8")
     with pytest.raises(ValueError, match="regular|symlink"):
-        validate_gate_evidence(gate_path, contract_path)
+        validate_gate_evidence(
+            gate_path, contract_path, expected_runtime_commit=TEST_RUNTIME_COMMIT
+        )
 
 
 @pytest.mark.parametrize(
@@ -513,7 +574,9 @@ def test_run_config_generator_rejects_tampered_gate_evidence(tmp_path: Path, mut
         semantic_path.write_text(json.dumps(semantic), encoding="utf-8")
     gate_path.write_text(json.dumps(gate), encoding="utf-8")
     with pytest.raises(ValueError):
-        validate_gate_evidence(gate_path, contract_path)
+        validate_gate_evidence(
+            gate_path, contract_path, expected_runtime_commit=TEST_RUNTIME_COMMIT
+        )
 
 
 def test_handoff_has_absolute_log_submission_and_no_control_placeholder() -> None:

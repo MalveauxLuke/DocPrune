@@ -20,6 +20,7 @@ from docprune.benchmark_config import (
     SHORT_ANSWER_TEMPLATE,
     CorpusIdentity,
 )
+from docprune.benchmark_seal import validate_runtime_identity
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pdf_tools import validate_pdf_tools  # noqa: E402
@@ -30,14 +31,20 @@ def main() -> int:
     parser.add_argument("--corpus-root", type=Path, required=True)
     parser.add_argument("--processor-contract", type=Path, required=True)
     parser.add_argument("--m3docrag-root", type=Path, required=True)
+    parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     validate_pdf_tools()
+    try:
+        runtime_commit = validate_runtime_identity(args.runtime_commit, args.runtime_dir)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     corpus = CorpusIdentity.from_root(args.corpus_root.resolve())
     payload = {
         "mode": "all-kept",
         "page_count": 1,
-        "runtime_commit": "a8d8ca6e32178a2468d729670d7219e3177a9c8b",
+        "runtime_commit": runtime_commit,
         "m3docrag_commit": M3DOCRAG_COMMIT,
         "m3docrag_root": str(args.m3docrag_root.resolve()),
         "qwen_model": QWEN_MODEL,
