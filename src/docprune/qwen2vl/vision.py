@@ -55,7 +55,9 @@ def compact_vision_batch(
     full_positions = visual_model.rot_pos_emb(grid.to(pixel_values.device))
     rotary_positions = full_positions[fine_keep]
     page_fine_counts = tuple(count * merge_area for count in kept_groups_per_page)
-    cumulative = torch.tensor(page_fine_counts, dtype=torch.int32, device=hidden_states.device).cumsum(0)
+    cumulative = torch.tensor(page_fine_counts, dtype=torch.int32, device=hidden_states.device).cumsum(
+        dim=0, dtype=torch.int32
+    )
     cumulative = functional.pad(cumulative, (1, 0), value=0)
     for block in visual_model.blocks:
         hidden_states = block(
