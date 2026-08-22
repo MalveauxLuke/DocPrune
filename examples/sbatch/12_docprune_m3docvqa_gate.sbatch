@@ -201,7 +201,8 @@ PY
   done
 done
 
-"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" "$GATE_ROOT/mini-index" <<'PY'
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
+  "$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" "$GATE_ROOT/mini-index" <<'PY'
 import hashlib
 import json
 import os
@@ -237,6 +238,7 @@ from docprune.m3docvqa_factory import (
 from docprune.m3docrag import OfficialM3DocRAGBoundary
 from docprune.colpali.embedding import encode_colpali_page
 from docprune.processor_probe import resolve_colpali_visual_mapping
+from gate_dtype import prepare_stock_colpali_batch
 
 sys.path.insert(0, str(Path(os.environ["M3DOCRAG_DIR"]) / "src"))
 import faiss
@@ -402,7 +404,8 @@ mapping = resolve_colpali_visual_mapping(
 )
 keep = torch.ones(mapping.visual_stop - mapping.visual_start, dtype=torch.bool, device=batch["input_ids"].device)
 encoded = encode_colpali_page(colpali_model, batch, mapping, keep)
-stock = torch.as_tensor(colpali_model(**batch))
+stock_batch = prepare_stock_colpali_batch(colpali_model, batch)
+stock = torch.as_tensor(colpali_model(**stock_batch))
 active = encoded.attention_mask[0].to(dtype=torch.bool)
 stock_active = stock[0, active].detach().to(device="cpu", dtype=torch.float32)
 persisted_end = int(json.loads(mini_manifest.completion_ledger_path.read_text(encoding="utf-8"))[0]["page_offsets"][1])
