@@ -28,7 +28,12 @@ from docprune.benchmark_config import (
 )
 from docprune.config import DocPruneConfig, load_config
 from docprune.m3docrag import DocPruneM3DocRAG, SampleInput
-from docprune.metrics import MEASUREMENT_DEFINITION, append_result_jsonl, summarize_jsonl
+from docprune.metrics import (
+    MEASUREMENT_DEFINITION,
+    append_result_jsonl,
+    measurement_identity,
+    summarize_jsonl,
+)
 
 DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
 
@@ -68,6 +73,8 @@ def _validate_resume_manifest(existing: dict[str, object], requested: dict[str, 
         raise ValueError("resume manifest operation does not match the requested command")
     for key, value in requested.items():
         if key == "index_manifest" and isinstance(existing.get(key), dict):
+            continue
+        if key == "measurement" and existing.get("operation") == "evaluate":
             continue
         if existing.get(key) != value:
             raise ValueError("resume manifest does not exactly match the requested run")
@@ -198,13 +205,21 @@ def _validate_evaluation_workload_manifest(
             raise ValueError(
                 f"evaluate workload identity does not match the authoritative run: {key}"
             )
-    generic_keys = set(requested) - {"command", "index_manifest"}
+    expected_measurement = measurement_identity(
+        sample_ids=tuple(str(value) for value in selection["resolved_question_ids"]),
+        warmup_count=1,
+    )
+    if workload.get("measurement") != expected_measurement:
+        raise ValueError("evaluate workload measurement identity is not canonical")
+    generic_keys = set(requested) - {"command", "index_manifest", "measurement"}
     for key in generic_keys:
         if key in workload and workload.get(key) != requested.get(key):
             raise ValueError(f"evaluate workload manifest {key} does not match the invocation")
     if placeholder:
         return
     _validate_complete_run_manifest(existing)
+    if workload.get("measurement") != existing.get("measurement"):
+        raise ValueError("evaluate workload measurement identity changed")
     for key in identity_keys:
         if workload.get(key) != existing.get(key):
             raise ValueError(f"evaluate workload identity changed: {key}")

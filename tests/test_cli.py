@@ -794,16 +794,6 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
         "docprune.cli._resolve_evaluate_authority",
         lambda *args, **kwargs: dict(workload_manifest),
     )
-    from docprune import cli as cli_module
-
-    original_manifest = cli_module._manifest
-
-    def manifest_with_identity(*args, **kwargs):
-        manifest = original_manifest(*args, **kwargs)
-        manifest["measurement"] = measurement_identity(sample_ids=("q-1", "q-2", "q-3"))
-        return manifest
-
-    monkeypatch.setattr(cli_module, "_manifest", manifest_with_identity)
 
     class Runner:
         def warmup(self, sample):
@@ -1036,6 +1026,72 @@ def test_evaluation_workload_cannot_inject_a_conflicting_command(tmp_path) -> No
             config=config,
             authoritative=identity,
         )
+
+
+def test_fresh_evaluation_accepts_factory_resolved_measurement_identity(tmp_path) -> None:
+    """Catch rejecting the canonical hardware/sample measurement as CLI tampering."""
+
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    requested = _manifest(
+        "evaluate",
+        Path("configs/docprune-m3docvqa.toml"),
+        config,
+        1,
+        "fake:factory",
+        output=tmp_path,
+        mode="all-kept",
+        run_config=None,
+        index_manifest=None,
+        limit=1,
+        sample_ids=None,
+    )
+    identity = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "command": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "all-kept",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": {
+            "enabled": False,
+            "page_settings": __import__("dataclasses").asdict(config.for_pages(1)),
+            "reconstruction_defaults": __import__("dataclasses").asdict(
+                config.reconstruction_defaults
+            ),
+            "siglip_patch_size": 14,
+        },
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": 1,
+            "resolved_question_ids": ["q-1"],
+            "count": 1,
+        },
+        "index_manifest": {},
+        "measurement": measurement_identity(sample_ids=("q-1",)),
+    }
+    workload = dict(identity)
+    workload["run_manifest_sha256"] = _manifest_digest(workload)
+
+    _validate_evaluation_workload_manifest(
+        workload,
+        existing=requested,
+        requested=requested,
+        config=config,
+        authoritative=identity,
+    )
 
 
 def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
