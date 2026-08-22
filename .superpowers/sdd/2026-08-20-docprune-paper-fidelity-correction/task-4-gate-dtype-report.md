@@ -72,3 +72,54 @@ The one skipped test is the pre-existing opt-in cached real-model CUDA probe.
   still be exercised by the next authorized diagnostic/benchmark run.
 - No Slurm jobs were submitted or canceled, and no scratch attempt was
   created.
+
+## Fix Round 1: unset-safe semantic wrapper environment
+
+### RED
+
+Added `test_gate_semantic_wrapper_is_safe_without_ambient_pythonpath`, which
+extracts and invokes the semantic gate wrapper with a fake Python executable,
+`set -euo pipefail`, and `PYTHONPATH` explicitly unset. Before the fix:
+
+```text
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q \
+  tests/test_m3docvqa_launchers.py::test_gate_semantic_wrapper_is_safe_without_ambient_pythonpath
+1 failed: bash: line 8: PYTHONPATH: unbound variable
+```
+
+### GREEN
+
+The semantic wrapper now constructs its path as:
+
+```text
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
+```
+
+The focused regression passes:
+
+```text
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q \
+  tests/test_m3docvqa_launchers.py::test_gate_semantic_wrapper_is_safe_without_ambient_pythonpath
+1 passed in 3.64s
+```
+
+Required fix-round verification:
+
+```text
+PYTHONPATH=src /home/lmalveau/mamba-envs/docprune-sol/bin/pytest -q tests/test_m3docvqa_launchers.py
+46 passed in 4.25s
+
+/home/lmalveau/mamba-envs/docprune-sol/bin/ruff check src tests examples/m3docvqa
+All checks passed!
+
+bash -n examples/sbatch/12_docprune_m3docvqa_gate.sbatch
+exit 0
+
+git diff --check
+exit 0
+```
+
+The earlier initial RED in this report remains honestly recorded as an import
+failure because the helper did not yet exist; it was not a dtype assertion
+failure. No Slurm jobs, runtime source, scratch attempts, gate contracts,
+resource pins, or runtime pins were changed.

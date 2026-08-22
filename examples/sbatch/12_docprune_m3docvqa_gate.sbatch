@@ -201,7 +201,7 @@ PY
   done
 done
 
-PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$PYTHONPATH" \
+PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src${PYTHONPATH:+:$PYTHONPATH}" \
   "$ENV_DIR/bin/python" - "$RUN_CONFIG" "$GATE_SAMPLE_IDS" "$GATE_ROOT/semantic-samples.json" "$GATE_ROOT/mini-index" <<'PY'
 import hashlib
 import json

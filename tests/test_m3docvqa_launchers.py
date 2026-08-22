@@ -111,6 +111,42 @@ def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:
     )
 
 
+def test_gate_semantic_wrapper_is_safe_without_ambient_pythonpath(tmp_path: Path) -> None:
+    """The semantic wrapper must run when the caller did not set PYTHONPATH."""
+
+    text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    start = text.index(
+        'PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src${PYTHONPATH:+:$PYTHONPATH}" \\\n'
+        '  "$ENV_DIR/bin/python" - "$RUN_CONFIG"'
+    )
+    end = text.index("\nPY\n", start) + len("\nPY")
+    wrapper = text[start:end].replace(
+        '"$ENV_DIR/bin/python"', shlex.quote(str(tmp_path / "env" / "bin" / "python")), 1
+    )
+    fake_python = tmp_path / "env" / "bin" / "python"
+    fake_python.parent.mkdir(parents=True)
+    fake_python.write_text("#!/usr/bin/env bash\ncat >/dev/null\n", encoding="utf-8")
+    fake_python.chmod(0o755)
+    values = {
+        "PROJECT_DIR": tmp_path,
+        "RUNTIME_DIR": tmp_path / "runtime",
+        "ENV_DIR": tmp_path / "env",
+        "RUN_CONFIG": tmp_path / "run-config.json",
+        "GATE_SAMPLE_IDS": "sample",
+        "GATE_ROOT": tmp_path / "gate",
+    }
+    assignments = "\n".join(
+        f"{name}={shlex.quote(str(value))}" for name, value in values.items()
+    )
+    result = subprocess.run(
+        ["bash", "-c", f"set -euo pipefail\n{assignments}\nunset PYTHONPATH\n{wrapper}\n"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_gate_renders_probe_image_from_pinned_corpus_qid() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     helper = (ROOT / "examples" / "m3docvqa" / "make_probe_image.py").read_text(encoding="utf-8")
