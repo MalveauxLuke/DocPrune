@@ -68,12 +68,18 @@ be modified or deleted. The next failed root
 `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` ran gate `61943239`
 for 29s on `scg011` and failed before GPU/model work because the runtime
 validator hard-coded `attempt-1`; downstream jobs `61943240`–`61943247` were
-auto-canceled. Preserve that root and all IDs unchanged. The fresh active root
-is `/scratch/lmalveau/docprune/benchmark-384b330/attempt-1/` under the
-immutable runtime checkout `/home/lmalveau/DocPrune-runtime-384b330`.
+auto-canceled. Preserve that root and all IDs unchanged. The old-runtime
+production graph (`61968793`, `61968794`–`61968797`, `61968799`–`61968800`,
+`61968821`, `61968823`) was canceled at `2026-08-21 17:50:21` with no nodes
+and elapsed 0; probes `61969352` and `61969614` were canceled with no
+node/elapsed 0. L40 attempts `61970394`, `61972695`, `61973090`, and `61974092`,
+and A100-40GB hedge `61974173` are immutable failed/canceled history and are
+not promotable. The fresh active root is
+`/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/` under the
+immutable runtime checkout `/home/lmalveau/DocPrune-runtime-15301ea`.
 
 The corrected Phase-A runtime is
-`384b330c72ce49ee2272d1602748307c973da37b`; the control identity is sealed in
+`15301ea557288a4f67fc3c85228bf5e148014d17`; the control identity is sealed in
 the fresh attempt's `control.json`. The gate now persists a fixture-marked
 schema-5 mini-index through the production indexing path and authenticates it
 through the canonical loader. Retrieval returns ordered `(doc_id,page_index)`
@@ -81,3 +87,10 @@ rows, and QA image loading/features are asserted against those exact rows.
 Actual ColPali processor/model counters prove one query encode per fixed QID
 and no QA-time calls. The legacy no-raster production branch remains deferred;
 schema-5 production cannot enter it.
+
+The active resource contract is HTC/public QoS with an unconstrained
+`gpu:l40:1`, 8 CPUs, 128G, and 1 hour for the semantic gate; the six indexes
+use the same L40 resources for 4 hours. The six-cell evaluation array uses
+HTC/public QoS, exact `gpu:a100:1` plus `a100_80`, 8 CPUs, 128G, 4 hours, and
+`%6` concurrency. Only those exact A100-80 rows support efficiency claims;
+the gate/index hardware is non-measurement and the comparator is HTC CPU-only.

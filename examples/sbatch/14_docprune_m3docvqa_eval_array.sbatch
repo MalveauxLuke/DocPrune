@@ -3,14 +3,14 @@
 # Submit with afterok dependencies on all six matching index jobs and the
 # semantic gate. The wrapper fails closed if the mapping is changed.
 #SBATCH --job-name=docprune-m3docvqa-eval
-#SBATCH --partition=public
+#SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --array=0-5%6
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm-%x-%A_%a.out
 #SBATCH --error=slurm-%x-%A_%a.err
 

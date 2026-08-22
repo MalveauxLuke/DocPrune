@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # One immutable evaluation cell. The array wrapper supplies the selectors.
 #SBATCH --job-name=docprune-m3docvqa-cell
-#SBATCH --partition=public
+#SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --gres=gpu:a100:1
 #SBATCH --constraint=a100_80
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=24:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm-%x-%j.out
 #SBATCH --error=slurm-%x-%j.err
 
