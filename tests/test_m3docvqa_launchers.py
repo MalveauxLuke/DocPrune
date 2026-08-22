@@ -302,6 +302,59 @@ def test_eval_array_delegates_via_project_dir_not_spooled_script() -> None:
     assert "/var/spool/slurmd" not in text
 
 
+def test_short_htc_shard_array_delegates_durable_cell_work() -> None:
+    text = (LAUNCHER_DIR / "16_docprune_m3docvqa_eval_shards.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert "#SBATCH --partition=htc" in text
+    assert "#SBATCH --qos=public" in text
+    assert "#SBATCH --gres=gpu:a100:1" in text
+    assert "#SBATCH --constraint=a100_80" in text
+    assert "#SBATCH --time=01:15:00" in text
+    assert 'SHARD_ID="$SLURM_ARRAY_TASK_ID"' in text
+    assert 'CELL_ROOT="$ATTEMPT_ROOT/eval-shards/${MODE}/top${PAGES}/${SHARD_NAME}"' in text
+    assert 'exec "$CELL_LAUNCHER"' in text
+
+
+def test_cell_launcher_selects_and_validates_exact_shard() -> None:
+    text = (LAUNCHER_DIR / "11_docprune_m3docvqa.sbatch").read_text(encoding="utf-8")
+    assert 'SHARD_PLAN="$SHARD_PLAN_ROOT/plan.json"' in text
+    assert 'QID_FILE="$SHARD_PLAN_ROOT/${SHARD_NAME}.qids"' in text
+    assert 'mapfile -t SAMPLE_IDS < "$QID_FILE"' in text
+    assert 'SAMPLE_ARGS=(--sample-ids "${SAMPLE_IDS[@]}")' in text
+    assert 'EXPECTED_QUESTIONS="${#SAMPLE_IDS[@]}"' in text
+    assert 'plan.get("source_questions") != 2441' in text
+    assert 'plan.get("checkpoint_size") != 256' in text
+    assert 'plan.get("source_questions_sha256") != corpus.get("questions_sha256")' in text
+    assert '--expected-questions "$EXPECTED_QUESTIONS"' in text
+    assert 'efficiency["samples"] != int(sys.argv[2])' in text
+
+
+def test_checkpoint_merges_existing_top4_shards_without_evaluation() -> None:
+    text = (LAUNCHER_DIR / "17_docprune_m3docvqa_checkpoint.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert "merge_eval_shards.py" in text
+    assert 'PLAN="$ATTEMPT_ROOT/shard-plan/checkpoint-plan.json"' in text
+    assert '--shard-root "$ATTEMPT_ROOT/eval-shards/$MODE/top4"' in text
+    assert '--expected-questions 256' in text
+    assert "compare_eval_checkpoint.py" in text
+    assert "docprune-m3docvqa evaluate" not in text
+
+
+def test_final_merge_array_publishes_six_canonical_runs_from_full_plan() -> None:
+    text = (LAUNCHER_DIR / "18_docprune_m3docvqa_merge_array.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert "#SBATCH --array=0-5%6" in text
+    assert 'PLAN="$ATTEMPT_ROOT/shard-plan/plan.json"' in text
+    assert "all-kept; PAGES=1" in text
+    assert "docprune; PAGES=4" in text
+    assert '--shard-root "$ATTEMPT_ROOT/eval-shards/$MODE/top$PAGES"' in text
+    assert '--output "$ATTEMPT_ROOT/eval/$MODE/top$PAGES/run"' in text
+    assert '--expected-questions 2441' in text
+
+
 def test_index_seals_resume_and_uses_production_manifest_loader() -> None:
     text = (LAUNCHER_DIR / "13_docprune_m3docvqa_index.sbatch").read_text(encoding="utf-8")
     assert ': "${RESUME:=0}"' in text

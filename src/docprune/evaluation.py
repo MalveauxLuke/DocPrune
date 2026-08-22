@@ -506,6 +506,138 @@ def _regular_file(path: Path, label: str, errors: list[str]) -> bool:
     return True
 
 
+def _validate_execution_shards(
+    manifest: Mapping[str, object], run_dir: Path, errors: list[str]
+) -> int:
+    """Authenticate a merged run's plan and immutable shard outputs.
+
+    Returns the number of warmups represented by the run. Ordinary, unsharded
+    runs deliberately keep the original single-warmup contract.
+    """
+
+    execution = manifest.get("execution_shards")
+    if execution is None:
+        return 1
+    if not isinstance(execution, Mapping):
+        errors.append("execution shards provenance is not an object")
+        return 1
+    required = {"schema_version", "count", "plan_path", "plan_sha256", "shards"}
+    if set(execution) != required or execution.get("schema_version") != 1:
+        errors.append("execution shards provenance schema is invalid")
+        return 1
+    count = execution.get("count")
+    entries = execution.get("shards")
+    if (
+        not isinstance(count, int)
+        or isinstance(count, bool)
+        or count < 1
+        or not isinstance(entries, list)
+        or len(entries) != count
+    ):
+        errors.append("execution shards count is invalid")
+        return 1
+    plan_path = _manifest_path(execution.get("plan_path"), Path(run_dir))
+    plan: dict[str, object] = {}
+    if plan_path is None or not _regular_file(plan_path, "execution shard plan", errors):
+        return count
+    if hashlib.sha256(plan_path.read_bytes()).hexdigest() != execution.get("plan_sha256"):
+        errors.append("execution shard plan digest mismatch")
+    try:
+        loaded = json.loads(plan_path.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ValueError("not an object")
+        plan = loaded
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        errors.append(f"execution shard plan is invalid: {error}")
+        return count
+    supplied_plan_digest = plan.get("plan_sha256")
+    unsigned_plan = dict(plan)
+    unsigned_plan.pop("plan_sha256", None)
+    if supplied_plan_digest != hashlib.sha256(
+        json.dumps(unsigned_plan, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest():
+        errors.append("execution shard plan canonical digest mismatch")
+    plan_shards = plan.get("shards")
+    source_qids = plan.get("source_question_ids")
+    selected_qids = (
+        manifest.get("selection", {}).get("resolved_question_ids")
+        if isinstance(manifest.get("selection"), Mapping)
+        else None
+    )
+    if not isinstance(source_qids, list) or source_qids != selected_qids:
+        errors.append("execution shard plan source order does not match the merged selection")
+    if not isinstance(plan_shards, list) or len(plan_shards) != count:
+        errors.append("execution shard plan count does not match provenance")
+        return count
+    entry_fields = {
+        "shard_id",
+        "run_path",
+        "manifest_sha256",
+        "results_sha256",
+        "summary_sha256",
+        "validation_sha256",
+    }
+    seen_qids: list[str] = []
+    for position, (planned, entry) in enumerate(zip(plan_shards, entries)):
+        if not isinstance(planned, Mapping) or not isinstance(entry, Mapping):
+            errors.append(f"execution shard {position} identity is not an object")
+            continue
+        shard_id = planned.get("shard_id")
+        qids = planned.get("question_ids")
+        if set(entry) != entry_fields or entry.get("shard_id") != shard_id:
+            errors.append(f"execution shard {position} provenance is invalid")
+            continue
+        if not isinstance(qids, list) or not all(isinstance(qid, str) and qid for qid in qids):
+            errors.append(f"execution shard {position} question IDs are invalid")
+            continue
+        seen_qids.extend(qids)
+        shard_run = _manifest_path(entry.get("run_path"), Path(run_dir))
+        if shard_run is None or shard_run.is_symlink() or not shard_run.is_dir():
+            errors.append(f"execution shard {position} run directory is invalid")
+            continue
+        files = {
+            "manifest": shard_run / "run_manifest.json",
+            "results": shard_run / "results.jsonl",
+            "summary": shard_run / "summary.json",
+            "validation": shard_run.parent / "validation.json",
+        }
+        for label, path in files.items():
+            if _regular_file(path, f"execution shard {position} {label}", errors):
+                expected_digest = entry.get(f"{label}_sha256")
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected_digest:
+                    errors.append(f"execution shard {position} {label} digest mismatch")
+        try:
+            shard_manifest = json.loads(files["manifest"].read_text(encoding="utf-8"))
+            validation = json.loads(files["validation"].read_text(encoding="utf-8"))
+            if not isinstance(shard_manifest, dict) or not isinstance(validation, dict):
+                raise ValueError("manifest or validation is not an object")
+            if shard_manifest.get("run_manifest_sha256") != _canonical_digest(shard_manifest):
+                errors.append(f"execution shard {position} manifest canonical digest mismatch")
+            shard_selection = shard_manifest.get("selection")
+            if not isinstance(shard_selection, Mapping) or shard_selection.get(
+                "resolved_question_ids"
+            ) != qids:
+                errors.append(f"execution shard {position} selection does not match the plan")
+            for field in ("mode", "page_count"):
+                if shard_manifest.get(field) != manifest.get(field):
+                    errors.append(f"execution shard {position} {field} does not match merged run")
+            if (
+                validation.get("valid") is not True
+                or validation.get("question_count") != len(qids)
+                or validation.get("qids") != qids
+                or validation.get("errors") != []
+            ):
+                errors.append(f"execution shard {position} validation is not successful")
+        except (OSError, json.JSONDecodeError, ValueError) as error:
+            errors.append(f"execution shard {position} metadata is invalid: {error}")
+    if isinstance(source_qids, list):
+        if len(seen_qids) != len(set(seen_qids)):
+            errors.append("execution shard plan contains duplicate question IDs")
+        if set(seen_qids) != set(source_qids):
+            errors.append("execution shard plan does not partition the merged selection")
+    return count
+
+
 def _finite_json(value: object) -> bool:
     if isinstance(value, float):
         return math.isfinite(value)
@@ -893,6 +1025,9 @@ def validate_benchmark_run(
             "fixture identity is not valid for production validation; "
             "use the explicit allow_fixture API only for tiny internal fixtures"
         )
+    expected_warmup_count = (
+        _validate_execution_shards(manifest, run_dir, errors) if production_run else 1
+    )
     if production_run:
         if manifest.get("operation") != "evaluate":
             errors.append("production benchmark validation requires an evaluate manifest")
@@ -1028,9 +1163,13 @@ def validate_benchmark_run(
                 if (
                     not isinstance(warmup.get("count"), int)
                     or isinstance(warmup.get("count"), bool)
-                    or warmup.get("count") != 1
+                    or warmup.get("count") != expected_warmup_count
                 ):
-                    errors.append("measurement warmup count must equal one")
+                    errors.append(
+                        "measurement warmup count does not match execution shard count"
+                        if expected_warmup_count != 1
+                        else "measurement warmup count must equal one"
+                    )
                 sample_ids = (
                     manifest.get("selection", {}).get("resolved_question_ids", [])
                     if isinstance(manifest.get("selection"), Mapping)
