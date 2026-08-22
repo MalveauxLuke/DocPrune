@@ -21,22 +21,22 @@ CTP semantics, while the canonical schema-5 loader validates page offsets and
 ledger integrity. ACC is outside the active metric contract (EM/F1,
 modality-F1, hop-F1) and is not inferred.
 
+## Historical execution records (immutable, non-promotable)
+
 Historical diagnostic attempt-2 at
 `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/` is not the active
 root: evaluation array `61830411` was canceled before evaluation work, and six
 schema-4 indexes (`61830405`–`61830410`) completed with `0:0` but cannot be
 promoted to the corrected schema-5 benchmark. Their
 scratch artifacts remain preserved and must not be modified, deleted, or
-reported. The active root is the fresh
-`benchmark-02385b3/attempt-2` failed in its gate before GPU/model work and is
-preserved as immutable history. The active root is the fresh
-`benchmark-384b330/attempt-1`; submit only from the clean control checkout
+reported. The preserved failed roots and scheduling probes are listed in the
+historical table below. The active root is the fresh
+`benchmark-15301ea/attempt-1`; submit only from the clean control checkout
 after the local checks at the end of this document pass.
 
 The pre-execution seals `a8d8ca6` (runtime) and `6228d06` (control/docs) are
-superseded by runtime `02385b3a6fc939f23a8632a7ce58b4cac8bff263` and its
-control revisions. The failed `benchmark-02385b3/attempt-2` gate used that
-runtime and failed before GPU/model work because the runtime validator
+superseded by prior runtime revisions and their control revisions. The failed
+attempt-2 gate failed before GPU/model work because the runtime validator
 accepted only `attempt-1`; its downstream jobs were auto-canceled and all IDs
 are preserved below. The corrected
 generators now require an externally supplied runtime SHA and clean checkout,
@@ -55,8 +55,8 @@ these probes did not submit benchmark work.
 
 ```text
 control checkout: /home/lmalveau/DocPrune-benchmark
-runtime checkout: /home/lmalveau/DocPrune-runtime-384b330 (detached, clean)
-runtime commit: 384b330c72ce49ee2272d1602748307c973da37b
+runtime checkout: /home/lmalveau/DocPrune-runtime-15301ea (detached, clean)
+runtime commit: 15301ea557288a4f67fc3c85228bf5e148014d17
 control commit: sealed per-attempt in `$ATTEMPT_ROOT/control.json`
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -95,7 +95,7 @@ a failed attempt gets a new attempt root and a new record.
 ```bash
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-384b330/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1
 export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 test ! -e "$ATTEMPT_ROOT"
@@ -138,8 +138,8 @@ config generator require a strictly empty upstream status. All jobs set
 ```bash
 (
 set -e
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-384b330
-export EXPECTED_COMMIT=384b330c72ce49ee2272d1602748307c973da37b
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-15301ea
+export EXPECTED_COMMIT=15301ea557288a4f67fc3c85228bf5e148014d17
 export M3DOCRAG_SOURCE=/home/lmalveau/src/m3docrag-runtime-29e6ac2
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
@@ -198,15 +198,15 @@ SHA-256.
 
 ## Resources and artifacts
 
-Every GPU job requests one non-measurement A100, 8 CPUs, and 128 GB RAM for the
-gate/index jobs; they intentionally omit the `a100_80` constraint because they
-validate semantics and artifacts rather than final performance. The public
-evaluation array alone requests exact A100-80 hardware for timing, throughput,
-and memory claims. HTC is used for gate/index scheduling and the comparator;
-public is retained for measured evaluation. Use
-`/scratch/lmalveau/docprune/benchmark-384b330/attempt-1/` for the fresh
-attempt; never reuse the failed `benchmark-02385b3/attempt-2` artifacts or any
-historical root.
+The semantic gate requests HTC/public QoS, `gpu:l40:1`, 8 CPUs, 128G, and one
+hour without a GPU-model constraint. Each of the six non-measurement index
+jobs requests HTC/public QoS, `gpu:l40:1`, 8 CPUs, 128G, and four hours without
+a GPU-model constraint. The six-cell evaluation array requests HTC/public QoS,
+exact `gpu:a100:1` plus `a100_80`, 8 CPUs, 128G, and four hours with
+concurrency `%6`. Only those exact A100-80 rows support timing, throughput, or
+memory claims. The comparator is HTC CPU-only for one hour. Use
+`/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/` for the fresh
+attempt; never reuse any historical root.
 
 ```text
 $ATTEMPT_ROOT/inputs/gate-top1.json
@@ -247,7 +247,7 @@ corpus identity shown in the Corpus section:
 {
   "mode": "all-kept",
   "page_count": 1,
-  "runtime_commit": "384b330c72ce49ee2272d1602748307c973da37b",
+  "runtime_commit": "15301ea557288a4f67fc3c85228bf5e148014d17",
   "m3docrag_commit": "29e6ac2294d6b87075a1d45b8a8df175b214248a",
   "qwen_model": "Qwen/Qwen2-VL-7B-Instruct",
   "qwen_revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac",
@@ -331,16 +331,15 @@ This block supplies every launcher variable and directs logs to an absolute
 artifact directory outside the control checkout. `--export=ALL` carries the
 explicitly exported values into each job; comma-separated sample IDs remain
 safe because they are exported through the environment rather than embedded in
-the Slurm export list. Use the fresh `benchmark-384b330/attempt-1` root and
-never reuse the failed `benchmark-02385b3/attempt-2`, scheduling-only
-attempt-1, or any other historical artifacts.
+the Slurm export list. Use the fresh `benchmark-15301ea/attempt-1` root and
+never reuse any historical artifacts.
 
 ```bash
 export PROJECT_DIR=/home/lmalveau/DocPrune-benchmark
-export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-384b330
+export RUNTIME_DIR=/home/lmalveau/DocPrune-runtime-15301ea
 export ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 export PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
-export EXPECTED_COMMIT=384b330c72ce49ee2272d1602748307c973da37b
+export EXPECTED_COMMIT=15301ea557288a4f67fc3c85228bf5e148014d17
 export M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 export M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 export CORPUS_ROOT=/scratch/lmalveau/docprune/datasets/m3docvqa
@@ -353,7 +352,7 @@ export COLPALI_MODEL=vidore/colpali-v1.2
 export COLPALI_REVISION=961b51745de3e9adb3468ac5c9ccca0ac626c217
 export COLPALI_BACKBONE_MODEL=vidore/colpaligemma-3b-pt-448-base
 export COLPALI_BACKBONE_REVISION=30ab955d073de4a91dc5a288e8c97226647e3e5a
-export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-384b330/attempt-1
+export ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1
 export EXPECTED_ATTEMPT_ROOT="$ATTEMPT_ROOT"
 export CONTROL_RECORD="$ATTEMPT_ROOT/control.json"
 export CONTROL_COMMIT="$("$ENV_DIR/bin/python" -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_commit"])' "$CONTROL_RECORD")"
@@ -377,8 +376,8 @@ PYTHONPATH="$PROJECT_DIR/examples/m3docvqa:$RUNTIME_DIR/src" "$ENV_DIR/bin/pytho
   --output "$RUN_CONFIG"
 
 GATE_JOB="$(sbatch --parsable \
-  --partition=htc --time=02:00:00 \
-  --gres=gpu:a100:1 --cpus-per-task=8 --mem=128G \
+  --partition=htc --qos=public --time=01:00:00 \
+  --gres=gpu:l40:1 --cpus-per-task=8 --mem=128G \
   --chdir="$SLURM_LOG_DIR" \
   --output="$SLURM_LOG_DIR/gate-%j.out" \
   --error="$SLURM_LOG_DIR/gate-%j.err" \
@@ -394,8 +393,8 @@ for MODE in all-kept docprune; do
     export RUN_CONFIG="$RUN_CONFIG_ROOT/${MODE}-top${PAGES}.json"
     export INDEX_ROOT="$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}"
     INDEX_JOB_IDS+=("$(sbatch --parsable \
-      --partition=htc --time=04:00:00 \
-      --gres=gpu:a100:1 --cpus-per-task=8 --mem=128G \
+      --partition=htc --qos=public --time=04:00:00 \
+      --gres=gpu:l40:1 --cpus-per-task=8 --mem=128G \
       --dependency="afterok:$GATE_JOB" \
       --chdir="$SLURM_LOG_DIR" \
       --output="$SLURM_LOG_DIR/index-${MODE}-top${PAGES}-%j.out" \
@@ -408,7 +407,7 @@ done
 export ALL_KEPT_INDEX_ROOT DOCPRUNE_INDEX_ROOT ATTEMPT_ROOT RUN_CONFIG_ROOT
 INDEX_DEPENDENCY="$(IFS=:; echo "${INDEX_JOB_IDS[*]}")"
 EVAL_JOB="$(sbatch --parsable \
-  --partition=public --time=24:00:00 \
+  --partition=htc --qos=public --time=04:00:00 \
   --gres=gpu:a100:1 --constraint=a100_80 --cpus-per-task=8 --mem=128G \
   --dependency="afterok:$GATE_JOB:$INDEX_DEPENDENCY" \
   --chdir="$SLURM_LOG_DIR" \
@@ -468,12 +467,19 @@ not rewrite, delete, resume, or describe these artifacts as successful:
 | `benchmark-6c19bfc/attempt-2` | `61830404` | indexes `61830405`-`61830410`; eval `61830411` | six schema-4 indexes completed `0:0` but are invalid under schema 5; evaluation was canceled before work; diagnostic-only and cannot be promoted |
 | `benchmark-02385b3/attempt-1` | `61883512` | gate `61883512`; indexes `61883881`-`61883886`; eval `61883887`; compare `61883888` | scheduling-only HTC/public graph canceled before any job started; all elapsed `00:00:00` at `2026-08-21T13:17:23`; preserve unchanged |
 | `benchmark-02385b3/attempt-2` | `61943239` | gate `61943239` ran 29s on `scg011`; downstream `61943240`–`61943247` auto-canceled before work | gate failed before GPU/model work because runtime `validate_attempt_root` hard-coded `attempt-1` while actual and expected were both `.../attempt-2`; preserve all artifacts and IDs; do not reuse |
+| `benchmark-384b330/attempt-1` | `61968793` | production graph `61968793`, `61968794`–`61968797`, `61968799`–`61968800`, `61968821`, `61968823` | canceled at `2026-08-21 17:50:21`; no nodes, elapsed 0; immutable old-runtime history |
+| `benchmark-384b330/attempt-2` | `61969352`, `61969614` | scheduling probes | canceled; no node/elapsed 0; immutable scheduling history |
+| `benchmark-384b330/attempt-3` | `61970394` | L40 gate on `scg022` | failed `1:0` after `00:05:29`; stock ColPali FP32/BF16 gate mismatch |
+| `benchmark-384b330/attempt-4` | `61972695` | L40 gate on `scg022` | failed `1:0` after `00:01:54`; stale gate `RetrievalOutput.features` consumer |
+| `benchmark-384b330/attempt-5` | `61973090` | L40 backfill hedge on `scg023` | canceled after `00:00:08` (batch `00:00:11`); not successful |
+| `benchmark-384b330/attempt-6` | `61974092` | L40 gate on `scg022` | failed `1:0` after `00:00:51`; FA2 `cu_seqlens_q` was int64 instead of int32 |
+| `benchmark-384b330/attempt-7` | `61974173` | A100-40GB hedge on `scg001` | canceled after `00:00:06` (batch `00:00:08`); not successful |
 
 The three `benchmark-3755812` rows above are failed overall attempts: none is a complete benchmark result or resumable active attempt. Their passed gates or
 DocPrune indexes do not make the attempts successful. Both `benchmark-6c19bfc`
 rows are historical and cannot be resumed or promoted; in particular,
 attempt-2's schema-4 indexes are not valid corrected artifacts. The next active
-root is the fresh `/scratch/lmalveau/docprune/benchmark-384b330/attempt-1/`.
+root is the fresh `/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/`.
 
 These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-d5cefb3/`,
@@ -481,7 +487,7 @@ These failed attempts remain under their historical roots at
 `/scratch/lmalveau/docprune/benchmark-6c19bfc/`; the failed
 `/scratch/lmalveau/docprune/benchmark-02385b3/attempt-2/` is also immutable
 history. All new benchmark work uses
-`/scratch/lmalveau/docprune/benchmark-384b330/attempt-1/` and the runtime
+`/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/` and the runtime
 commit pinned at the top of this handoff.
 
 On preemption or time limit, use `--resume` only when the run/index manifest,
@@ -539,5 +545,5 @@ exact commits and strictly clean; and the control checkout contains only
 reviewed source/docs/launchers.
 
 The runtime remains pinned separately to
-`384b330c72ce49ee2272d1602748307c973da37b`; the reviewed control commit is
+`15301ea557288a4f67fc3c85228bf5e148014d17`; the reviewed control commit is
 always the full SHA sealed in each attempt's `control.json`.

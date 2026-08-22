@@ -28,10 +28,14 @@ PDFs, and 44,638 pages, even though the paper reports 2,441 / 3,368 / 41,005.
 The current Phase-A seal uses `/home/lmalveau/mamba-envs/docprune-sol`, PDF
 tools from `/home/lmalveau/mamba-envs/m3docvqa-acquisition`, the acquired
 corpus at `/scratch/lmalveau/docprune/datasets/m3docvqa`, and runtime
-`384b330c72ce49ee2272d1602748307c973da37b` from
-`/home/lmalveau/DocPrune-runtime-384b330`. Its immutable attempt root is
-`/scratch/lmalveau/docprune/benchmark-384b330/attempt-1`; control identity is
-sealed in that root's `control.json`. The historical diagnostic
+`15301ea557288a4f67fc3c85228bf5e148014d17` from
+`/home/lmalveau/DocPrune-runtime-15301ea`. Its immutable attempt root is
+`/scratch/lmalveau/docprune/benchmark-15301ea/attempt-1`; control identity is
+sealed in that root's `control.json`.
+
+## Historical execution records (immutable, non-promotable)
+
+The historical diagnostic
 `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2` remains diagnostic-only:
 evaluation `61830411` was canceled before work and indexes `61830405`–`61830410`
 are schema-4 artifacts at `/scratch/lmalveau/docprune/benchmark-6c19bfc/attempt-2/`
@@ -43,10 +47,19 @@ and remains immutable history. The failed
 hard-coded `attempt-1`; downstream jobs `61943240`–`61943247` were auto-canceled.
 That root and every job ID remain immutable and are not reusable.
 
-The semantic gate and six index jobs request one unconstrained A100 on HTC for
-debugging and artifact work, not performance measurement. Only the public
-evaluation rows request the exact `a100_80` constraint; timing, throughput, and
-memory claims come exclusively from those rows. The comparator is HTC CPU-only.
+The old-runtime production graph (`61968793`, `61968794`–`61968797`,
+`61968799`–`61968800`, `61968821`, `61968823`) was canceled at
+`2026-08-21 17:50:21` with no nodes and elapsed 0. Scheduling probes
+`61969352` and `61969614` were canceled with no node/elapsed 0. L40 attempts
+`61970394`, `61972695`, `61973090`, and `61974092`, and the A100-40GB hedge
+`61974173`, are immutable failed/canceled history and are not promotable.
+
+The semantic gate requests one unconstrained L40 on HTC/public QoS for one
+hour, and each of the six index jobs requests one unconstrained L40 on
+HTC/public QoS for four hours. These are debugging and artifact jobs, not
+performance measurements. The six evaluation rows request exact
+`gpu:a100:1` plus `a100_80` on HTC/public QoS for four hours; only those rows
+support timing, throughput, and memory claims. The comparator is HTC CPU-only.
 
 ## Implemented method
 
@@ -128,28 +141,28 @@ docprune-m3docvqa inspect \
 docprune-m3docvqa evaluate \
   --config configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
-  --run-config /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/run-configs/docprune-top4.json \
-  --index-manifest /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/indexes/docprune/top4/docprune/manifest.json \
-  --output /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top4/run \
+  --run-config /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/run-configs/docprune-top4.json \
+  --index-manifest /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/indexes/docprune/top4/docprune/manifest.json \
+  --output /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top4/run \
   --factory docprune.m3docvqa_factory:build_workload
 
 docprune-m3docvqa validate-run \
-  --run /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top4/run \
+  --run /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top4/run \
   --expected-questions 2441
 
 docprune-m3docvqa summarize \
-  --results /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top4/run/results.jsonl
+  --results /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top4/run/results.jsonl
 
 docprune-m3docvqa compare-runs \
   --corpus-root /scratch/lmalveau/docprune/datasets/m3docvqa \
-  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/all-kept/top1/run \
-  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/all-kept/top2/run \
-  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/all-kept/top4/run \
-  --docprune-top1 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top1/run \
-  --docprune-top2 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top2/run \
-  --docprune-top4 /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/eval/docprune/top4/run \
-  --json-output /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/comparison/six-cell.json \
-  --markdown-output /scratch/lmalveau/docprune/benchmark-384b330/attempt-1/comparison/six-cell.md
+  --all-kept-top1 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/all-kept/top1/run \
+  --all-kept-top2 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/all-kept/top2/run \
+  --all-kept-top4 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/all-kept/top4/run \
+  --docprune-top1 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top1/run \
+  --docprune-top2 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top2/run \
+  --docprune-top4 /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/eval/docprune/top4/run \
+  --json-output /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/comparison/six-cell.json \
+  --markdown-output /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/comparison/six-cell.md
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in

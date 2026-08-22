@@ -3,7 +3,8 @@
 # wrapper once for every mode/page pair, with afterok on the semantic gate.
 #SBATCH --job-name=docprune-m3docvqa-index
 #SBATCH --partition=htc
-#SBATCH --gres=gpu:a100:1
+#SBATCH --qos=public
+#SBATCH --gres=gpu:l40:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
 #SBATCH --time=04:00:00
