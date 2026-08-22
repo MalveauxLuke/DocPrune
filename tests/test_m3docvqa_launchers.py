@@ -9,10 +9,12 @@ import shlex
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "examples" / "m3docvqa"))
 from make_probe_image import render_probe_image  # noqa: E402
@@ -22,7 +24,11 @@ from make_run_configs import (  # noqa: E402
     validate_gate_evidence,
 )
 
-from docprune.benchmark_seal import validate_attempt_root  # noqa: E402
+from docprune.benchmark_seal import (  # noqa: E402
+    align_retrieved_page_context,
+    validate_attempt_root,
+)
+from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures  # noqa: E402
 
 ROOT = Path(__file__).parents[1]
 LAUNCHER_DIR = ROOT / "examples" / "sbatch"
@@ -94,6 +100,44 @@ def test_gate_trace_failure_reports_all_four_token_counts() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
     assert 'counts = [trace[key] for key in ("original_visual_tokens", "post_btp_visual_tokens", "post_qtp_visual_tokens", "post_ctp_visual_tokens")]' in text
     assert 'f"non-monotonic or empty DocPrune trace for {qid} top-{pages}: counts={counts}"' in text
+
+
+def test_gate_retrieval_alignment_consumes_ordered_page_features_contract() -> None:
+    """Execute the gate's feature-row extraction against the active retrieval contract."""
+
+    text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
+    start = text.index("        feature_rows = tuple(\n")
+    end = text.index("        load_started", start)
+    extraction = textwrap.dedent(text[start:end])
+    observed = RetrievalOutput(
+        pages=(
+            RetrievedPage("doc-b", 2, 0.9),
+            RetrievedPage("doc-a", 0, 0.8),
+        ),
+        query_embeddings=torch.zeros((1, 2)),
+        page_features=(
+            RetrievedPageFeatures(
+                "doc-b", 2, torch.zeros((1, 2)), torch.zeros(1), (32, 32)
+            ),
+            RetrievedPageFeatures(
+                "doc-a", 0, torch.zeros((1, 2)), torch.zeros(1), (32, 32)
+            ),
+        ),
+    )
+
+    namespace = {"observed": observed}
+    exec(extraction, namespace)
+    feature_rows = namespace["feature_rows"]
+    assert feature_rows == (
+        {"doc_id": "doc-b", "page_index": 2},
+        {"doc_id": "doc-a", "page_index": 0},
+    )
+    loaded = align_retrieved_page_context(
+        tuple((page.doc_id, page.page_index) for page in observed.pages),
+        feature_rows,
+        lambda doc_id, page_index: f"image:{doc_id}:{page_index}",
+    )
+    assert loaded == ("image:doc-b:2", "image:doc-a:0")
 
 
 def test_gate_lifecycle_and_post_gate_config_order_are_fail_closed() -> None:

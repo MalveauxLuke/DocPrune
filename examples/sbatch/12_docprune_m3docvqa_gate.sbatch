@@ -478,7 +478,7 @@ for qid in qids:
         page_pairs = tuple((page.doc_id, page.page_index) for page in observed.pages)
         feature_rows = tuple(
             {"doc_id": feature.doc_id, "page_index": feature.page_index}
-            for feature in observed.features
+            for feature in observed.page_features
         )
         load_started = time.perf_counter()
         loaded_images = align_retrieved_page_context(
