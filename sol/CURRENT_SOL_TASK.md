@@ -2,14 +2,11 @@
 
 ## State
 
-The active corrected benchmark runtime is
-`15301ea557288a4f67fc3c85228bf5e148014d17`, with M3DocRAG pinned to
-`29e6ac2294d6b87075a1d45b8a8df175b214248a`. The handoff below is the only
-authority for the real CUDA/FlashAttention-2 semantic gate, six schema-5
-page-specific indexes, six evaluation cells, and the post-array signed
-comparison. It also requires complete unpadded ColPali/raster equivalence,
-exact upstream retrieval order, no QA-time ColPali, exact measurement identity,
-and positive stage timing.
+The active runtime is `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`, with M3DocRAG pinned to
+`29e6ac2294d6b87075a1d45b8a8df175b214248a`. The user approved durable short HTC
+evaluation shards after a monolithic 256-question task timed out with 92 rows. The active handoff
+authorizes the first reusable paired top-4 checkpoint only: shards 0–3 in each mode, followed by a
+CPU merge/report job. No historical job may be canceled or modified.
 
 ## Historical execution records (immutable, non-promotable)
 
@@ -27,8 +24,8 @@ that root and every ID unchanged. The old-runtime production graph
 probes `61969352` and `61969614` were canceled with no node/elapsed 0. L40
 attempts `61970394`, `61972695`, `61973090`, and `61974092`, plus the A100-40GB
 hedge `61974173`, are immutable failed/canceled history and are not promotable.
-The next active root is the fresh `benchmark-15301ea/attempt-1` with runtime
-checkout `/home/lmalveau/DocPrune-runtime-15301ea`.
+The active root is the fresh `benchmark-4e2473b/attempt-1` with runtime checkout
+`/home/lmalveau/DocPrune-runtime-4e2473b`.
 
 ## Exact environment and authority
 
@@ -41,15 +38,13 @@ Qwen: Qwen/Qwen2-VL-7B-Instruct@eed13092ef92e448dd6875b2a00151bd3f7db0ac
 ColPali: vidore/colpali-v1.2@961b51745de3e9adb3468ac5c9ccca0ac626c217
 ColPali backbone: vidore/colpaligemma-3b-pt-448-base@30ab955d073de4a91dc5a288e8c97226647e3e5a
 upstream: /home/lmalveau/src/m3docrag-benchmark-29e6ac2 @ 29e6ac2294d6b87075a1d45b8a8df175b214248a
-runtime: /home/lmalveau/DocPrune-runtime-15301ea @ 15301ea557288a4f67fc3c85228bf5e148014d17
-control: sealed full SHA in /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/control.json
-fresh attempt root: /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1
+runtime: /home/lmalveau/DocPrune-runtime-4e2473b @ 4e2473bdbbc2e4eca0e92c30d4a0633044501ccf
+control: sealed full SHA in /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1/control.json
+fresh attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1
 ```
 
 ## Next action
 
-After independent review, execute
-[`handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md)
-from a compute allocation using the fresh `benchmark-15301ea/attempt-1` root.
-Submit gate → six indexes → six-cell evaluation → post-array comparator in
-that order, preserving every failed attempt.
+Execute [`handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md)
+using `/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1`. Submit the two top-4 arrays
+`0-3` and their `afterok` checkpoint publisher. Inspect its paired report before the remainder.
