@@ -12,21 +12,24 @@ Those eight runs are final top-4 shard inputs and must not be recomputed when th
 ```text
 runtime commit: 4e2473bdbbc2e4eca0e92c30d4a0633044501ccf
 runtime checkout: /home/lmalveau/DocPrune-runtime-4e2473b
-control checkout: /home/lmalveau/DocPrune-control-4e2473b
-control seal: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1/control.json
-attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1
+control checkout: /home/lmalveau/DocPrune-control-4e2473b-a2
+control seal: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/control.json
+attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 environment: /home/lmalveau/mamba-envs/docprune-sol
 PDF tools: /home/lmalveau/mamba-envs/m3docvqa-acquisition
 corpus: /scratch/lmalveau/docprune/datasets/m3docvqa
 HF cache: /scratch/lmalveau/hf_cache
 M3DocRAG checkout: /home/lmalveau/src/m3docrag-benchmark-29e6ac2
 M3DocRAG commit: 29e6ac2294d6b87075a1d45b8a8df175b214248a
-factory: docprune.m3docvqa_factory:create_evaluation_workload
+factory: docprune.m3docvqa_factory:build_workload
 source promoted inputs: /scratch/lmalveau/docprune/benchmark-15301ea/attempt-2
 ```
 
 The full control commit and tree are the exact values sealed in `control.json`. The control and
 runtime checkouts must be clean, detached at those identities, and match the seal before execution.
+Attempt-1 jobs `62008100`–`62008102` are immutable failed/auto-canceled history caused by the
+incorrect factory export `create_evaluation_workload`; they evaluated zero questions and must not
+be canceled, deleted, resumed, or modified.
 
 ## Plan and resources
 
@@ -67,4 +70,3 @@ so retries cannot recompute it. After all six cell arrays succeed, submit
 - Checkpoint: `checkpoints/top4-256/`.
 - Canonical cells: `eval/{mode}/top{pages}/run`.
 - Final comparison: `comparison/`.
-

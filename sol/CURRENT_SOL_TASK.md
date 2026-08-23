@@ -24,7 +24,7 @@ that root and every ID unchanged. The old-runtime production graph
 probes `61969352` and `61969614` were canceled with no node/elapsed 0. L40
 attempts `61970394`, `61972695`, `61973090`, and `61974092`, plus the A100-40GB
 hedge `61974173`, are immutable failed/canceled history and are not promotable.
-The active root is the fresh `benchmark-4e2473b/attempt-1` with runtime checkout
+The active root is the fresh `benchmark-4e2473b/attempt-2` with runtime checkout
 `/home/lmalveau/DocPrune-runtime-4e2473b`.
 
 ## Exact environment and authority
@@ -39,12 +39,12 @@ ColPali: vidore/colpali-v1.2@961b51745de3e9adb3468ac5c9ccca0ac626c217
 ColPali backbone: vidore/colpaligemma-3b-pt-448-base@30ab955d073de4a91dc5a288e8c97226647e3e5a
 upstream: /home/lmalveau/src/m3docrag-benchmark-29e6ac2 @ 29e6ac2294d6b87075a1d45b8a8df175b214248a
 runtime: /home/lmalveau/DocPrune-runtime-4e2473b @ 4e2473bdbbc2e4eca0e92c30d4a0633044501ccf
-control: sealed full SHA in /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1/control.json
-fresh attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1
+control: sealed full SHA in /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/control.json
+fresh attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 ```
 
 ## Next action
 
 Execute [`handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md)
-using `/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-1`. Submit the two top-4 arrays
+using `/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2`. Submit the two top-4 arrays
 `0-3` and their `afterok` checkpoint publisher. Inspect its paired report before the remainder.
