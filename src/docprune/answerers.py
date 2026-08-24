@@ -311,6 +311,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         reconstruction: ReconstructionDefaults | None = None,
         comprehension_threshold: float | None = None,
         attention_threshold: float | None = None,
+        qa_stage: str = "full",
         max_new_tokens: int = MAX_NEW_TOKENS,
     ) -> None:
         del colpali_model, colpali_processor
@@ -319,6 +320,9 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         self.reconstruction = reconstruction or ReconstructionDefaults()
         self.comprehension_threshold = comprehension_threshold
         self.attention_threshold = attention_threshold
+        if qa_stage not in {"full", "btp-only", "btp-qtp"}:
+            raise ValueError("qa_stage must be full, btp-only, or btp-qtp")
+        self.qa_stage = qa_stage
 
     def _effective_page_config(self, page_count: int) -> PagePruningConfig:
         if self.page_config is not None:
@@ -401,6 +405,11 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         attention_mask = torch.as_tensor(_value(moved, "attention_mask"), dtype=torch.long)
         pixel_values = torch.as_tensor(_value(moved, "pixel_values"))
         masks = self._masks(images, prepared, moved, question, retrieval_output)
+        if self.qa_stage == "btp-only":
+            masks = VisionPruningMasks(
+                background_keep=masks.background_keep,
+                question_keep=torch.ones_like(masks.question_keep, dtype=torch.bool),
+            )
         page_config = self._effective_page_config(len(images))
         adapter = (
             self.model
@@ -420,9 +429,13 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 image_grid_thw=grid,
                 pruning_masks=masks,
                 comprehension_threshold=(
-                    self.comprehension_threshold
-                    if self.comprehension_threshold is not None
-                    else (page_config.comprehension_threshold if page_config else 1e9)
+                    float("inf")
+                    if self.qa_stage != "full"
+                    else (
+                        self.comprehension_threshold
+                        if self.comprehension_threshold is not None
+                        else (page_config.comprehension_threshold if page_config else 1e9)
+                    )
                 ),
                 attention_threshold=(
                     self.attention_threshold

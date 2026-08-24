@@ -199,6 +199,67 @@ def test_docprune_constructor_does_not_load_colpali() -> None:
     DocPruneQwenAnswerer(model=RecordingModel(), processor=RecordingProcessor())
 
 
+def test_docprune_answerer_rejects_unknown_qa_stage() -> None:
+    with pytest.raises(ValueError, match="qa_stage"):
+        DocPruneQwenAnswerer(
+            model=RecordingModel(),
+            processor=RecordingProcessor(),
+            qa_stage="unknown",
+        )
+
+
+@pytest.mark.parametrize(
+    ("qa_stage", "expected_question_keep"),
+    (
+        ("btp-only", [True, True, True, True]),
+        ("btp-qtp", [True, True, False, False]),
+    ),
+)
+def test_docprune_diagnostic_stage_disables_later_pruning(
+    monkeypatch, qa_stage: str, expected_question_keep: list[bool]
+) -> None:
+    from transformers import Qwen2VLImageProcessor
+
+    class RecordingAdapter:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def generate_with_trace(self, **kwargs):
+            self.calls.append(kwargs)
+            return GenerationResult(
+                generated_ids=torch.tensor([[55]]),
+                trace=PruningTrace(4, 2, sum(expected_question_keep), sum(expected_question_keep), None),
+            )
+
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    adapter = RecordingAdapter()
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: adapter)
+    monkeypatch.setattr(
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.tensor([True, False, True, False]),
+            torch.tensor([True, True, False, False]),
+        ),
+    )
+    answerer = DocPruneQwenAnswerer(
+        model=RecordingModel(),
+        processor=processor,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+        qa_stage=qa_stage,
+    )
+
+    answerer.answer(
+        [Image.new("RGB", (112, 56))], "what?", retrieval_output=retrieval_context()
+    )
+
+    call = adapter.calls[0]
+    assert call["comprehension_threshold"] == float("inf")
+    assert call["pruning_masks"].question_keep.tolist() == expected_question_keep
+
+
 def test_docprune_rejects_batched_qwen_page_order_drift(monkeypatch) -> None:
     from transformers import Qwen2VLImageProcessor
 

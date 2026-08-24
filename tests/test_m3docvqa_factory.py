@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import docprune.m3docvqa_factory as factory_module
 from docprune.artifacts import IndexManifest
 from docprune.benchmark_config import (
     COLPALI_BACKBONE_MODEL,
@@ -620,3 +621,34 @@ def test_build_workload_rejects_unknown_operation_without_loading_models() -> No
             page_count=1,
             output=Path("/tmp/unused"),
         )
+
+
+@pytest.mark.parametrize(
+    ("factory_name", "expected_stage"),
+    (("build_btp_only_workload", "btp-only"), ("build_btp_qtp_workload", "btp-qtp")),
+)
+def test_diagnostic_factory_forces_docprune_evaluation_stage(
+    monkeypatch, factory_name: str, expected_stage: str
+) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_build_workload(**kwargs):
+        observed.update(kwargs)
+        return "workload"
+
+    monkeypatch.setattr(factory_module, "build_workload", fake_build_workload)
+    factory = getattr(factory_module, factory_name)
+
+    assert factory(operation="evaluate", mode="docprune") == "workload"
+    assert observed["qa_stage"] == expected_stage
+
+
+@pytest.mark.parametrize("factory_name", ("build_btp_only_workload", "build_btp_qtp_workload"))
+def test_diagnostic_factory_rejects_non_docprune_or_embedding(
+    factory_name: str,
+) -> None:
+    factory = getattr(factory_module, factory_name)
+    with pytest.raises(ValueError, match="docprune evaluation"):
+        factory(operation="evaluate", mode="all-kept")
+    with pytest.raises(ValueError, match="docprune evaluation"):
+        factory(operation="embed", mode="docprune")

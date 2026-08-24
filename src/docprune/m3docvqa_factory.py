@@ -1087,11 +1087,14 @@ def build_workload(
     sample_ids: Sequence[str] | None = None,
     resume: bool = False,
     invocation_manifest: Mapping[str, object] | None = None,
+    qa_stage: str = "full",
 ) -> EvaluationWorkload | IndexBuildResult:
     """Build the concrete index operation or lazy end-to-end evaluation workload."""
 
     if operation not in {"embed", "evaluate"}:
         raise ValueError("operation must be 'embed' or 'evaluate'")
+    if qa_stage not in {"full", "btp-only", "btp-qtp"}:
+        raise ValueError("qa_stage must be full, btp-only, or btp-qtp")
     if not isinstance(config, DocPruneConfig):
         raise TypeError("config must be a DocPruneConfig")
     if page_count not in PAGE_COUNTS:
@@ -1099,6 +1102,8 @@ def build_workload(
     if config.m3docrag_commit != M3DOCRAG_COMMIT:
         raise ValueError("config must use the pinned M3DocRAG commit")
     resolved_mode = _resolve_mode(mode, run_config)
+    if qa_stage != "full" and (operation != "evaluate" or resolved_mode != "docprune"):
+        raise ValueError("diagnostic QA stages require a docprune evaluation")
     resolved_run = _resolve_run_config(run_config, mode=resolved_mode, page_count=page_count)
     identity = _validate_run_identity(resolved_run, mode=resolved_mode, page_count=page_count)
     _validate_m3docrag_checkout(resolved_run)
@@ -1247,6 +1252,7 @@ def build_workload(
             qwen_model,
             qwen_processor,
             page_config=config.for_pages(page_count),
+            qa_stage=qa_stage,
         )
     runner = DocPruneM3DocRAG(boundary, dataset, answerer, top_k=page_count)
     return EvaluationWorkload(
@@ -1256,8 +1262,28 @@ def build_workload(
     )
 
 
+def _build_diagnostic_workload(qa_stage: str, **kwargs: object) -> object:
+    if kwargs.get("operation") != "evaluate" or kwargs.get("mode") != "docprune":
+        raise ValueError("diagnostic QA stages require a docprune evaluation")
+    return build_workload(qa_stage=qa_stage, **kwargs)
+
+
+def build_btp_only_workload(**kwargs: object) -> object:
+    """Build the fixed DocPrune evaluation with only QA-stage BTP enabled."""
+
+    return _build_diagnostic_workload("btp-only", **kwargs)
+
+
+def build_btp_qtp_workload(**kwargs: object) -> object:
+    """Build the fixed DocPrune evaluation with QA-stage BTP and QTP enabled."""
+
+    return _build_diagnostic_workload("btp-qtp", **kwargs)
+
+
 __all__ = [
     "DEFAULT_FACTORY",
+    "build_btp_only_workload",
+    "build_btp_qtp_workload",
     "build_workload",
     "filter_samples",
     "load_completed_qids",
