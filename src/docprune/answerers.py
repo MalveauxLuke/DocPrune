@@ -429,7 +429,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 image_grid_thw=grid,
                 pruning_masks=masks,
                 comprehension_threshold=(
-                    float("inf")
+                    1e9
                     if self.qa_stage != "full"
                     else (
                         self.comprehension_threshold

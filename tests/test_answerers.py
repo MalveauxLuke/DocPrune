@@ -7,6 +7,7 @@ from PIL import Image
 from docprune import answerers
 from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
 from docprune.config import PagePruningConfig
+from docprune.ctp import ComprehensionController
 from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures
 from docprune.qwen2vl.model import GenerationResult, PruningTrace, VisionPruningMasks
 from docprune.qwen2vl.preprocessing import PreparedQwenPage
@@ -225,6 +226,7 @@ def test_docprune_diagnostic_stage_disables_later_pruning(
             self.calls: list[dict[str, object]] = []
 
         def generate_with_trace(self, **kwargs):
+            ComprehensionController(float(kwargs["comprehension_threshold"]))
             self.calls.append(kwargs)
             return GenerationResult(
                 generated_ids=torch.tensor([[55]]),
@@ -256,7 +258,7 @@ def test_docprune_diagnostic_stage_disables_later_pruning(
     )
 
     call = adapter.calls[0]
-    assert call["comprehension_threshold"] == float("inf")
+    assert call["comprehension_threshold"] == 1e9
     assert call["pruning_masks"].question_keep.tolist() == expected_question_keep
 
 
