@@ -116,7 +116,13 @@ def test_write_shard_plan_persists_full_and_checkpoint_qid_files(tmp_path: Path)
         )
 
 
-def _write_shard(root: Path, shard_id: int, qids: list[str]) -> Path:
+def _write_shard(
+    root: Path,
+    shard_id: int,
+    qids: list[str],
+    *,
+    gpu_model: str = "NVIDIA A100-SXM4-80GB",
+) -> Path:
     run = root / f"shard-{shard_id:04d}" / "run"
     run.mkdir(parents=True)
     manifest: dict[str, object] = {
@@ -133,7 +139,7 @@ def _write_shard(root: Path, shard_id: int, qids: list[str]) -> Path:
             "count": len(qids),
         },
         "measurement": {
-            "hardware": {"gpu_model": "NVIDIA A100-SXM4-80GB"},
+            "hardware": {"gpu_model": gpu_model},
             "warmup": {
                 "count": 1,
                 "sample_id": qids[0],
@@ -204,6 +210,72 @@ def test_merge_evaluation_shards_restores_source_order_and_records_provenance(
     assert json.loads((output / "summary.json").read_text())["qids"] == plan[
         "source_question_ids"
     ]
+
+
+def test_quality_merge_accepts_mixed_hardware_without_publishing_efficiency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = build_shard_plan(
+        _rows(), source_questions_sha256="a" * 64, shard_size=2, checkpoint_size=6, seed_label="seed"
+    )
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    shard_root = tmp_path / "shards"
+    for shard in plan["shards"]:
+        _write_shard(
+            shard_root,
+            shard["shard_id"],
+            shard["question_ids"],
+            gpu_model=(
+                "NVIDIA A100-SXM4-80GB"
+                if shard["shard_id"] % 2 == 0
+                else "NVIDIA L40S"
+            ),
+        )
+
+    def valid(run: Path, expected_questions: int, *, allow_fixture: bool = False):
+        del allow_fixture
+        qids = tuple(
+            json.loads(line)["question_id"]
+            for line in (run / "results.jsonl").read_text().splitlines()
+        )
+        return ValidationReport(True, (), expected_questions, qids)
+
+    monkeypatch.setattr("docprune.evaluation_shards.validate_benchmark_run", valid)
+    monkeypatch.setattr(
+        "docprune.evaluation_shards.source_rows_from_manifest",
+        lambda manifest, run_dir: _rows(),
+    )
+    monkeypatch.setattr(
+        "docprune.evaluation_shards.summarize_benchmark_run",
+        lambda path, source_rows, **kwargs: {
+            "quality": {"count": 12, "overall": {"list_em": 25.0, "list_f1": 30.0}},
+            "efficiency": {"samples": 12},
+        },
+    )
+    output = tmp_path / "quality-merged"
+
+    from docprune import evaluation_shards
+
+    manifest = evaluation_shards.merge_evaluation_quality_shards(
+        plan_path=plan_path,
+        shard_root=shard_root,
+        output_dir=output,
+        expected_questions=12,
+        allow_fixture=True,
+    )
+
+    observed = [
+        json.loads(line)["question_id"]
+        for line in (output / "results.jsonl").read_text().splitlines()
+    ]
+    assert observed == plan["source_question_ids"]
+    assert manifest["scope"] == "quality-only"
+    assert manifest["hardware_models"] == ["NVIDIA A100-SXM4-80GB", "NVIDIA L40S"]
+    assert manifest["question_count"] == 12
+    assert json.loads((output / "summary.json").read_text()) == {
+        "quality": {"count": 12, "overall": {"list_em": 25.0, "list_f1": 30.0}}
+    }
 
 
 def test_execution_shard_validator_authenticates_partition_and_digests(tmp_path: Path) -> None:

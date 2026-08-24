@@ -417,6 +417,157 @@ def merge_evaluation_shards(
     return merged
 
 
+def merge_evaluation_quality_shards(
+    *,
+    plan_path: Path,
+    shard_root: Path,
+    output_dir: Path,
+    expected_questions: int,
+    allow_fixture: bool = False,
+) -> dict[str, object]:
+    """Merge validated mixed-hardware shards without publishing efficiency metrics."""
+
+    plan_path = Path(plan_path).resolve()
+    shard_root = Path(shard_root).resolve()
+    output_dir = Path(output_dir).resolve()
+    plan = load_shard_plan(plan_path)
+    source_qids = list(plan["source_question_ids"])
+    shards = list(plan["shards"])
+    if len(source_qids) != expected_questions:
+        raise ValueError(
+            f"expected_questions is {expected_questions}, but the plan contains {len(source_qids)}"
+        )
+    if output_dir.exists() or output_dir.is_symlink():
+        raise FileExistsError(f"quality-only merged output already exists: {output_dir}")
+
+    rows_by_qid: dict[str, dict[str, object]] = {}
+    provenance: list[dict[str, object]] = []
+    hardware_models: set[str] = set()
+    shared_identity: dict[str, object] | None = None
+    first_manifest: dict[str, object] | None = None
+    first_run: Path | None = None
+    excluded = {
+        "output",
+        "selection",
+        "measurement",
+        "run_manifest_sha256",
+        "sample_ids",
+        "limit",
+    }
+    for shard in shards:
+        shard_id = shard["shard_id"]
+        expected_qids = shard["question_ids"]
+        run = shard_root / f"shard-{shard_id:04d}" / "run"
+        report = validate_benchmark_run(
+            run, expected_questions=len(expected_qids), allow_fixture=allow_fixture
+        )
+        if not report.valid or list(report.qids) != expected_qids:
+            raise ValueError(f"shard {shard_id} failed validation: {report.errors!r}")
+        manifest_path = run / "run_manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict) or manifest.get("run_manifest_sha256") != _canonical_digest(
+            manifest
+        ):
+            raise ValueError(f"shard {shard_id} manifest digest is invalid")
+        identity = {key: value for key, value in manifest.items() if key not in excluded}
+        if shared_identity is None:
+            shared_identity = identity
+            first_manifest = manifest
+            first_run = run
+        elif identity != shared_identity:
+            raise ValueError(f"shard {shard_id} immutable identity differs from earlier shards")
+        measurement = manifest.get("measurement")
+        hardware = measurement.get("hardware") if isinstance(measurement, Mapping) else None
+        gpu_model = hardware.get("gpu_model") if isinstance(hardware, Mapping) else None
+        if not isinstance(gpu_model, str) or not gpu_model.strip():
+            raise ValueError(f"shard {shard_id} hardware identity is invalid")
+        hardware_models.add(gpu_model)
+        records = _load_result_rows(run / "results.jsonl")
+        observed_qids = [str(record.get("question_id")) for record in records]
+        if observed_qids != expected_qids:
+            raise ValueError(f"shard {shard_id} results do not match the plan")
+        for qid, record in zip(observed_qids, records):
+            if qid in rows_by_qid:
+                raise ValueError(f"duplicate merged question ID: {qid}")
+            rows_by_qid[qid] = record
+        validation_path = run.parent / "validation.json"
+        provenance.append(
+            {
+                "shard_id": shard_id,
+                "run_path": str(run),
+                "gpu_model": gpu_model,
+                "manifest_sha256": _file_sha256(manifest_path),
+                "results_sha256": _file_sha256(run / "results.jsonl"),
+                "summary_sha256": _file_sha256(run / "summary.json"),
+                "validation_sha256": _file_sha256(validation_path),
+            }
+        )
+    if set(rows_by_qid) != set(source_qids):
+        raise ValueError("validated shards do not cover the complete plan")
+    if first_manifest is None or first_run is None or shared_identity is None:
+        raise ValueError("quality-only merge has no shard manifests")
+
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}-", dir=output_dir.parent))
+    try:
+        results_path = temporary / "results.jsonl"
+        results_path.write_text(
+            "".join(json.dumps(rows_by_qid[qid], sort_keys=True) + "\n" for qid in source_qids),
+            encoding="utf-8",
+        )
+        source_rows = source_rows_from_manifest(first_manifest, first_run)
+        reproduced = summarize_benchmark_run(
+            results_path,
+            source_rows,
+            require_positive=not allow_fixture,
+            result_classification=None,
+        )
+        quality = reproduced.get("quality")
+        if not isinstance(quality, Mapping):
+            raise ValueError("quality-only merge could not reproduce quality metrics")
+        summary = {"quality": quality}
+        summary_path = temporary / "summary.json"
+        summary_path.write_text(
+            json.dumps(summary, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        manifest: dict[str, object] = {
+            "schema_version": 1,
+            "scope": "quality-only",
+            "mode": first_manifest.get("mode"),
+            "page_count": first_manifest.get("page_count"),
+            "question_count": len(source_qids),
+            "question_ids": source_qids,
+            "question_ids_sha256": _qid_digest(source_qids),
+            "hardware_models": sorted(hardware_models),
+            "efficiency_aggregation": "excluded because shard hardware may differ",
+            "shared_identity_sha256": hashlib.sha256(
+                json.dumps(shared_identity, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "execution_shards": {
+                "schema_version": 1,
+                "count": len(shards),
+                "plan_path": str(plan_path),
+                "plan_sha256": _file_sha256(plan_path),
+                "shards": provenance,
+            },
+            "results_sha256": _file_sha256(results_path),
+            "summary_sha256": _file_sha256(summary_path),
+        }
+        manifest["quality_manifest_sha256"] = _canonical_sha256(
+            manifest, "quality_manifest_sha256"
+        )
+        (temporary / "quality_manifest.json").write_text(
+            json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+        )
+        os.rename(temporary, output_dir)
+    except BaseException:
+        for child in temporary.iterdir():
+            child.unlink()
+        temporary.rmdir()
+        raise
+    return manifest
+
+
 def compare_paired_checkpoint(
     all_kept_run: Path,
     docprune_run: Path,

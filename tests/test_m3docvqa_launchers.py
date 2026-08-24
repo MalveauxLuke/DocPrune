@@ -316,6 +316,44 @@ def test_short_htc_shard_array_delegates_durable_cell_work() -> None:
     assert 'exec "$CELL_LAUNCHER"' in text
 
 
+@pytest.mark.parametrize(
+    ("policy", "gpu_name", "memory_mib", "expected_returncode"),
+    [
+        ("a100-80", "NVIDIA A100-SXM4-80GB", "81920", 0),
+        ("a100-80", "NVIDIA A100-SXM4-40GB", "40960", 2),
+        ("quality-40gb", "NVIDIA A100-SXM4-40GB", "40960", 0),
+        ("quality-40gb", "NVIDIA H100 80GB HBM3", "81559", 0),
+        ("quality-40gb", "NVIDIA L40S", "46068", 0),
+        ("quality-40gb", "NVIDIA A100-PCIE-20GB", "20480", 2),
+        ("quality-40gb", "NVIDIA A30", "24576", 2),
+    ],
+)
+def test_gpu_policy_validator_enforces_hardware_floor(
+    policy: str, gpu_name: str, memory_mib: str, expected_returncode: int
+) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "examples" / "m3docvqa" / "validate_gpu_policy.py"),
+            policy,
+            gpu_name,
+            memory_mib,
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == expected_returncode, result.stderr
+
+
+def test_quality_shard_launcher_is_executable_bash() -> None:
+    launcher = LAUNCHER_DIR / "20_docprune_m3docvqa_quality_shards.sbatch"
+    result = subprocess.run(
+        ["bash", "-n", str(launcher)], capture_output=True, check=False, text=True
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_cell_launcher_selects_and_validates_exact_shard() -> None:
     text = (LAUNCHER_DIR / "11_docprune_m3docvqa.sbatch").read_text(encoding="utf-8")
     assert 'SHARD_PLAN="$SHARD_PLAN_ROOT/plan.json"' in text

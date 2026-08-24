@@ -153,8 +153,8 @@ cd "$RUNTIME_DIR"
 
 GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
 GPU_MEMORY_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1)"
-case "$GPU_NAME" in *A100*) ;; *) echo "evaluation requires an A100 GPU: $GPU_NAME" >&2; exit 2 ;; esac
-test "$GPU_MEMORY_MIB" -ge 79000
+"$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/validate_gpu_policy.py" \
+  "${GPU_POLICY:-a100-80}" "$GPU_NAME" "$GPU_MEMORY_MIB"
 
 if [[ -d "$CELL_ROOT/run" ]] && PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$CELL_ROOT/run" "$EXPECTED_QUESTIONS" <<'PY'
 import sys
