@@ -140,6 +140,7 @@ def _write_shard(
         },
         "measurement": {
             "hardware": {"gpu_model": gpu_model},
+            "result_classification": {"classification": "reconstruction_measurement"},
             "warmup": {
                 "count": 1,
                 "sample_id": qids[0],
@@ -332,12 +333,14 @@ def test_quality_merge_uses_sealed_shard_hashes_without_deep_index_validation(
         "docprune.evaluation_shards.source_rows_from_manifest",
         lambda manifest, run_dir: _rows(),
     )
-    monkeypatch.setattr(
-        "docprune.evaluation_shards.summarize_benchmark_run",
-        lambda path, source_rows, **kwargs: {
-            "quality": {"count": 12, "overall": {"list_em": 25.0, "list_f1": 30.0}}
-        },
-    )
+    def summarize(path: Path, source_rows: object, **kwargs: object) -> dict[str, object]:
+        del path, source_rows
+        assert kwargs["result_classification"] == {
+            "classification": "reconstruction_measurement"
+        }
+        return {"quality": {"count": 12, "overall": {"list_em": 25.0, "list_f1": 30.0}}}
+
+    monkeypatch.setattr("docprune.evaluation_shards.summarize_benchmark_run", summarize)
 
     from docprune import evaluation_shards
 

@@ -601,11 +601,17 @@ def merge_evaluation_quality_shards(
             encoding="utf-8",
         )
         source_rows = source_rows_from_manifest(first_manifest, first_run)
+        first_measurement = first_manifest.get("measurement")
+        result_classification = (
+            first_measurement.get("result_classification")
+            if isinstance(first_measurement, Mapping)
+            else None
+        )
         reproduced = summarize_benchmark_run(
             results_path,
             source_rows,
             require_positive=not allow_fixture,
-            result_classification=None,
+            result_classification=result_classification,
         )
         quality = reproduced.get("quality")
         if not isinstance(quality, Mapping):
