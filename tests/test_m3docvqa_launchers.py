@@ -354,6 +354,21 @@ def test_quality_shard_launcher_is_executable_bash() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_stage245_incremental_launcher_is_sealed_and_parallel() -> None:
+    launcher = LAUNCHER_DIR / "21_docprune_stage245_incremental.sbatch"
+    result = subprocess.run(
+        ["bash", "-n", str(launcher)], capture_output=True, check=False, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    text = launcher.read_text(encoding="utf-8")
+    assert "#SBATCH --array=4-15%12" in text
+    assert "#SBATCH --constraint=a100_40" in text
+    assert 'PLAN="$DIAG_ROOT/shard-plan/plan.json"' in text
+    assert 'EXPECTED_QUESTIONS="$(' in text
+    assert '--expected-questions "$EXPECTED_QUESTIONS"' in text
+    assert "validate_retrieval_reference" in text
+
+
 def test_cell_launcher_selects_and_validates_exact_shard() -> None:
     text = (LAUNCHER_DIR / "11_docprune_m3docvqa.sbatch").read_text(encoding="utf-8")
     assert 'SHARD_PLAN="$SHARD_PLAN_ROOT/plan.json"' in text
