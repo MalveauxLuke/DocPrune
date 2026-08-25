@@ -315,7 +315,10 @@ def test_quality_merge_uses_sealed_shard_hashes_without_deep_index_validation(
         "question_ids_sha256": hashlib.sha256(
             "\n".join(plan["source_question_ids"]).encode()
         ).hexdigest(),
-        "provenance": {"all-kept": provenance},
+        "provenance": {
+            "plan_sha256": hashlib.sha256(plan_path.read_bytes()).hexdigest(),
+            "all-kept": provenance,
+        },
     }
     authority["analysis_sha256"] = _digest(authority, "analysis_sha256")
     authority_path = tmp_path / "sealed-analysis.json"

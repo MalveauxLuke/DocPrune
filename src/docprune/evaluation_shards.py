@@ -265,6 +265,7 @@ def _load_sealed_quality_provenance(
     *,
     source_qids: Sequence[str],
     expected_questions: int,
+    plan_sha256: str,
 ) -> tuple[dict[str, dict[int, dict[str, object]]], str]:
     """Authenticate the small analysis that seals successful shard validations."""
 
@@ -284,9 +285,13 @@ def _load_sealed_quality_provenance(
     raw_provenance = value.get("provenance")
     if not isinstance(raw_provenance, Mapping) or not raw_provenance:
         raise ValueError("sealed quality analysis provenance is missing")
+    if raw_provenance.get("plan_sha256") != plan_sha256:
+        raise ValueError("sealed quality analysis plan digest mismatch")
     modes: dict[str, dict[int, dict[str, object]]] = {}
     required = {"shard_id", "results_sha256", "validation_sha256"}
     for mode, raw_entries in raw_provenance.items():
+        if mode == "plan_sha256":
+            continue
         if not isinstance(mode, str) or not isinstance(raw_entries, list):
             raise ValueError("sealed quality analysis provenance is invalid")
         entries: dict[int, dict[str, object]] = {}
@@ -497,6 +502,7 @@ def merge_evaluation_quality_shards(
             sealed_analysis_path,
             source_qids=source_qids,
             expected_questions=expected_questions,
+            plan_sha256=_file_sha256(plan_path),
         )
 
     rows_by_qid: dict[str, dict[str, object]] = {}
