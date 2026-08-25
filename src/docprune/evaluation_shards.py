@@ -260,6 +260,55 @@ def _file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _load_sealed_quality_provenance(
+    path: Path,
+    *,
+    source_qids: Sequence[str],
+    expected_questions: int,
+) -> tuple[dict[str, dict[int, dict[str, object]]], str]:
+    """Authenticate the small analysis that seals successful shard validations."""
+
+    path = Path(path).resolve()
+    file_sha256 = _file_sha256(path)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or value.get("schema_version") != 1:
+        raise ValueError("sealed quality analysis schema is invalid")
+    if value.get("scope") != "quality-only":
+        raise ValueError("sealed quality analysis is not quality-only")
+    if value.get("analysis_sha256") != _canonical_sha256(value, "analysis_sha256"):
+        raise ValueError("sealed quality analysis canonical digest mismatch")
+    if value.get("question_count") != expected_questions:
+        raise ValueError("sealed quality analysis question count mismatch")
+    if value.get("question_ids_sha256") != _qid_digest(source_qids):
+        raise ValueError("sealed quality analysis question identity mismatch")
+    raw_provenance = value.get("provenance")
+    if not isinstance(raw_provenance, Mapping) or not raw_provenance:
+        raise ValueError("sealed quality analysis provenance is missing")
+    modes: dict[str, dict[int, dict[str, object]]] = {}
+    required = {"shard_id", "results_sha256", "validation_sha256"}
+    for mode, raw_entries in raw_provenance.items():
+        if not isinstance(mode, str) or not isinstance(raw_entries, list):
+            raise ValueError("sealed quality analysis provenance is invalid")
+        entries: dict[int, dict[str, object]] = {}
+        for raw_entry in raw_entries:
+            if not isinstance(raw_entry, dict) or set(raw_entry) != required:
+                raise ValueError(f"sealed {mode} shard provenance is invalid")
+            shard_id = raw_entry.get("shard_id")
+            if not isinstance(shard_id, int) or isinstance(shard_id, bool) or shard_id in entries:
+                raise ValueError(f"sealed {mode} shard identities are invalid")
+            for field in ("results_sha256", "validation_sha256"):
+                digest = raw_entry.get(field)
+                if (
+                    not isinstance(digest, str)
+                    or len(digest) != 64
+                    or any(character not in "0123456789abcdef" for character in digest)
+                ):
+                    raise ValueError(f"sealed {mode} {field} is invalid")
+            entries[shard_id] = raw_entry
+        modes[mode] = entries
+    return modes, file_sha256
+
+
 def merge_evaluation_shards(
     *,
     plan_path: Path,
@@ -424,6 +473,7 @@ def merge_evaluation_quality_shards(
     output_dir: Path,
     expected_questions: int,
     allow_fixture: bool = False,
+    sealed_analysis_path: Path | None = None,
 ) -> dict[str, object]:
     """Merge validated mixed-hardware shards without publishing efficiency metrics."""
 
@@ -439,6 +489,15 @@ def merge_evaluation_quality_shards(
         )
     if output_dir.exists() or output_dir.is_symlink():
         raise FileExistsError(f"quality-only merged output already exists: {output_dir}")
+
+    sealed_provenance: dict[str, dict[int, dict[str, object]]] | None = None
+    sealed_analysis_sha256: str | None = None
+    if sealed_analysis_path is not None:
+        sealed_provenance, sealed_analysis_sha256 = _load_sealed_quality_provenance(
+            sealed_analysis_path,
+            source_qids=source_qids,
+            expected_questions=expected_questions,
+        )
 
     rows_by_qid: dict[str, dict[str, object]] = {}
     provenance: list[dict[str, object]] = []
@@ -458,17 +517,38 @@ def merge_evaluation_quality_shards(
         shard_id = shard["shard_id"]
         expected_qids = shard["question_ids"]
         run = shard_root / f"shard-{shard_id:04d}" / "run"
-        report = validate_benchmark_run(
-            run, expected_questions=len(expected_qids), allow_fixture=allow_fixture
-        )
-        if not report.valid or list(report.qids) != expected_qids:
-            raise ValueError(f"shard {shard_id} failed validation: {report.errors!r}")
         manifest_path = run / "run_manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict) or manifest.get("run_manifest_sha256") != _canonical_digest(
             manifest
         ):
             raise ValueError(f"shard {shard_id} manifest digest is invalid")
+        validation_path = run.parent / "validation.json"
+        if sealed_provenance is None:
+            report = validate_benchmark_run(
+                run, expected_questions=len(expected_qids), allow_fixture=allow_fixture
+            )
+            if not report.valid or list(report.qids) != expected_qids:
+                raise ValueError(f"shard {shard_id} failed validation: {report.errors!r}")
+        else:
+            mode = manifest.get("mode")
+            mode_entries = sealed_provenance.get(mode) if isinstance(mode, str) else None
+            authority = mode_entries.get(shard_id) if mode_entries is not None else None
+            if authority is None:
+                raise ValueError(f"shard {shard_id} is absent from sealed {mode!r} provenance")
+            if _file_sha256(run / "results.jsonl") != authority["results_sha256"]:
+                raise ValueError(f"shard {shard_id} results differ from sealed provenance")
+            if _file_sha256(validation_path) != authority["validation_sha256"]:
+                raise ValueError(f"shard {shard_id} validation differs from sealed provenance")
+            validation = json.loads(validation_path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(validation, dict)
+                or validation.get("valid") is not True
+                or validation.get("question_count") != len(expected_qids)
+                or validation.get("qids") != expected_qids
+                or validation.get("errors") != []
+            ):
+                raise ValueError(f"shard {shard_id} sealed validation is not successful")
         identity = {key: value for key, value in manifest.items() if key not in excluded}
         if shared_identity is None:
             shared_identity = identity
@@ -490,7 +570,6 @@ def merge_evaluation_quality_shards(
             if qid in rows_by_qid:
                 raise ValueError(f"duplicate merged question ID: {qid}")
             rows_by_qid[qid] = record
-        validation_path = run.parent / "validation.json"
         provenance.append(
             {
                 "shard_id": shard_id,
@@ -553,6 +632,9 @@ def merge_evaluation_quality_shards(
             "results_sha256": _file_sha256(results_path),
             "summary_sha256": _file_sha256(summary_path),
         }
+        if sealed_analysis_sha256 is not None:
+            manifest["sealed_analysis_path"] = str(Path(sealed_analysis_path).resolve())
+            manifest["sealed_analysis_sha256"] = sealed_analysis_sha256
         manifest["quality_manifest_sha256"] = _canonical_sha256(
             manifest, "quality_manifest_sha256"
         )

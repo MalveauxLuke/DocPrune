@@ -278,6 +278,93 @@ def test_quality_merge_accepts_mixed_hardware_without_publishing_efficiency(
     }
 
 
+def test_quality_merge_uses_sealed_shard_hashes_without_deep_index_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = build_shard_plan(
+        _rows(), source_questions_sha256="a" * 64, shard_size=2, checkpoint_size=6, seed_label="seed"
+    )
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan), encoding="utf-8")
+    shard_root = tmp_path / "shards"
+    provenance = []
+    for shard in plan["shards"]:
+        run = _write_shard(
+            shard_root,
+            shard["shard_id"],
+            shard["question_ids"],
+            gpu_model=(
+                "NVIDIA A100-SXM4-80GB"
+                if shard["shard_id"] % 2 == 0
+                else "NVIDIA L40S"
+            ),
+        )
+        provenance.append(
+            {
+                "shard_id": shard["shard_id"],
+                "results_sha256": hashlib.sha256((run / "results.jsonl").read_bytes()).hexdigest(),
+                "validation_sha256": hashlib.sha256(
+                    (run.parent / "validation.json").read_bytes()
+                ).hexdigest(),
+            }
+        )
+    authority: dict[str, object] = {
+        "schema_version": 1,
+        "scope": "quality-only",
+        "question_count": 12,
+        "question_ids_sha256": hashlib.sha256(
+            "\n".join(plan["source_question_ids"]).encode()
+        ).hexdigest(),
+        "provenance": {"all-kept": provenance},
+    }
+    authority["analysis_sha256"] = _digest(authority, "analysis_sha256")
+    authority_path = tmp_path / "sealed-analysis.json"
+    authority_path.write_text(json.dumps(authority), encoding="utf-8")
+
+    monkeypatch.setattr(
+        "docprune.evaluation_shards.validate_benchmark_run",
+        lambda *args, **kwargs: pytest.fail("lightweight merge called deep validation"),
+    )
+    monkeypatch.setattr(
+        "docprune.evaluation_shards.source_rows_from_manifest",
+        lambda manifest, run_dir: _rows(),
+    )
+    monkeypatch.setattr(
+        "docprune.evaluation_shards.summarize_benchmark_run",
+        lambda path, source_rows, **kwargs: {
+            "quality": {"count": 12, "overall": {"list_em": 25.0, "list_f1": 30.0}}
+        },
+    )
+
+    from docprune import evaluation_shards
+
+    manifest = evaluation_shards.merge_evaluation_quality_shards(
+        plan_path=plan_path,
+        shard_root=shard_root,
+        output_dir=tmp_path / "quality-merged",
+        expected_questions=12,
+        allow_fixture=True,
+        sealed_analysis_path=authority_path,
+    )
+
+    assert manifest["sealed_analysis_sha256"] == hashlib.sha256(
+        authority_path.read_bytes()
+    ).hexdigest()
+    assert manifest["execution_shards"]["count"] == 6
+
+    tampered_results = shard_root / "shard-0000" / "run" / "results.jsonl"
+    tampered_results.write_text(tampered_results.read_text() + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="results differ from sealed provenance"):
+        evaluation_shards.merge_evaluation_quality_shards(
+            plan_path=plan_path,
+            shard_root=shard_root,
+            output_dir=tmp_path / "tampered-quality-merged",
+            expected_questions=12,
+            allow_fixture=True,
+            sealed_analysis_path=authority_path,
+        )
+
+
 def test_execution_shard_validator_authenticates_partition_and_digests(tmp_path: Path) -> None:
     plan = build_shard_plan(
         _rows(), source_questions_sha256="a" * 64, shard_size=2, checkpoint_size=6, seed_label="seed"
