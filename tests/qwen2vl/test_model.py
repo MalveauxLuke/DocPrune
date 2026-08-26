@@ -274,5 +274,5 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
             eos_token_ids=eos_token_ids,
         )
     assert adapted.first_step_logits is not None
-    torch.testing.assert_close(adapted.first_step_logits, stock_forward.logits[:, -1], rtol=2e-2, atol=2e-2)
     assert adapted.generated_ids.tolist() == stock_ids[:, input_ids.shape[1] :].tolist()
+    torch.testing.assert_close(adapted.first_step_logits, stock_forward.logits[:, -1], rtol=2e-2, atol=2e-2)
