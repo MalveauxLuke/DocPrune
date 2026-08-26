@@ -16,7 +16,11 @@ from typing import Any
 
 import torch
 
-from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
+from docprune.answerers import (
+    AllKeptQwenAnswerer,
+    DocPruneQwenAnswerer,
+    _resolved_eos_token_ids,
+)
 from docprune.artifacts import IndexManifest
 from docprune.benchmark_config import (
     COLPALI_BACKBONE_MODEL,
@@ -27,6 +31,7 @@ from docprune.benchmark_config import (
     MAX_NEW_TOKENS,
     MODES,
     PAGE_COUNTS,
+    QWEN_EOS_TOKEN_IDS,
     QWEN_MODEL,
     QWEN_REVISION,
     SHORT_ANSWER_TEMPLATE,
@@ -694,6 +699,7 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
             "max_new_tokens": max_new_tokens,
             "do_sample": do_sample,
             "num_beams": num_beams,
+            "eos_token_ids": list(QWEN_EOS_TOKEN_IDS),
             "prompt": prompt,
         },
     }
@@ -764,6 +770,14 @@ def _load_colpali(run_config: object) -> tuple[object, object]:
     return model, processor
 
 
+def _validate_qwen_generation_identity(model: object) -> None:
+    observed = _resolved_eos_token_ids(model)
+    if observed != QWEN_EOS_TOKEN_IDS:
+        raise ValueError(
+            f"Qwen generation EOS IDs must be {QWEN_EOS_TOKEN_IDS}, got {observed}"
+        )
+
+
 def _load_qwen(run_config: object) -> tuple[object, object]:
     device = _require_benchmark_cuda()
     from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
@@ -782,6 +796,7 @@ def _load_qwen(run_config: object) -> tuple[object, object]:
     vision_config = getattr(getattr(model, "config", None), "vision_config", None)
     if vision_config is not None:
         vision_config.torch_dtype = torch.bfloat16
+    _validate_qwen_generation_identity(model)
     processor = AutoProcessor.from_pretrained(str(snapshot))
     return model, processor
 

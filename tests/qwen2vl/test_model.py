@@ -204,7 +204,8 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
 
     from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
-    from docprune.qwen2vl.preprocessing import prepare_qwen_page
+    from docprune.answerers import _resolved_eos_token_ids
+    from docprune.qwen2vl.preprocessing import prepare_qwen_page, prepared_raster_image
 
     processor = AutoProcessor.from_pretrained(model_root, revision=revision, local_files_only=True)
     model = Qwen2VLForConditionalGeneration.from_pretrained(
@@ -227,6 +228,14 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
     prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = processor(text=[prompt], images=[page], padding=True, return_tensors="pt")
     prepared = prepare_qwen_page(processor, page)
+    prepared_inputs = processor(
+        text=[prompt],
+        images=[prepared_raster_image(prepared)],
+        padding=True,
+        return_tensors="pt",
+    )
+    for name in ("input_ids", "attention_mask", "pixel_values", "image_grid_thw"):
+        torch.testing.assert_close(prepared_inputs[name], inputs[name], rtol=0.0, atol=0.0)
     inputs = {
         name: value.to("cuda") if isinstance(value, torch.Tensor) else value
         for name, value in inputs.items()
@@ -237,6 +246,7 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
         question_keep=torch.ones(prepared.placeholder_count, dtype=torch.bool, device="cuda"),
     )
     adapter = DocPruneQwen2VL(model)
+    eos_token_ids = _resolved_eos_token_ids(model)
     with torch.no_grad():
         stock_positions, _ = model.get_rope_index(
             input_ids,
@@ -244,7 +254,13 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
             attention_mask=inputs["attention_mask"],
         )
         stock_forward = model(**inputs, position_ids=stock_positions, use_cache=True)
-        stock_ids = model.generate(**inputs, max_new_tokens=2, do_sample=False, num_beams=1)
+        stock_ids = model.generate(
+            **inputs,
+            max_new_tokens=128,
+            do_sample=False,
+            num_beams=1,
+            eos_token_id=list(eos_token_ids),
+        )
         adapted = adapter.generate_with_trace(
             input_ids=input_ids,
             attention_mask=inputs["attention_mask"],
@@ -253,9 +269,9 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
             pruning_masks=masks,
             comprehension_threshold=1e9,
             attention_threshold=0.0,
-            max_new_tokens=2,
-            eos_token_ids=(),
+            max_new_tokens=128,
+            eos_token_ids=eos_token_ids,
         )
     assert adapted.first_step_logits is not None
     torch.testing.assert_close(adapted.first_step_logits, stock_forward.logits[:, -1], rtol=2e-2, atol=2e-2)
-    assert adapted.generated_ids.tolist() == stock_ids[:, -2:].tolist()
+    assert adapted.generated_ids.tolist() == stock_ids[:, input_ids.shape[1] :].tolist()

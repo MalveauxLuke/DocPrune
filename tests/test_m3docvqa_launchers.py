@@ -395,6 +395,25 @@ def test_checkpoint_merges_existing_top4_shards_without_evaluation() -> None:
     assert "docprune-m3docvqa evaluate" not in text
 
 
+def test_qwen_all_kept_parity_launcher_is_short_fixed_page_and_retrieval_free() -> None:
+    launcher = LAUNCHER_DIR / "31_docprune_qwen_all_kept_parity.sbatch"
+    result = subprocess.run(
+        ["bash", "-n", str(launcher)], capture_output=True, check=False, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    text = launcher.read_text(encoding="utf-8")
+    assert "#SBATCH --time=00:20:00" in text
+    assert "#SBATCH --gres=gpu:1" in text
+    assert "#SBATCH --mem=64G" in text
+    assert 'DOCPRUNE_REAL_MODEL_TEST=1' in text
+    assert "test_real_model_all_kept_matches_stock_first_step_logits_without_download" in text
+    assert 'DOCPRUNE_QWEN_PROBE_PAGE="$PROBE_PAGE"' in text
+    assert 'git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all' in text
+    assert "--junitxml" in text
+    assert "retrieval" not in text.lower()
+    assert "index.faiss" not in text
+
+
 def test_final_merge_array_publishes_six_canonical_runs_from_full_plan() -> None:
     text = (LAUNCHER_DIR / "18_docprune_m3docvqa_merge_array.sbatch").read_text(
         encoding="utf-8"

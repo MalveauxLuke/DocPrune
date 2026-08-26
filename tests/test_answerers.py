@@ -45,7 +45,10 @@ class RecordingProcessor:
 
 
 class RecordingModel:
-    config = type("Config", (), {"image_token_id": 100})()
+    config = type("Config", (), {"image_token_id": 100, "eos_token_id": 151645})()
+    generation_config = type(
+        "GenerationConfig", (), {"eos_token_id": [151645, 151643]}
+    )()
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
@@ -93,6 +96,7 @@ def test_all_kept_answerer_uses_exact_prompt_greedy_settings_and_new_tokens() ->
     assert call["max_new_tokens"] == 128
     assert call["do_sample"] is False
     assert call["num_beams"] == 1
+    assert call["eos_token_id"] == [151645, 151643]
     assert call["input_ids"].tolist() == [[10, 100, 100, 100, 100, 11]]
 
 
@@ -121,7 +125,11 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
     from transformers import Qwen2VLImageProcessor
 
     class FakeAdapter:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
         def generate_with_trace(self, **kwargs):
+            self.calls.append(kwargs)
             return GenerationResult(
                 generated_ids=torch.tensor([[55]]),
                 trace=PruningTrace(2, 2, 2, 1, None),
@@ -138,7 +146,8 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
             torch.ones(2, dtype=torch.bool), torch.ones(2, dtype=torch.bool)
         ),
     )
-    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: FakeAdapter())
+    adapter = FakeAdapter()
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: adapter)
     answerer = DocPruneQwenAnswerer(
         model=RecordingModel(),
         processor=processor,
@@ -153,6 +162,7 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
     assert output.trace.post_ctp_visual_tokens == 1
     assert output.encoder_seconds > 0
     assert output.decoder_seconds > 0
+    assert adapter.calls[0]["eos_token_ids"] == (151645, 151643)
 
 
 def test_docprune_answerer_requires_retrieval_context() -> None:

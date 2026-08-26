@@ -160,6 +160,23 @@ def _decode_new_tokens(processor: object, generated: torch.Tensor, prompt_length
     return str(decoded[0]).strip()
 
 
+def _resolved_eos_token_ids(model: object) -> tuple[int, ...]:
+    """Resolve the EOS set used by stock ``generate`` for the pinned model."""
+
+    generation_config = getattr(model, "generation_config", None)
+    value = getattr(generation_config, "eos_token_id", None)
+    if value is None:
+        value = getattr(getattr(model, "config", None), "eos_token_id", None)
+    values = (value,) if isinstance(value, int) and not isinstance(value, bool) else value
+    if values is None:
+        return ()
+    if not isinstance(values, Sequence) or isinstance(values, str | bytes) or any(
+        not isinstance(item, int) or isinstance(item, bool) for item in values
+    ):
+        raise ValueError("Qwen EOS token IDs must be an integer or a sequence of integers")
+    return tuple(dict.fromkeys(int(item) for item in values))
+
+
 def _all_kept_trace(grid: torch.Tensor) -> PruningTrace:
     count = _merged_count(grid)
     return PruningTrace(count, count, count, count, None)
@@ -255,13 +272,19 @@ class AllKeptQwenAnswerer:
         generation_started, generation_device = _begin_synchronized_timer(self.model)
         encoder_times, encoder_hooks = _encoder_timer_hooks(self.model)
         decoder_times, decoder_hooks = _decoder_timer_hooks(self.model)
+        eos = _resolved_eos_token_ids(self.model)
         with torch.no_grad():
             try:
-                generated = self.model.generate(
+                generation_kwargs = {
                     **batch,
-                    max_new_tokens=self.max_new_tokens,
-                    do_sample=False,
-                    num_beams=1,
+                    "max_new_tokens": self.max_new_tokens,
+                    "do_sample": False,
+                    "num_beams": 1,
+                }
+                if eos:
+                    generation_kwargs["eos_token_id"] = list(eos)
+                generated = self.model.generate(
+                    **generation_kwargs,
                 )
             finally:
                 _remove_module_timer_hooks(encoder_hooks)
@@ -416,11 +439,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             if callable(getattr(self.model, "generate_with_trace", None))
             else DocPruneQwen2VL(self.model)
         )
-        eos = tuple(
-            value
-            for value in (getattr(getattr(self.model, "config", None), "eos_token_id", None),)
-            if isinstance(value, int)
-        )
+        eos = _resolved_eos_token_ids(self.model)
         with torch.no_grad():
             result = adapter.generate_with_trace(
                 input_ids=input_ids,

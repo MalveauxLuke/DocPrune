@@ -14,19 +14,85 @@ from docprune.benchmark_config import (
     COLPALI_BACKBONE_REVISION,
     COLPALI_MODEL,
     COLPALI_REVISION,
+    M3DOCRAG_COMMIT,
+    MAX_NEW_TOKENS,
     QWEN_MODEL,
+    QWEN_REVISION,
+    SHORT_ANSWER_TEMPLATE,
 )
 from docprune.m3docrag import SampleInput, SampleTiming
 from docprune.m3docvqa_factory import (
     _is_cli_placeholder,
     _load_index_manifest,
     _validate_result_record,
+    _validate_run_identity,
     _write_run_manifest,
     build_workload,
     filter_samples,
     load_completed_qids,
     validate_processor_contract_file,
 )
+
+
+def test_run_identity_records_the_complete_pinned_eos_set(
+    monkeypatch, tmp_path: Path
+) -> None:
+    contract = tmp_path / "processor-contract.json"
+    contract.write_bytes(b"contract")
+    corpus = SimpleNamespace(
+        validate=lambda: None,
+        root=tmp_path,
+        questions_path=tmp_path / "questions.jsonl",
+        document_ids_path=tmp_path / "document-ids.json",
+        pdf_dir=tmp_path / "pdfs",
+        integrity_report_path=tmp_path / "integrity.json",
+        archive_checksum_manifest_path=tmp_path / "archives.sha256",
+        integrity_sha256="1" * 64,
+        archive_checksum_manifest_sha256="2" * 64,
+        questions_sha256="3" * 64,
+        document_ids_sha256="4" * 64,
+        expected_question_count=1,
+        expected_pdf_count=1,
+        expected_page_count=1,
+        is_fixture=True,
+        archive_hashes={},
+    )
+    run_config = SimpleNamespace(
+        m3docrag_commit=M3DOCRAG_COMMIT,
+        runtime_commit="a" * 40,
+        qwen_model=QWEN_MODEL,
+        qwen_revision=QWEN_REVISION,
+        colpali_model=COLPALI_MODEL,
+        colpali_revision=COLPALI_REVISION,
+        colpali_backbone_model=COLPALI_BACKBONE_MODEL,
+        colpali_backbone_revision=COLPALI_BACKBONE_REVISION,
+        processor_contract_path=contract,
+        max_new_tokens=MAX_NEW_TOKENS,
+        do_sample=False,
+        num_beams=1,
+        prompt=SHORT_ANSWER_TEMPLATE,
+        corpus=corpus,
+    )
+    monkeypatch.setattr(factory_module, "validate_processor_contract_file", lambda _: {})
+
+    identity = _validate_run_identity(run_config, mode="docprune", page_count=4)
+
+    assert identity["generation"]["eos_token_ids"] == [151645, 151643]
+
+
+def test_qwen_loader_rejects_generation_eos_drift() -> None:
+    matching = SimpleNamespace(
+        generation_config=SimpleNamespace(eos_token_id=[151645, 151643]),
+        config=SimpleNamespace(eos_token_id=151645),
+    )
+    drifted = SimpleNamespace(
+        generation_config=SimpleNamespace(eos_token_id=[151645]),
+        config=SimpleNamespace(eos_token_id=151645),
+    )
+
+    factory_module._validate_qwen_generation_identity(matching)
+    with pytest.raises(ValueError, match="EOS"):
+        factory_module._validate_qwen_generation_identity(drifted)
 
 
 def result_record(qid: str, *, question: str = "question", answers: list[str] | None = None):
@@ -204,7 +270,8 @@ def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -
     assert model.devices == [torch.device("cuda")]
 
     class QwenModel(ColPaliModel):
-        pass
+        config = SimpleNamespace(eos_token_id=151645)
+        generation_config = SimpleNamespace(eos_token_id=[151645, 151643])
 
     qwen_model = QwenModel()
     qwen_calls = []
