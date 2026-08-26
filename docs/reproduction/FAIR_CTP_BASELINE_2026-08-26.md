@@ -36,6 +36,8 @@ visual tokens retained must reproduce stock Qwen on a fixed cached page:
 - stock and DocPrune preprocessing tensors are exactly equal for `input_ids`,
   `attention_mask`, `pixel_values`, and `image_grid_thw`;
 - both paths resolve and use EOS IDs `[151645, 151643]`;
+- the pinned checkpoint is loaded with the production `flash_attention_2`
+  backend in BF16;
 - the full generated suffix is exactly equal, through EOS or the shared
   128-token cap; and
 - first-step logits agree within the declared BF16 kernel tolerance

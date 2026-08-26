@@ -213,6 +213,7 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
         revision=revision,
         local_files_only=True,
         torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
     ).to("cuda").eval()
     with Image.open(probe_path) as opened:
         page = opened.convert("RGB").copy()
