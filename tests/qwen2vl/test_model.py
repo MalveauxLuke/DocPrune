@@ -275,4 +275,6 @@ def test_real_model_all_kept_matches_stock_first_step_logits_without_download() 
         )
     assert adapted.first_step_logits is not None
     assert adapted.generated_ids.tolist() == stock_ids[:, input_ids.shape[1] :].tolist()
-    torch.testing.assert_close(adapted.first_step_logits, stock_forward.logits[:, -1], rtol=2e-2, atol=2e-2)
+    # Equivalent BF16 FlashAttention paths differ by up to one rounding bin on
+    # L40S even when the complete greedy generation is exactly identical.
+    torch.testing.assert_close(adapted.first_step_logits, stock_forward.logits[:, -1], rtol=2e-2, atol=7e-2)
