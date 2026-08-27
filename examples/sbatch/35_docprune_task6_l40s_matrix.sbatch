@@ -19,7 +19,6 @@ set -euo pipefail
 : "${MATRIX_ROOT:?set the existing native or fixed matrix root}"
 : "${MATRIX_KIND:?set native, native-extension, or fixed}"
 : "${SLURM_ARRAY_TASK_ID:?submit as the sealed 0-63 array}"
-: "${PYTHON:=/home/lmalveau/mamba-envs/docprune-sol/bin/python}"
 
 case "$MATRIX_KIND" in native|native-extension|fixed) ;; *) exit 2 ;; esac
 case "$SLURM_ARRAY_TASK_ID" in ''|*[!0-9]*) exit 2 ;; esac
@@ -31,15 +30,24 @@ readonly GATE=/scratch/lmalveau/docprune/task6-fixed-page-gate-v1/gate-manifest-
 readonly GATE_SHA256=4d44e297081b152c2e492ec68be58445c7ac17c8d106ceb2ddb1f6331fd57761
 readonly ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 readonly RUN_CONFIG="$ATTEMPT_ROOT/run-configs/docprune-top4.json"
+readonly RUN_CONFIG_SHA256=b9a6668aaf70c6059b175d18e29bc0082f76231d233a4d993b93fcb55ebbbb8f
 readonly INDEX_MANIFEST="$ATTEMPT_ROOT/indexes/docprune/top4/docprune/manifest.json"
+readonly INDEX_MANIFEST_SHA256=ffa5979b3bf157adefcc132b0438af295ddafb2243377db4cdb8fcb8eaafe5da
 readonly CONFIG="$RUNTIME_DIR/configs/docprune-m3docvqa.toml"
+readonly CONFIG_SHA256=82463d2ef3296a199521f3f637b256341aad7938eb199cb55c6249debfea44aa
 readonly ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
+readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python
 readonly PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
 readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
 readonly M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 SHARD_NAME="$(printf 'shard-%04d' "$SLURM_ARRAY_TASK_ID")"
 readonly SHARD_NAME
 readonly OUTPUT_DIR="$MATRIX_ROOT/$SHARD_NAME"
+
+if [[ -e "$OUTPUT_DIR" ]]; then
+  echo "Task 6 shard output already exists: $OUTPUT_DIR" >&2
+  exit 2
+fi
 
 test -d "$MATRIX_ROOT"
 test -x "$PYTHON"
@@ -49,6 +57,9 @@ test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 test "$(sha256sum "$FIXTURE" | cut -d' ' -f1)" = "$FIXTURE_SHA256"
 test "$(sha256sum "$GATE" | cut -d' ' -f1)" = "$GATE_SHA256"
+test "$(sha256sum "$RUN_CONFIG" | cut -d' ' -f1)" = "$RUN_CONFIG_SHA256"
+test "$(sha256sum "$INDEX_MANIFEST" | cut -d' ' -f1)" = "$INDEX_MANIFEST_SHA256"
+test "$(sha256sum "$CONFIG" | cut -d' ' -f1)" = "$CONFIG_SHA256"
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
@@ -68,8 +79,6 @@ export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
 GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
 case "$GPU_NAME" in *L40S*) ;; *) echo "canonical Task 6 shard requires L40S" >&2; exit 2 ;; esac
 
-RESUME_ARGS=()
-if [[ -e "$OUTPUT_DIR" ]]; then RESUME_ARGS+=(--resume); fi
 "$PYTHON" "$RUNTIME_DIR/examples/run_task6_matrix.py" \
   --config "$CONFIG" \
   --run-config "$RUN_CONFIG" \
@@ -82,8 +91,7 @@ if [[ -e "$OUTPUT_DIR" ]]; then RESUME_ARGS+=(--resume); fi
   --runtime-commit "$RUNTIME_COMMIT" \
   --shard "$SLURM_ARRAY_TASK_ID" \
   --kind "$MATRIX_KIND" \
-  --output "$OUTPUT_DIR" \
-  "${RESUME_ARGS[@]}"
+  --output "$OUTPUT_DIR"
 
 EXPECTED=45
 if [[ "$MATRIX_KIND" == fixed ]]; then EXPECTED=42; fi

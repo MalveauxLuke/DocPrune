@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import os
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -687,3 +689,60 @@ def test_task6_smoke_launcher_binds_execution_checkout_and_exact_a100_40_memory(
     assert '--runtime-dir "$RUNTIME_DIR"' in launcher
     assert '--runtime-commit "$RUNTIME_COMMIT"' in launcher
     assert 'test "$GPU_MEMORY_MIB" -lt 50000' in launcher
+
+
+def test_task6_l40s_launcher_rejects_existing_shard_before_runtime_access(
+    tmp_path: Path,
+) -> None:
+    matrix_root = tmp_path / "matrix"
+    (matrix_root / "shard-0000").mkdir(parents=True)
+    launcher = Path("examples/sbatch/35_docprune_task6_l40s_matrix.sbatch").resolve()
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "RUNTIME_DIR": str(tmp_path / "missing-runtime"),
+            "RUNTIME_COMMIT": "0" * 40,
+            "MATRIX_ROOT": str(matrix_root),
+            "MATRIX_KIND": "native",
+            "SLURM_ARRAY_TASK_ID": "0",
+        }
+    )
+
+    completed = subprocess.run(
+        ["bash", str(launcher)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert completed.returncode == 2
+    assert "Task 6 shard output already exists" in completed.stderr
+    assert "missing-runtime" not in completed.stderr
+
+
+def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
+    launcher = Path("examples/sbatch/35_docprune_task6_l40s_matrix.sbatch").read_text(
+        encoding="utf-8"
+    )
+
+    assert "${PYTHON:=" not in launcher
+    assert "readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python" in launcher
+    assert (
+        "readonly RUN_CONFIG_SHA256="
+        "b9a6668aaf70c6059b175d18e29bc0082f76231d233a4d993b93fcb55ebbbb8f"
+    ) in launcher
+    assert (
+        "readonly INDEX_MANIFEST_SHA256="
+        "ffa5979b3bf157adefcc132b0438af295ddafb2243377db4cdb8fcb8eaafe5da"
+    ) in launcher
+    assert (
+        "readonly CONFIG_SHA256="
+        "82463d2ef3296a199521f3f637b256341aad7938eb199cb55c6249debfea44aa"
+    ) in launcher
+    assert 'test "$(sha256sum "$RUN_CONFIG" | cut -d\' \' -f1)" = "$RUN_CONFIG_SHA256"' in launcher
+    assert (
+        'test "$(sha256sum "$INDEX_MANIFEST" | cut -d\' \' -f1)" '
+        '= "$INDEX_MANIFEST_SHA256"'
+    ) in launcher
+    assert 'test "$(sha256sum "$CONFIG" | cut -d\' \' -f1)" = "$CONFIG_SHA256"' in launcher
