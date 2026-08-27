@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import math
@@ -10,6 +11,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -42,10 +44,28 @@ from docprune.benchmark_config import (
 from docprune.cli import EvaluationWorkload
 from docprune.colpali.compat import assert_supported_colpali
 from docprune.config import DocPruneConfig
+from docprune.ctp_controls import VisualTokenGeometry
+from docprune.ctp_policy import (
+    CTPPolicy,
+    PolicySelectionContext,
+    aggregate_native_threshold_policy,
+    aggregate_score_top_m_policy,
+    btp_qtp_no_ctp_policy,
+    literal_native_threshold_policy,
+    literal_score_top_m_policy,
+)
 from docprune.indexing import IndexBuildConfig, IndexBuildResult, build_index
 from docprune.m3docrag import DocPruneM3DocRAG, OfficialM3DocRAGBoundary, SampleInput
 from docprune.metrics import measurement_identity
 from docprune.processor_probe import validate_processor_contract
+from docprune.task6_runtime import (
+    AuthenticatedFixedPageLoader,
+    AuthenticatedFixedPageRetriever,
+    FixedPageFixture,
+    load_fixed_page_fixture,
+    render_task6_pdf_page,
+    task6_policy,
+)
 
 DEFAULT_FACTORY = "docprune.m3docvqa_factory:build_workload"
 
@@ -201,6 +221,8 @@ def load_completed_qids(
     expected_samples: Sequence[SampleInput] | None = None,
     expected_page_count: int | None = None,
     production: bool = False,
+    expected_policy: Mapping[str, object] | None = None,
+    forbid_policy: bool = False,
 ) -> set[str]:
     """Validate a result JSONL's qid set before permitting resume."""
 
@@ -238,6 +260,8 @@ def load_completed_qids(
                 line_number=line_number,
                 expected_page_count=expected_page_count,
                 production=production,
+                expected_policy=expected_policy,
+                forbid_policy=forbid_policy,
             )
             qid = record["question_id"]
             if not isinstance(qid, str) or not qid:
@@ -274,6 +298,267 @@ def _canonicalize_result_record(
     return normalized
 
 
+def _validate_policy_selection_record(value: object, *, line_number: int) -> None:
+    """Validate durable native/ranking evidence independently of Task 3 forced records."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    required = {
+        "policy",
+        "boundary",
+        "native_layer",
+        "visual_population",
+        "requested_budget",
+        "achieved_budget",
+        "retained_compact_visual_ids",
+        "aggregate_native_reference_ids",
+        "aggregate_threshold_tied_ids",
+        "symmetric_difference_ids",
+        "native_threshold",
+        "seed_sha256",
+        "geometry_count",
+        "geometry_sha256",
+        "prefill_cache_lengths",
+        "retained_mrope_position_shape",
+        "retained_mrope_position_sha256",
+    }
+    if set(value) != required:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    policy_data = value["policy"]
+    if not isinstance(policy_data, Mapping):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    policy_keys = {
+        "family",
+        "name",
+        "selection_kind",
+        "score_semantics",
+        "budget_source",
+        "fixed_retention",
+    }
+    if set(policy_data) != policy_keys or not all(
+        isinstance(policy_data[key], str) for key in policy_keys - {"fixed_retention"}
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    fixed = policy_data["fixed_retention"]
+    try:
+        fixed_retention = None if fixed is None else Fraction(str(fixed))
+        policy = CTPPolicy(
+            str(policy_data["name"]),
+            str(policy_data["family"]),
+            str(policy_data["selection_kind"]),
+            str(policy_data["score_semantics"]),
+            str(policy_data["budget_source"]),
+            fixed_retention,
+        )
+    except (TypeError, ValueError, ZeroDivisionError) as error:
+        raise ValueError(
+            f"results JSONL record {line_number} has invalid policy selection"
+        ) from error
+    if policy.to_dict() != dict(policy_data):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    population = value["visual_population"]
+    if not isinstance(population, int) or isinstance(population, bool) or population < 0:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    geometry_count = value["geometry_count"]
+    geometry_sha256 = value["geometry_sha256"]
+    if (geometry_count is None) != (geometry_sha256 is None):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if geometry_count is not None and (
+        not isinstance(geometry_count, int)
+        or isinstance(geometry_count, bool)
+        or geometry_count != population
+        or not isinstance(geometry_sha256, str)
+        or len(geometry_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in geometry_sha256)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    cache_lengths = value["prefill_cache_lengths"]
+    position_shape = value["retained_mrope_position_shape"]
+    position_sha256 = value["retained_mrope_position_sha256"]
+    empty_runtime_evidence = (
+        cache_lengths == [] and position_shape is None and position_sha256 is None
+    )
+    valid_runtime_evidence = (
+        isinstance(cache_lengths, list)
+        and bool(cache_lengths)
+        and all(type(length) is int and length >= 0 for length in cache_lengths)
+        and isinstance(position_shape, list)
+        and len(position_shape) == 3
+        and all(type(size) is int and size >= 0 for size in position_shape)
+        and isinstance(position_sha256, str)
+        and len(position_sha256) == 64
+        and all(character in "0123456789abcdef" for character in position_sha256)
+    )
+    if not empty_runtime_evidence and not valid_runtime_evidence:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    for name in ("requested_budget", "achieved_budget"):
+        budget = value[name]
+        if not isinstance(budget, int) or isinstance(budget, bool) or not 0 <= budget <= population:
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    retained = value["retained_compact_visual_ids"]
+    tied = value["aggregate_threshold_tied_ids"]
+    difference = value["symmetric_difference_ids"]
+    if not all(isinstance(items, list) for items in (retained, tied, difference)):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    for items in (retained, tied, difference):
+        if items != sorted(set(items)) or any(
+            not isinstance(identifier, int)
+            or isinstance(identifier, bool)
+            or not 0 <= identifier < population
+            for identifier in items
+        ):
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if value["requested_budget"] != len(retained) or value["achieved_budget"] != len(retained):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    reference = value["aggregate_native_reference_ids"]
+    if reference is not None and (
+        not isinstance(reference, list)
+        or reference != sorted(set(reference))
+        or any(
+            not isinstance(identifier, int)
+            or isinstance(identifier, bool)
+            or not 0 <= identifier < population
+            for identifier in reference
+        )
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if reference is not None and difference != sorted(
+        set(retained).symmetric_difference(reference)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    boundary, native_layer = value["boundary"], value["native_layer"]
+    if boundary is None or native_layer is None:
+        if boundary is not None or native_layer is not None:
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+        if (
+            retained != list(range(population))
+            or value["requested_budget"] != population
+            or value["achieved_budget"] != population
+            or reference is not None
+            or tied
+            or difference
+            or value["native_threshold"] is not None
+            or value["seed_sha256"] is not None
+        ):
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+        return
+    if (
+        not isinstance(boundary, str)
+        or not boundary.startswith("B_")
+        or not isinstance(native_layer, int)
+        or isinstance(native_layer, bool)
+        or native_layer < 0
+        or boundary != f"B_{native_layer}"
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    seed = value["seed_sha256"]
+    if seed is not None and (
+        not isinstance(seed, str)
+        or len(seed) != 64
+        or any(character not in "0123456789abcdef" for character in seed)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.family in {"random-top-m", "coverage-top-m"} and seed is None:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.family in {"random-top-m", "coverage-top-m"} and geometry_count is None:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.family not in {"random-top-m", "coverage-top-m"} and seed is not None:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.family == "no-ctp":
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    threshold = value["native_threshold"]
+    if (
+        not isinstance(threshold, int | float)
+        or isinstance(threshold, bool)
+        or not math.isfinite(float(threshold))
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.family == "native-threshold":
+        if policy.score_semantics.startswith("literal-"):
+            if reference is not None or tied or difference:
+                raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+        elif reference is None or retained != reference or difference:
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    elif reference is None:
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if reference is not None and not set(tied).issubset(reference):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.fixed_retention is not None:
+        if value["requested_budget"] != policy.resolve_budget(
+            population, aggregate_native_budget=None
+        ):
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    elif policy.family == "score-top-m" and value["requested_budget"] != len(reference):
+        raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+    if policy.name == "aggregate-score-top-m" and not tied:
+        if retained != reference:
+            raise ValueError(f"results JSONL record {line_number} has invalid policy selection")
+
+
+def _validate_forced_intervention_record(value: object, *, line_number: int) -> None:
+    """Keep the admitted Task 3 forced record strict while adding policy evidence."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+    required = {
+        "boundary",
+        "mode",
+        "selection_kind",
+        "visual_population",
+        "requested_budget",
+        "achieved_budget",
+        "retained_visual_ids",
+        "logical_retained_sequence_ids",
+        "prefill_cache_lengths",
+        "retained_mrope_position_shape",
+        "retained_mrope_position_sha256",
+    }
+    if set(value) != required or value.get("selection_kind") != "forced":
+        raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+    population = value.get("visual_population")
+    requested, achieved = value.get("requested_budget"), value.get("achieved_budget")
+    retained = value.get("retained_visual_ids")
+    if (
+        not isinstance(value.get("boundary"), str)
+        or not str(value["boundary"]).startswith("B_")
+        or value.get("mode") not in {"physical_delete", "zero_mask"}
+        or not isinstance(population, int)
+        or isinstance(population, bool)
+        or population < 0
+        or not isinstance(requested, int)
+        or not isinstance(achieved, int)
+        or isinstance(requested, bool)
+        or isinstance(achieved, bool)
+        or requested != achieved
+        or not 0 <= requested <= population
+        or not isinstance(retained, list)
+        or retained != sorted(set(retained))
+        or len(retained) != achieved
+        or any(
+            not isinstance(item, int) or isinstance(item, bool) or not 0 <= item < population
+            for item in retained
+        )
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+    for name in ("logical_retained_sequence_ids", "prefill_cache_lengths"):
+        items = value.get(name)
+        if not isinstance(items, list) or any(
+            not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in items
+        ):
+            raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+    shape = value.get("retained_mrope_position_shape")
+    digest = value.get("retained_mrope_position_sha256")
+    if (
+        not isinstance(shape, list)
+        or len(shape) != 3
+        or any(not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in shape)
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+
+
 def _validate_result_record(
     record: Mapping[str, object],
     *,
@@ -281,6 +566,9 @@ def _validate_result_record(
     expected_page_count: int | None = None,
     mode: str | None = None,
     production: bool = False,
+    expected_policy: Mapping[str, object] | None = None,
+    forbid_policy: bool = False,
+    allowed_extra_fields: set[str] | frozenset[str] = frozenset(),
 ) -> None:
     required = {
         "question_id",
@@ -295,9 +583,47 @@ def _validate_result_record(
     missing = required - fields
     if missing:
         raise ValueError(f"results JSONL record {line_number} is missing {sorted(missing)!r}")
-    extra = fields - required
+    if any(not isinstance(field, str) for field in allowed_extra_fields):
+        raise TypeError("allowed result fields must be strings")
+    extra = (
+        fields
+        - required
+        - {
+            "policy_selection",
+            "forced_intervention",
+            "fixed_page_fixture_sha256",
+            "fixed_page_provenance",
+            "global_index_loaded",
+            "policy_context",
+        }
+        - set(allowed_extra_fields)
+    )
     if extra:
         raise ValueError(f"results JSONL record {line_number} has unknown fields {sorted(extra)!r}")
+    if "policy_selection" in record and "forced_intervention" in record:
+        raise ValueError(
+            f"results JSONL record {line_number} cannot contain both policy and forced evidence"
+        )
+    if expected_policy is not None:
+        if record.get("policy_selection") is None:
+            raise ValueError(
+                f"results JSONL record {line_number} is missing manifest policy evidence"
+            )
+        selection_policy = (
+            record["policy_selection"].get("policy")
+            if isinstance(record["policy_selection"], Mapping)
+            else None
+        )
+        if selection_policy != expected_policy:
+            raise ValueError(
+                f"results JSONL record {line_number} policy evidence does not match manifest policy"
+            )
+    elif forbid_policy and "policy_selection" in record:
+        raise ValueError(f"results JSONL record {line_number} manifest forbids policy evidence")
+    if "policy_selection" in record:
+        _validate_policy_selection_record(record["policy_selection"], line_number=line_number)
+    if "forced_intervention" in record:
+        _validate_forced_intervention_record(record["forced_intervention"], line_number=line_number)
     if not isinstance(record["question_id"], str) or not record["question_id"]:
         raise ValueError(f"results JSONL record {line_number} has an invalid question ID")
     if not isinstance(record["question"], str) or not isinstance(record["predicted_answer"], str):
@@ -364,6 +690,39 @@ def _validate_result_record(
         raise ValueError(
             f"results JSONL record {line_number} has a docprune trace without a CTP decision"
         )
+    selection = record.get("policy_selection")
+    if isinstance(selection, Mapping):
+        native_layer = selection["native_layer"]
+        if native_layer != ctp_layer:
+            raise ValueError(
+                f"results JSONL record {line_number} policy selection does not match the CTP trace"
+            )
+        if selection["achieved_budget"] != counts[3]:
+            raise ValueError(
+                f"results JSONL record {line_number} policy selection budget disagrees with trace"
+            )
+        if selection["visual_population"] != counts[2]:
+            raise ValueError(
+                f"results JSONL record {line_number} policy selection population disagrees with trace"
+            )
+    forced = record.get("forced_intervention")
+    if isinstance(forced, Mapping):
+        if ctp_layer is not None:
+            raise ValueError(
+                f"results JSONL record {line_number} forced intervention disagrees with trace layer"
+            )
+        if forced["visual_population"] != counts[2]:
+            raise ValueError(
+                f"results JSONL record {line_number} forced intervention population disagrees with trace"
+            )
+        if forced["mode"] == "physical_delete" and forced["achieved_budget"] != counts[3]:
+            raise ValueError(
+                f"results JSONL record {line_number} forced intervention budget disagrees with trace"
+            )
+        if forced["mode"] == "zero_mask" and counts[3] != counts[2]:
+            raise ValueError(
+                f"results JSONL record {line_number} zero-mask forced intervention disagrees with trace"
+            )
     timing = record["timing"]
     timing_fields = {"retrieval_seconds", "qa_seconds"}
     optional_timing_fields = {
@@ -400,7 +759,8 @@ def _validate_result_record(
         or not math.isfinite(float(timing[name]))
         or (float(timing[name]) <= 0 if production else float(timing[name]) < 0)
         for name in timing
-        if name in {
+        if name
+        in {
             "retrieval_seconds",
             "qa_seconds",
             "encoder_seconds",
@@ -705,6 +1065,27 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
     }
 
 
+def _task6_execution_identity(
+    feature_identity: Mapping[str, object], execution_runtime_commit: str
+) -> dict[str, object]:
+    """Separate historical feature construction from the code executing Task 6."""
+
+    feature_commit = feature_identity.get("runtime_commit")
+    if not isinstance(feature_commit, str) or len(feature_commit) != 40 or any(
+        character not in "0123456789abcdefABCDEF" for character in feature_commit
+    ):
+        raise ValueError("feature-build runtime commit must be a 40-character hexadecimal hash")
+    if not isinstance(execution_runtime_commit, str) or len(execution_runtime_commit) != 40 or any(
+        character not in "0123456789abcdefABCDEF" for character in execution_runtime_commit
+    ):
+        raise ValueError("execution runtime commit must be a 40-character hexadecimal hash")
+    return {
+        **dict(feature_identity),
+        "feature_build_runtime_commit": feature_commit.lower(),
+        "runtime_commit": execution_runtime_commit.lower(),
+    }
+
+
 def _validate_m3docrag_checkout(run_config: object) -> Path:
     root_value = (
         _value(run_config, "m3docrag_root")
@@ -773,9 +1154,7 @@ def _load_colpali(run_config: object) -> tuple[object, object]:
 def _validate_qwen_generation_identity(model: object) -> None:
     observed = _resolved_eos_token_ids(model)
     if observed != QWEN_EOS_TOKEN_IDS:
-        raise ValueError(
-            f"Qwen generation EOS IDs must be {QWEN_EOS_TOKEN_IDS}, got {observed}"
-        )
+        raise ValueError(f"Qwen generation EOS IDs must be {QWEN_EOS_TOKEN_IDS}, got {observed}")
 
 
 def _load_qwen(run_config: object) -> tuple[object, object]:
@@ -818,7 +1197,15 @@ def _make_dataset(run_config: object) -> object:
     return M3DocVQADevDataset(_required(run_config, "corpus"), expected_question_count=2441)
 
 
-def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
+def _load_index_manifest(
+    value: IndexManifest | Path | str, *, validate_files: bool = True
+) -> IndexManifest:
+    """Load an exact schema-5 identity, optionally without opening derived artifacts.
+
+    ``validate_files=False`` is reserved for the authenticated Task 6 fixed-page
+    path.  That path separately authenticates its selected document shards and
+    must not touch the global embedding tensor, token map, or FAISS index.
+    """
     if type(value) is IndexManifest:
         try:
             payload = IndexManifest.to_dict(value)
@@ -890,7 +1277,8 @@ def _load_index_manifest(value: IndexManifest | Path | str) -> IndexManifest:
         {key: value for key, value in manifest_payload.items() if key != "manifest_sha256"}
     ):
         raise ValueError("index manifest canonical SHA-256 is invalid")
-    IndexManifest.validate_files(manifest)
+    if validate_files:
+        IndexManifest.validate_files(manifest)
     return manifest
 
 
@@ -933,6 +1321,73 @@ class _ColPaliQueryAdapter:
         if attention_mask.shape != output.shape[:2]:
             raise ValueError("ColPali query attention mask must match query embeddings")
         return [rows[mask.bool()] for rows, mask in zip(output, attention_mask, strict=True)]
+
+
+def _load_task6_fixed_page_samples(
+    fixture_path: Path,
+    fixture_sha256: str,
+    *,
+    sample_ids: Sequence[str] | None,
+    limit: int | None,
+    page_count: int,
+) -> tuple[FixedPageFixture, tuple[SampleInput, ...]]:
+    """Select Task 6 samples without constructing or scanning the global dataset."""
+
+    if sample_ids is None:
+        raise ValueError("Task 6 fixed-page runs require explicit sealed sample IDs")
+    fixture = load_fixed_page_fixture(
+        fixture_path,
+        expected_sha256=fixture_sha256,
+        validate_external_bytes=False,
+    )
+    samples = filter_samples(
+        fixture.selected_samples(sample_ids),
+        limit=limit,
+        sample_ids=sample_ids,
+    )
+    selected_qids = tuple(sample.question_id for sample in samples)
+    fixture.validate_external_bytes(selected_qids=selected_qids)
+    if any(len(fixture.question(qid).pages) != page_count for qid in selected_qids):
+        raise ValueError("Task 6 fixed page count does not match the requested run")
+    return fixture, samples
+
+
+def _build_task6_fixed_page_components(
+    fixture_path: Path,
+    fixture_sha256: str,
+    query_encoder: object,
+    *,
+    samples: Sequence[SampleInput],
+    page_count: int,
+) -> tuple[FixedPageFixture, AuthenticatedFixedPageRetriever, AuthenticatedFixedPageLoader]:
+    """Build the fixed-page runtime without importing or opening search artifacts."""
+
+    fixture = load_fixed_page_fixture(
+        fixture_path,
+        expected_sha256=fixture_sha256,
+        validate_external_bytes=False,
+    )
+    selected_qids = tuple(sample.question_id for sample in samples)
+    if len(selected_qids) != len(set(selected_qids)):
+        raise ValueError("Task 6 selected samples contain duplicate QIDs")
+    for sample in samples:
+        try:
+            fixed = fixture.question(sample.question_id)
+        except KeyError as error:
+            raise ValueError("Task 6 selected QID is absent from the fixed-page fixture") from error
+        question_sha256 = hashlib.sha256(sample.question.encode("utf-8")).hexdigest()
+        if fixed.question_sha256 != question_sha256:
+            raise ValueError("Task 6 question text does not match the fixed-page fixture")
+        if len(fixed.pages) != page_count:
+            raise ValueError("Task 6 fixed page count does not match the requested run")
+    fixture.validate_external_bytes(selected_qids=selected_qids)
+    retriever = AuthenticatedFixedPageRetriever(
+        fixture, query_encoder, validate_external_bytes=False
+    )
+    loader = AuthenticatedFixedPageLoader(
+        fixture, render_task6_pdf_page, validate_external_bytes=False
+    )
+    return fixture, retriever, loader
 
 
 def _run_manifest(
@@ -979,6 +1434,110 @@ def _selection_identity(
     }
 
 
+def _canonical_json_value(value: object, *, label: str) -> object:
+    """Copy a value into the narrow JSON domain used by immutable manifest identity."""
+
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, bool | float):
+        raise ValueError(f"{label} must be JSON-safe without ambiguous numeric types")
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, list):
+        return [_canonical_json_value(item, label=label) for item in value]
+    if isinstance(value, dict) and all(isinstance(key, str) for key in value):
+        return {key: _canonical_json_value(value[key], label=label) for key in sorted(value)}
+    raise ValueError(f"{label} must be JSON-safe and canonical")
+
+
+def _ctp_policy_context_identity(
+    experiment_version: object,
+    repetition: object,
+    geometry: Sequence[VisualTokenGeometry] | None,
+) -> dict[str, object]:
+    """Serialize only the immutable Task 4 seed inputs, never runtime tensors."""
+
+    if experiment_version is None or repetition is None:
+        raise ValueError("random policy context requires experiment version and repetition")
+    canonical_geometry: list[list[int]] | None = None
+    if geometry is not None:
+        if not isinstance(geometry, Sequence) or isinstance(geometry, str | bytes):
+            raise ValueError("policy geometry must be validated VisualTokenGeometry values")
+        canonical_geometry = []
+        for token in geometry:
+            if not isinstance(token, VisualTokenGeometry):
+                raise ValueError("policy geometry must be validated VisualTokenGeometry values")
+            fields = [token.page_index, token.row, token.column, token.height, token.width]
+            if any(not isinstance(value, int) or isinstance(value, bool) for value in fields):
+                raise ValueError("policy geometry must be validated VisualTokenGeometry values")
+            page, row, column, height, width = fields
+            if (
+                page < 0
+                or height <= 0
+                or width <= 0
+                or not 0 <= row < height
+                or not 0 <= column < width
+            ):
+                raise ValueError("policy geometry must be validated VisualTokenGeometry values")
+            canonical_geometry.append(fields)
+    geometry_identity: dict[str, object] | None = None
+    if canonical_geometry is not None:
+        geometry_bytes = json.dumps(
+            canonical_geometry, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
+        geometry_identity = {
+            "count": len(canonical_geometry),
+            "sha256": hashlib.sha256(geometry_bytes).hexdigest(),
+        }
+    return {
+        "experiment_version": _canonical_json_value(
+            experiment_version, label="policy experiment version"
+        ),
+        "repetition": _canonical_json_value(repetition, label="policy repetition"),
+        "geometry": geometry_identity,
+    }
+
+
+def _validate_ctp_policy_context_identity(value: object) -> None:
+    """Reject a malformed persisted seed context before any workload is resumed."""
+
+    if not isinstance(value, Mapping) or set(value) != {
+        "experiment_version",
+        "repetition",
+        "geometry",
+    }:
+        raise ValueError("ctp_policy_context must be a canonical JSON-safe identity")
+    try:
+        if value["experiment_version"] is None or value["repetition"] is None:
+            raise ValueError("missing seed inputs")
+        if (
+            _canonical_json_value(value["experiment_version"], label="policy experiment version")
+            != value["experiment_version"]
+        ):
+            raise ValueError("noncanonical experiment version")
+        if (
+            _canonical_json_value(value["repetition"], label="policy repetition")
+            != value["repetition"]
+        ):
+            raise ValueError("noncanonical repetition")
+    except (KeyError, ValueError) as error:
+        raise ValueError("ctp_policy_context must be a canonical JSON-safe identity") from error
+    geometry = value["geometry"]
+    if geometry is None:
+        return
+    if (
+        not isinstance(geometry, Mapping)
+        or set(geometry) != {"count", "sha256"}
+        or not isinstance(geometry["count"], int)
+        or isinstance(geometry["count"], bool)
+        or geometry["count"] < 0
+        or not isinstance(geometry["sha256"], str)
+        or len(geometry["sha256"]) != 64
+        or any(character not in "0123456789abcdef" for character in geometry["sha256"])
+    ):
+        raise ValueError("ctp_policy_context must be a canonical JSON-safe identity")
+
+
 def _write_run_manifest(
     output: Path,
     payload: Mapping[str, object],
@@ -988,6 +1547,20 @@ def _write_run_manifest(
 ) -> dict[str, object]:
     """Publish the complete identity before loading any model weights."""
 
+    policy_data = payload.get("ctp_policy")
+    policy_context = payload.get("ctp_policy_context")
+    if policy_context is not None:
+        _validate_ctp_policy_context_identity(policy_context)
+        if not isinstance(policy_data, Mapping) or policy_data.get("family") not in {
+            "random-top-m",
+            "coverage-top-m",
+        }:
+            raise ValueError("ctp_policy_context requires a random or coverage CTP policy")
+    elif isinstance(policy_data, Mapping) and policy_data.get("family") in {
+        "random-top-m",
+        "coverage-top-m",
+    }:
+        raise ValueError("random or coverage CTP policy requires ctp_policy_context")
     if output.is_symlink():
         raise ValueError("output must not be a symbolic link")
     if resume and (not output.exists() or not output.is_dir()):
@@ -1025,6 +1598,13 @@ def _write_run_manifest(
             "corpus",
             "generation",
             "pruning_config",
+            "ctp_policy",
+            "ctp_policy_context",
+            "fixed_page_fixture_path",
+            "fixed_page_fixture_sha256",
+            "fixed_page_provenance",
+            "global_index_loaded",
+            "geometry_derivation",
             "selection",
             "index_manifest",
             "measurement",
@@ -1103,6 +1683,13 @@ def build_workload(
     resume: bool = False,
     invocation_manifest: Mapping[str, object] | None = None,
     qa_stage: str = "full",
+    ctp_policy: CTPPolicy | None = None,
+    policy_experiment_version: object | None = None,
+    policy_repetition: object | None = None,
+    policy_geometry: Sequence[VisualTokenGeometry] | None = None,
+    fixed_page_fixture: Path | None = None,
+    fixed_page_fixture_sha256: str | None = None,
+    execution_runtime_commit: str | None = None,
 ) -> EvaluationWorkload | IndexBuildResult:
     """Build the concrete index operation or lazy end-to-end evaluation workload."""
 
@@ -1110,6 +1697,15 @@ def build_workload(
         raise ValueError("operation must be 'embed' or 'evaluate'")
     if qa_stage not in {"full", "btp-only", "btp-qtp"}:
         raise ValueError("qa_stage must be full, btp-only, or btp-qtp")
+    if ctp_policy is not None and not isinstance(ctp_policy, CTPPolicy):
+        raise TypeError("ctp_policy must be a CTPPolicy")
+    fixed_page_run = fixed_page_fixture is not None or fixed_page_fixture_sha256 is not None
+    if fixed_page_run and (fixed_page_fixture is None or fixed_page_fixture_sha256 is None):
+        raise ValueError("fixed-page fixture path and checksum must be supplied together")
+    if fixed_page_run and execution_runtime_commit is None:
+        raise ValueError("Task 6 fixed-page runs require the execution runtime commit")
+    if not fixed_page_run and execution_runtime_commit is not None:
+        raise ValueError("execution runtime commit is reserved for Task 6 fixed-page runs")
     if not isinstance(config, DocPruneConfig):
         raise TypeError("config must be a DocPruneConfig")
     if page_count not in PAGE_COUNTS:
@@ -1119,8 +1715,40 @@ def build_workload(
     resolved_mode = _resolve_mode(mode, run_config)
     if qa_stage != "full" and (operation != "evaluate" or resolved_mode != "docprune"):
         raise ValueError("diagnostic QA stages require a docprune evaluation")
+    if ctp_policy is not None and (operation != "evaluate" or resolved_mode != "docprune"):
+        raise ValueError("corrected CTP policies require a docprune evaluation")
+    if fixed_page_run and (
+        operation != "evaluate"
+        or resolved_mode != "docprune"
+        or page_count != 4
+        or ctp_policy is None
+    ):
+        raise ValueError("Task 6 fixed-page runs require top-4 DocPrune evaluation and a policy")
+    if fixed_page_run and policy_geometry is not None:
+        raise ValueError("Task 6 geometry must be derived dynamically after BTP and QTP")
+    if (
+        ctp_policy is not None
+        and ctp_policy.family in {"random-top-m", "coverage-top-m"}
+        and (policy_experiment_version is None or policy_repetition is None)
+    ):
+        raise ValueError("random corrected CTP policy requires experiment version and repetition")
+    policy_context: dict[str, object] | None = None
+    if ctp_policy is not None:
+        if ctp_policy.family in {"random-top-m", "coverage-top-m"}:
+            policy_context = _ctp_policy_context_identity(
+                policy_experiment_version,
+                policy_repetition,
+                policy_geometry,
+            )
+        elif any(
+            value is not None
+            for value in (policy_experiment_version, policy_repetition, policy_geometry)
+        ):
+            raise ValueError("policy context is valid only for random or coverage CTP policies")
     resolved_run = _resolve_run_config(run_config, mode=resolved_mode, page_count=page_count)
     identity = _validate_run_identity(resolved_run, mode=resolved_mode, page_count=page_count)
+    if fixed_page_run:
+        identity = _task6_execution_identity(identity, str(execution_runtime_commit))
     _validate_m3docrag_checkout(resolved_run)
     run_config_source_path, run_config_source_sha256 = _source_file_identity(
         run_config if isinstance(run_config, str | Path) else None,
@@ -1158,13 +1786,25 @@ def build_workload(
                 raise ValueError("existing run manifest is not valid JSON") from error
             if isinstance(existing_manifest, Mapping) and "runtime_commit" in existing_manifest:
                 raise FileExistsError(f"evaluation output already exists: {output}")
-    dataset = _make_dataset(resolved_run)
-    dataset_source_order = _require_source_order_sha256(dataset)
-    samples = (
-        filter_samples(dataset, limit=limit, sample_ids=sample_ids)
-        if operation == "evaluate"
-        else ()
-    )
+    task6_fixture: FixedPageFixture | None = None
+    if fixed_page_run:
+        task6_fixture, samples = _load_task6_fixed_page_samples(
+            Path(fixed_page_fixture),
+            str(fixed_page_fixture_sha256),
+            sample_ids=sample_ids,
+            limit=limit,
+            page_count=page_count,
+        )
+        dataset = None
+        dataset_source_order = None
+    else:
+        dataset = _make_dataset(resolved_run)
+        dataset_source_order = _require_source_order_sha256(dataset)
+        samples = (
+            filter_samples(dataset, limit=limit, sample_ids=sample_ids)
+            if operation == "evaluate"
+            else ()
+        )
     identity = {
         **identity,
         "pruning_config": _expected_pruning_identity(
@@ -1176,6 +1816,25 @@ def build_workload(
             warmup_count=1,
         ),
     }
+    if ctp_policy is not None:
+        identity["ctp_policy"] = ctp_policy.to_dict()
+        if policy_context is not None:
+            identity["ctp_policy_context"] = policy_context
+    if fixed_page_run:
+        if task6_fixture is None:
+            raise AssertionError("Task 6 fixture must be loaded before identity construction")
+        identity.update(
+            {
+                "fixed_page_fixture_path": str(Path(fixed_page_fixture).resolve()),
+                "fixed_page_fixture_sha256": str(fixed_page_fixture_sha256),
+                "fixed_page_provenance": True,
+                "global_index_loaded": False,
+                "geometry_derivation": {
+                    "version": "task6-post-btp-qtp-grid-v1",
+                    "order": "sealed-page-major-row-major-filtered-by-combined-mask",
+                },
+            }
+        )
 
     if operation == "embed":
         if sample_ids is not None or limit is not None:
@@ -1204,7 +1863,7 @@ def build_workload(
 
     if index_manifest is None:
         raise ValueError("evaluate requires --index-manifest for the selected mode")
-    manifest = _load_index_manifest(index_manifest)
+    manifest = _load_index_manifest(index_manifest, validate_files=not fixed_page_run)
     if manifest.mode != resolved_mode or manifest.page_count != page_count:
         raise ValueError("index manifest mode/page_count does not match the requested run")
     if manifest.m3docrag_commit != M3DOCRAG_COMMIT:
@@ -1213,7 +1872,10 @@ def build_workload(
         raise ValueError("index manifest runtime commit does not match the run configuration")
     if manifest.processor_contract_sha256 != str(identity["processor_contract_sha256"]):
         raise ValueError("index manifest processor contract does not match the run configuration")
-    if manifest.runtime_commit != str(identity["runtime_commit"]):
+    feature_runtime_commit = str(
+        identity.get("feature_build_runtime_commit", identity["runtime_commit"])
+    )
+    if manifest.runtime_commit != feature_runtime_commit:
         raise ValueError("index manifest runtime commit does not match the run configuration")
     if manifest.to_dict()["resources"] != identity["resources"]:
         raise ValueError("index manifest model resources do not match the run configuration")
@@ -1224,8 +1886,21 @@ def build_workload(
     corpus = identity["corpus"]
     if manifest.corpus_integrity_sha256 != corpus["integrity_sha256"]:
         raise ValueError("index manifest corpus identity does not match the run configuration")
-    if manifest.source_order_sha256 != dataset_source_order:
+    if task6_fixture is None and manifest.source_order_sha256 != dataset_source_order:
         raise ValueError("index manifest source order does not match the corpus")
+    if task6_fixture is not None:
+        identity["feature_build_source_order_sha256"] = manifest.source_order_sha256
+        manifest_path, manifest_sha256 = _source_file_identity(
+            index_manifest if isinstance(index_manifest, str | Path) else None,
+            label="index manifest",
+        )
+        if (
+            manifest_path != str(task6_fixture.feature_manifest_path)
+            or manifest_sha256 != task6_fixture.feature_manifest_sha256
+            or manifest.completion_ledger_path != task6_fixture.completion_ledger_path
+            or manifest.completion_ledger_sha256 != task6_fixture.completion_ledger_sha256
+        ):
+            raise ValueError("Task 6 fixture feature-manifest provenance does not match")
 
     complete_manifest = _write_run_manifest(
         output,
@@ -1234,31 +1909,47 @@ def build_workload(
         invocation_manifest=invocation_manifest,
     )
 
-    import faiss
-    from safetensors.torch import load_file
-
-    embedding_tensors = load_file(manifest.embeddings_path, device="cpu")
-    embeddings = embedding_tensors["embeddings"]
-    raster_indices = embedding_tensors["raster_indices"]
-    metadata = json.loads(manifest.embedding_metadata_path.read_text(encoding="utf-8"))
-    source_hw = tuple(metadata["source_hw"])
-    token_map = json.loads(manifest.token2pageuid_path.read_text(encoding="utf-8"))
-    if not isinstance(token_map, list) or len(token_map) != len(embeddings):
-        raise ValueError("index token2pageuid rows do not match embeddings")
-    index = faiss.read_index(str(manifest.index_path))
     colpali_model, colpali_processor = _load_colpali(resolved_run)
     query_adapter = _ColPaliQueryAdapter(colpali_model, colpali_processor)
-    rag_model = SimpleNamespace(retrieval_model=query_adapter)
-    boundary = OfficialM3DocRAGBoundary(
-        rag_model=rag_model,
-        dataset=dataset,
-        docid2embs={},
-        index=index,
-        token2pageuid=token_map,
-        all_token_embeddings=embeddings,
-        raster_indices=raster_indices,
-        source_hw=source_hw,
-    )
+    fixed_loader: AuthenticatedFixedPageLoader | None = None
+    if task6_fixture is not None:
+        retriever = AuthenticatedFixedPageRetriever(
+            task6_fixture, query_adapter, validate_external_bytes=False
+        )
+        fixed_loader = AuthenticatedFixedPageLoader(
+            task6_fixture, render_task6_pdf_page, validate_external_bytes=False
+        )
+        for sample in samples:
+            retriever.retrieve(sample.question, page_count)
+        retriever.release_query_encoder()
+        del query_adapter, colpali_model, colpali_processor
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    else:
+        import faiss
+        from safetensors.torch import load_file
+
+        embedding_tensors = load_file(manifest.embeddings_path, device="cpu")
+        embeddings = embedding_tensors["embeddings"]
+        raster_indices = embedding_tensors["raster_indices"]
+        metadata = json.loads(manifest.embedding_metadata_path.read_text(encoding="utf-8"))
+        source_hw = tuple(metadata["source_hw"])
+        token_map = json.loads(manifest.token2pageuid_path.read_text(encoding="utf-8"))
+        if not isinstance(token_map, list) or len(token_map) != len(embeddings):
+            raise ValueError("index token2pageuid rows do not match embeddings")
+        index = faiss.read_index(str(manifest.index_path))
+        rag_model = SimpleNamespace(retrieval_model=query_adapter)
+        retriever = OfficialM3DocRAGBoundary(
+            rag_model=rag_model,
+            dataset=dataset,
+            docid2embs={},
+            index=index,
+            token2pageuid=token_map,
+            all_token_embeddings=embeddings,
+            raster_indices=raster_indices,
+            source_hw=source_hw,
+        )
     qwen_model, qwen_processor = _load_qwen(resolved_run)
     if resolved_mode == "all-kept":
         answerer = AllKeptQwenAnswerer(qwen_model, qwen_processor)
@@ -1268,8 +1959,28 @@ def build_workload(
             qwen_processor,
             page_config=config.for_pages(page_count),
             qa_stage=qa_stage,
+            ctp_policy=ctp_policy,
+            selection_context=(
+                None
+                if policy_context is None or policy_geometry is None
+                else PolicySelectionContext(
+                    policy_context["experiment_version"],
+                    None,
+                    None,
+                    policy_context["repetition"],
+                    tuple(policy_geometry),
+                )
+            ),
+            policy_experiment_version=(
+                None if policy_context is None else policy_context["experiment_version"]
+            ),
+            policy_repetition=None if policy_context is None else policy_context["repetition"],
         )
-    runner = DocPruneM3DocRAG(boundary, dataset, answerer, top_k=page_count)
+    runner = (
+        DocPruneM3DocRAG(retriever, fixed_loader, answerer, top_k=page_count)
+        if fixed_loader is not None
+        else DocPruneM3DocRAG(retriever, dataset, answerer, top_k=page_count)
+    )
     return EvaluationWorkload(
         runner=runner,
         samples=samples,
@@ -1295,10 +2006,118 @@ def build_btp_qtp_workload(**kwargs: object) -> object:
     return _build_diagnostic_workload("btp-qtp", **kwargs)
 
 
+def _build_corrected_policy_workload(policy: CTPPolicy, **kwargs: object) -> object:
+    if kwargs.get("operation") != "evaluate" or kwargs.get("mode") != "docprune":
+        raise ValueError("corrected CTP policies require a docprune evaluation")
+    return build_workload(qa_stage="full", ctp_policy=policy, **kwargs)
+
+
+def build_btp_qtp_no_ctp_workload(**kwargs: object) -> object:
+    return _build_corrected_policy_workload(btp_qtp_no_ctp_policy(), **kwargs)
+
+
+def build_literal_native_threshold_workload(**kwargs: object) -> object:
+    return _build_corrected_policy_workload(literal_native_threshold_policy(), **kwargs)
+
+
+def build_aggregate_native_threshold_workload(**kwargs: object) -> object:
+    return _build_corrected_policy_workload(aggregate_native_threshold_policy(), **kwargs)
+
+
+def build_literal_score_top_m_workload(**kwargs: object) -> object:
+    return _build_corrected_policy_workload(literal_score_top_m_policy(), **kwargs)
+
+
+def build_aggregate_score_top_m_workload(**kwargs: object) -> object:
+    return _build_corrected_policy_workload(aggregate_score_top_m_policy(), **kwargs)
+
+
+def _task6_environment_identity() -> tuple[
+    CTPPolicy, Path, str, object | None, int | None, str
+]:
+    """Resolve the closed Task 6 launcher identity without loading any model."""
+
+    raw_fixture = os.environ.get("DOCPRUNE_TASK6_FIXED_PAGE_FIXTURE")
+    fixture_sha256 = os.environ.get("DOCPRUNE_TASK6_FIXED_PAGE_FIXTURE_SHA256")
+    policy_name = os.environ.get("DOCPRUNE_TASK6_POLICY")
+    runtime_commit = os.environ.get("DOCPRUNE_TASK6_RUNTIME_COMMIT")
+    if not raw_fixture or not fixture_sha256 or not policy_name or not runtime_commit:
+        raise ValueError(
+            "Task 6 fixed-page fixture, checksum, policy, and runtime commit are required"
+        )
+    fixture = Path(raw_fixture)
+    if not fixture.is_absolute() or fixture.is_symlink() or not fixture.is_file():
+        raise ValueError("Task 6 fixed-page fixture must be an absolute regular file")
+    if len(fixture_sha256) != 64 or any(
+        character not in "0123456789abcdef" for character in fixture_sha256
+    ):
+        raise ValueError("Task 6 fixed-page fixture checksum must be a lowercase SHA-256")
+    policy = task6_policy(policy_name)
+    _task6_execution_identity({"runtime_commit": runtime_commit}, runtime_commit)
+    raw_version = os.environ.get("DOCPRUNE_TASK6_EXPERIMENT_VERSION")
+    raw_repetition = os.environ.get("DOCPRUNE_TASK6_REPETITION")
+    if policy.family in {"random-top-m", "coverage-top-m"}:
+        if not raw_version or raw_repetition is None:
+            raise ValueError("Task 6 random policy requires experiment version and repetition")
+        try:
+            repetition = int(raw_repetition)
+        except ValueError as error:
+            raise ValueError("Task 6 repetition must be a non-negative integer") from error
+        if repetition < 0 or str(repetition) != raw_repetition:
+            raise ValueError("Task 6 repetition must be a canonical non-negative integer")
+        return policy, fixture, fixture_sha256, raw_version, repetition, runtime_commit.lower()
+    if raw_version is not None or raw_repetition is not None:
+        raise ValueError("Task 6 deterministic policy must not declare random seed context")
+    return policy, fixture, fixture_sha256, None, None, runtime_commit.lower()
+
+
+def build_task6_fixed_page_workload(**kwargs: object) -> object:
+    """Build one closed fixed-page Task 6 cell with no search/index path."""
+
+    if kwargs.get("operation") != "evaluate" or kwargs.get("mode") != "docprune":
+        raise ValueError("Task 6 fixed-page policy requires a DocPrune evaluation")
+    policy, fixture, fixture_sha256, version, repetition, runtime_commit = (
+        _task6_environment_identity()
+    )
+    return build_workload(
+        qa_stage="full",
+        ctp_policy=policy,
+        fixed_page_fixture=fixture,
+        fixed_page_fixture_sha256=fixture_sha256,
+        policy_experiment_version=version,
+        policy_repetition=repetition,
+        execution_runtime_commit=runtime_commit,
+        **kwargs,
+    )
+
+
+def controlled_policy_identity(factory_spec: str) -> dict[str, object] | None:
+    """Resolve only this module's static corrected-policy factories before model load."""
+
+    policies = {
+        "docprune.m3docvqa_factory:build_btp_qtp_no_ctp_workload": btp_qtp_no_ctp_policy,
+        "docprune.m3docvqa_factory:build_literal_native_threshold_workload": literal_native_threshold_policy,
+        "docprune.m3docvqa_factory:build_aggregate_native_threshold_workload": aggregate_native_threshold_policy,
+        "docprune.m3docvqa_factory:build_literal_score_top_m_workload": literal_score_top_m_policy,
+        "docprune.m3docvqa_factory:build_aggregate_score_top_m_workload": aggregate_score_top_m_policy,
+    }
+    if factory_spec == "docprune.m3docvqa_factory:build_task6_fixed_page_workload":
+        return _task6_environment_identity()[0].to_dict()
+    factory = policies.get(factory_spec)
+    return None if factory is None else factory().to_dict()
+
+
 __all__ = [
     "DEFAULT_FACTORY",
     "build_btp_only_workload",
     "build_btp_qtp_workload",
+    "build_btp_qtp_no_ctp_workload",
+    "build_literal_native_threshold_workload",
+    "build_aggregate_native_threshold_workload",
+    "build_literal_score_top_m_workload",
+    "build_aggregate_score_top_m_workload",
+    "build_task6_fixed_page_workload",
+    "controlled_policy_identity",
     "build_workload",
     "filter_samples",
     "load_completed_qids",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -34,9 +35,7 @@ from docprune.m3docvqa_factory import (
 )
 
 
-def test_run_identity_records_the_complete_pinned_eos_set(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_run_identity_records_the_complete_pinned_eos_set(monkeypatch, tmp_path: Path) -> None:
     contract = tmp_path / "processor-contract.json"
     contract.write_bytes(b"contract")
     corpus = SimpleNamespace(
@@ -168,14 +167,30 @@ def test_validate_result_record_requires_boolean_profiler_state(value) -> None:
         _validate_result_record(record, line_number=1)
 
 
-@pytest.mark.parametrize("field", [
-    "retrieval_seconds",
-    "page_load_seconds",
-    "qa_seconds",
-    "total_sample_seconds",
-    "encoder_seconds",
-    "decoder_seconds",
-])
+def test_result_validator_allows_only_explicit_matrix_metadata_extension() -> None:
+    record = result_record("q-matrix")
+    record["matrix_cell"] = 0
+    with pytest.raises(ValueError, match="unknown fields"):
+        _validate_result_record(record, line_number=1)
+
+    _validate_result_record(
+        record,
+        line_number=1,
+        allowed_extra_fields={"matrix_cell"},
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "retrieval_seconds",
+        "page_load_seconds",
+        "qa_seconds",
+        "total_sample_seconds",
+        "encoder_seconds",
+        "decoder_seconds",
+    ],
+)
 def test_production_result_record_requires_positive_exact_stage_timings(field: str) -> None:
     record = result_record("q-1")
     record["timing"].update(
@@ -281,7 +296,7 @@ def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -
         SimpleNamespace(
             AutoProcessor=SimpleNamespace(from_pretrained=lambda *args, **kwargs: object()),
             Qwen2VLForConditionalGeneration=SimpleNamespace(
-                from_pretrained=lambda *args, **kwargs: (qwen_calls.append(kwargs) or qwen_model)
+                from_pretrained=lambda *args, **kwargs: qwen_calls.append(kwargs) or qwen_model
             ),
         ),
     )
@@ -719,3 +734,451 @@ def test_diagnostic_factory_rejects_non_docprune_or_embedding(
         factory(operation="evaluate", mode="all-kept")
     with pytest.raises(ValueError, match="docprune evaluation"):
         factory(operation="embed", mode="docprune")
+
+
+@pytest.mark.parametrize(
+    ("factory_name", "policy_name"),
+    (
+        ("build_btp_qtp_no_ctp_workload", "btp-qtp-no-ctp"),
+        ("build_literal_native_threshold_workload", "literal-native-threshold"),
+        ("build_aggregate_native_threshold_workload", "aggregate-native-threshold"),
+        ("build_literal_score_top_m_workload", "literal-score-top-m"),
+        ("build_aggregate_score_top_m_workload", "aggregate-score-top-m"),
+    ),
+)
+def test_corrected_runtime_factory_binds_one_truthful_policy_before_workload_construction(
+    monkeypatch, factory_name: str, policy_name: str
+) -> None:
+    """A factory that relabels or omits its policy must fail this pre-model boundary."""
+
+    observed: dict[str, object] = {}
+
+    def fake_build_workload(**kwargs):
+        observed.update(kwargs)
+        return "workload"
+
+    monkeypatch.setattr(factory_module, "build_workload", fake_build_workload)
+    assert hasattr(factory_module, factory_name)
+    factory = getattr(factory_module, factory_name)
+
+    assert factory(operation="evaluate", mode="docprune") == "workload"
+    policy = observed["ctp_policy"]
+    assert policy.name == policy_name
+    assert observed["qa_stage"] == "full"
+    with pytest.raises(ValueError, match="docprune evaluation"):
+        factory(operation="evaluate", mode="all-kept")
+
+
+def test_resume_rejects_a_changed_corrected_policy_identity(tmp_path: Path) -> None:
+    """A resume must fail before model load when a native/ranking policy is swapped."""
+
+    from docprune.ctp_policy import (
+        aggregate_native_threshold_policy,
+        aggregate_score_top_m_policy,
+    )
+
+    payload = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "docprune",
+        "page_count": 4,
+        "ctp_policy": aggregate_native_threshold_policy().to_dict(),
+    }
+    _write_run_manifest(tmp_path, payload, resume=False)
+    changed = {**payload, "ctp_policy": aggregate_score_top_m_policy().to_dict()}
+
+    with pytest.raises(ValueError, match="does not exactly match"):
+        _write_run_manifest(tmp_path, changed, resume=True)
+
+
+def test_random_policy_context_is_canonical_json_and_resume_immutable(tmp_path: Path) -> None:
+    """Seed-defining inputs must be a pre-load manifest identity, not mutable runtime state."""
+
+    from docprune.ctp_controls import VisualTokenGeometry
+    from docprune.ctp_policy import fixed_retention_random_policy
+    from docprune.m3docvqa_factory import _ctp_policy_context_identity
+
+    geometry = (VisualTokenGeometry(0, 0, 0, 1, 2), VisualTokenGeometry(0, 0, 1, 1, 2))
+    context = _ctp_policy_context_identity("dev-v1", 3, geometry)
+    assert context["experiment_version"] == "dev-v1"
+    assert context["repetition"] == 3
+    assert context["geometry"]["count"] == 2
+    assert len(context["geometry"]["sha256"]) == 64
+    with pytest.raises(ValueError, match="JSON-safe"):
+        _ctp_policy_context_identity({"set"}, 3, None)
+
+    payload = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "docprune",
+        "page_count": 4,
+        "ctp_policy": fixed_retention_random_policy("global-uniform-random", "11/20").to_dict(),
+        "ctp_policy_context": context,
+    }
+    _write_run_manifest(tmp_path, payload, resume=False)
+    changed = {
+        **payload,
+        "ctp_policy_context": _ctp_policy_context_identity("dev-v1", 4, geometry),
+    }
+    with pytest.raises(ValueError, match="does not exactly match"):
+        _write_run_manifest(tmp_path, changed, resume=True)
+    geometry_changed = {
+        **payload,
+        "ctp_policy_context": _ctp_policy_context_identity(
+            "dev-v1",
+            3,
+            (VisualTokenGeometry(0, 0, 0, 1, 1), VisualTokenGeometry(1, 0, 0, 1, 1)),
+        ),
+    }
+    with pytest.raises(ValueError, match="does not exactly match"):
+        _write_run_manifest(tmp_path, geometry_changed, resume=True)
+    malformed = {
+        **payload,
+        "output": str((tmp_path / "malformed").resolve()),
+        "ctp_policy_context": {"experiment_version": "dev-v1", "repetition": 3, "geometry": []},
+    }
+    with pytest.raises(ValueError, match="ctp_policy_context"):
+        _write_run_manifest(tmp_path / "malformed", malformed, resume=False)
+
+
+def test_canonical_seed_context_matches_runtime_seed_and_rejects_numeric_ambiguity(
+    tmp_path: Path,
+) -> None:
+    """Manifest equality and the frozen Task 4 seed must use the same canonical values."""
+
+    from docprune.ctp_policy import (
+        PolicySelectionContext,
+        fixed_retention_random_policy,
+        select_boundary_policy,
+    )
+    from docprune.m3docvqa_factory import _ctp_policy_context_identity
+
+    left = _ctp_policy_context_identity({"b": 1, "a": 2}, 3, None)
+    right = _ctp_policy_context_identity({"a": 2, "b": 1}, 3, None)
+    assert left == right
+    policy = fixed_retention_random_policy("global-uniform-random", "11/20")
+    first = select_boundary_policy(
+        policy,
+        literal_scores=(0.1,) * 10,
+        aggregate_scores=(0.1,) * 10,
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+        selection_context=PolicySelectionContext(
+            left["experiment_version"], "q-1", "B_0", left["repetition"]
+        ),
+    )
+    second = select_boundary_policy(
+        policy,
+        literal_scores=(0.1,) * 10,
+        aggregate_scores=(0.1,) * 10,
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+        selection_context=PolicySelectionContext(
+            right["experiment_version"], "q-1", "B_0", right["repetition"]
+        ),
+    )
+    assert first.seed_sha256 == second.seed_sha256
+
+    with pytest.raises(ValueError, match="JSON-safe"):
+        _ctp_policy_context_identity(1.0, 3, None)
+
+    payload = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "docprune",
+        "page_count": 4,
+        "ctp_policy": policy.to_dict(),
+        "ctp_policy_context": _ctp_policy_context_identity(1, 3, None),
+    }
+    _write_run_manifest(tmp_path, payload, resume=False)
+    with pytest.raises(ValueError, match="JSON-safe"):
+        changed = {**payload, "ctp_policy_context": _ctp_policy_context_identity(1.0, 3, None)}
+        _write_run_manifest(tmp_path, changed, resume=True)
+
+
+def test_result_validation_accepts_only_complete_corrected_policy_selection_evidence() -> None:
+    """Results must carry the durable selection record instead of silently dropping it."""
+
+    from docprune.ctp_policy import aggregate_score_top_m_policy, select_boundary_policy
+
+    record = result_record("q-policy")
+    selection = select_boundary_policy(
+        aggregate_score_top_m_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    )
+    record["policy_selection"] = selection.to_dict()
+    record["trace"]["ctp_layer"] = 0
+
+    _validate_result_record(record, line_number=1)
+
+    record["policy_selection"]["policy"]["selection_kind"] = "native_threshold"
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(record, line_number=1)
+
+
+def test_result_validation_rejects_malformed_task_three_forced_record() -> None:
+    """Permitting selection evidence must not weaken Task 3's forced-record boundary."""
+
+    record = result_record("q-forced")
+    record["forced_intervention"] = {"selection_kind": "forced"}
+
+    with pytest.raises(ValueError, match="forced intervention"):
+        _validate_result_record(record, line_number=1)
+
+
+def test_result_validation_rejects_dual_forced_and_policy_evidence_and_trace_budget_drift() -> None:
+    """Native policy evidence and Task 3 forced evidence cannot describe one result together."""
+
+    from docprune.ctp_policy import aggregate_native_threshold_policy, select_boundary_policy
+
+    selection = select_boundary_policy(
+        aggregate_native_threshold_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+    record = result_record("q-dual")
+    record["trace"]["ctp_layer"] = 0
+    record["policy_selection"] = selection
+    record["forced_intervention"] = {
+        "boundary": "B_0",
+        "mode": "physical_delete",
+        "selection_kind": "forced",
+        "visual_population": 2,
+        "requested_budget": 1,
+        "achieved_budget": 1,
+        "retained_visual_ids": [1],
+        "logical_retained_sequence_ids": [0, 1],
+        "prefill_cache_lengths": [2],
+        "retained_mrope_position_shape": [3, 1, 2],
+        "retained_mrope_position_sha256": "a" * 64,
+    }
+    with pytest.raises(ValueError, match="both"):
+        _validate_result_record(record, line_number=1)
+
+    record.pop("forced_intervention")
+    record["trace"]["post_ctp_visual_tokens"] = 2
+    with pytest.raises(ValueError, match="budget"):
+        _validate_result_record(record, line_number=1)
+
+
+def test_result_validation_binds_policy_evidence_to_manifest_identity() -> None:
+    """Corrected-policy runs require the exact manifest policy and legacy runs forbid it."""
+
+    from docprune.ctp_policy import aggregate_native_threshold_policy, select_boundary_policy
+
+    policy = aggregate_native_threshold_policy().to_dict()
+    record = result_record("q-manifest")
+    record["trace"]["ctp_layer"] = 0
+    record["policy_selection"] = select_boundary_policy(
+        aggregate_native_threshold_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+
+    _validate_result_record(record, line_number=1, expected_policy=policy)
+    with pytest.raises(ValueError, match="manifest policy"):
+        _validate_result_record(
+            record,
+            line_number=1,
+            expected_policy={**policy, "name": "literal-native-threshold"},
+        )
+    with pytest.raises(ValueError, match="forbids"):
+        _validate_result_record(record, line_number=1, expected_policy=None, forbid_policy=True)
+
+
+def test_result_jsonl_rejects_contradictory_descriptor_and_enforces_no_crossing_shape() -> None:
+    """Persisted policy evidence must retain its exact method and no-crossing meaning."""
+
+    from docprune.ctp_policy import (
+        aggregate_native_threshold_policy,
+        fixed_retention_random_policy,
+        no_crossing_selection,
+        select_boundary_policy,
+    )
+
+    record = result_record("q-descriptor")
+    record["trace"]["ctp_layer"] = 0
+    record["policy_selection"] = select_boundary_policy(
+        aggregate_native_threshold_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+    record["policy_selection"]["policy"]["name"] = "literal-native-threshold"
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(record, line_number=1)
+
+    no_crossing = result_record("q-no-crossing")
+    no_crossing["trace"]["post_ctp_visual_tokens"] = 2
+    no_crossing["policy_selection"] = no_crossing_selection(
+        fixed_retention_random_policy("global-uniform-random", "11/20"), 2
+    ).to_dict()
+    _validate_result_record(no_crossing, line_number=1)
+
+    no_crossing["policy_selection"]["seed_sha256"] = "a" * 64
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(no_crossing, line_number=1)
+
+
+def test_policy_jsonl_enforces_declared_budgets_and_disallows_crossing_no_ctp() -> None:
+    """Trace agreement cannot make impossible policy M values or no-CTP crossings durable."""
+
+    from docprune.ctp_policy import (
+        PolicySelectionContext,
+        btp_qtp_no_ctp_policy,
+        fixed_retention_random_policy,
+        literal_score_top_m_policy,
+        select_boundary_policy,
+    )
+
+    no_ctp = result_record("q-no-ctp-crossing")
+    no_ctp["trace"]["post_ctp_visual_tokens"] = 2
+    no_ctp["trace"]["ctp_layer"] = 0
+    no_ctp["policy_selection"] = select_boundary_policy(
+        btp_qtp_no_ctp_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(no_ctp, line_number=1)
+
+    fixed = result_record("q-fixed-budget")
+    fixed["trace"] = {
+        "original_visual_tokens": 10,
+        "post_btp_visual_tokens": 10,
+        "post_qtp_visual_tokens": 10,
+        "post_ctp_visual_tokens": 1,
+        "ctp_layer": 0,
+    }
+    fixed["policy_selection"] = select_boundary_policy(
+        fixed_retention_random_policy("global-uniform-random", "11/20"),
+        literal_scores=(0.1,) * 10,
+        aggregate_scores=(0.1,) * 10,
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+        selection_context=PolicySelectionContext("dev", "q-fixed-budget", "B_0", 0),
+    ).to_dict()
+    fixed["policy_selection"]["retained_compact_visual_ids"] = [0]
+    fixed["policy_selection"]["requested_budget"] = 1
+    fixed["policy_selection"]["achieved_budget"] = 1
+    fixed["policy_selection"]["symmetric_difference_ids"] = [0]
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(fixed, line_number=1)
+
+    literal = result_record("q-literal-budget")
+    literal["trace"] = {
+        "original_visual_tokens": 3,
+        "post_btp_visual_tokens": 3,
+        "post_qtp_visual_tokens": 3,
+        "post_ctp_visual_tokens": 1,
+        "ctp_layer": 0,
+    }
+    literal["policy_selection"] = select_boundary_policy(
+        literal_score_top_m_policy(),
+        literal_scores=(0.9, 0.8, 0.1),
+        aggregate_scores=(0.8, 0.7, 0.2),
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+    literal["policy_selection"]["retained_compact_visual_ids"] = [0]
+    literal["policy_selection"]["requested_budget"] = 1
+    literal["policy_selection"]["achieved_budget"] = 1
+    literal["policy_selection"]["symmetric_difference_ids"] = [1]
+    with pytest.raises(ValueError, match="policy selection"):
+        _validate_result_record(literal, line_number=1)
+
+
+def test_forced_jsonl_cross_binds_population_and_truthful_mode_budget_to_trace() -> None:
+    """Task 3 evidence must agree with its trace without reinterpreting its layer field."""
+
+    def forced(mode: str, population: int = 2) -> dict[str, object]:
+        return {
+            "boundary": "B_0",
+            "mode": mode,
+            "selection_kind": "forced",
+            "visual_population": population,
+            "requested_budget": 1,
+            "achieved_budget": 1,
+            "retained_visual_ids": [1],
+            "logical_retained_sequence_ids": [0, 1],
+            "prefill_cache_lengths": [2],
+            "retained_mrope_position_shape": [3, 1, 2],
+            "retained_mrope_position_sha256": "a" * 64,
+        }
+
+    physical = result_record("q-forced-physical")
+    physical["forced_intervention"] = forced("physical_delete")
+    physical["trace"]["post_ctp_visual_tokens"] = 2
+    with pytest.raises(ValueError, match="forced intervention"):
+        _validate_result_record(physical, line_number=1)
+
+    population_drift = result_record("q-forced-population")
+    population_drift["forced_intervention"] = forced("physical_delete", population=3)
+    with pytest.raises(ValueError, match="forced intervention"):
+        _validate_result_record(population_drift, line_number=1)
+
+    layer_drift = result_record("q-forced-layer")
+    layer_drift["trace"]["ctp_layer"] = 0
+    layer_drift["forced_intervention"] = forced("physical_delete")
+    with pytest.raises(ValueError, match="forced intervention"):
+        _validate_result_record(layer_drift, line_number=1)
+
+    zero_mask = result_record("q-forced-zero-mask")
+    zero_mask["trace"]["post_ctp_visual_tokens"] = 2
+    zero_mask["forced_intervention"] = forced("zero_mask")
+    _validate_result_record(zero_mask, line_number=1)
+    zero_mask["trace"]["post_ctp_visual_tokens"] = 1
+    with pytest.raises(ValueError, match="forced intervention"):
+        _validate_result_record(zero_mask, line_number=1)
+
+
+def test_jsonl_accepts_fixed_aggregate_score_budget_that_intentionally_differs_from_native() -> (
+    None
+):
+    """A fixed aggregate arm is not the exact primary aggregate-score policy."""
+
+    from docprune.ctp_policy import aggregate_score_top_m_policy, select_boundary_policy
+
+    record = result_record("q-fixed-aggregate")
+    record["trace"] = {
+        "original_visual_tokens": 10,
+        "post_btp_visual_tokens": 10,
+        "post_qtp_visual_tokens": 10,
+        "post_ctp_visual_tokens": 6,
+        "ctp_layer": 0,
+    }
+    record["policy_selection"] = select_boundary_policy(
+        aggregate_score_top_m_policy(retention=Fraction("11/20")),
+        literal_scores=(0.1,) * 10,
+        aggregate_scores=(0.1,) * 10,
+        attention_threshold=0.5,
+        boundary="B_0",
+        native_layer=0,
+    ).to_dict()
+
+    _validate_result_record(record, line_number=1)

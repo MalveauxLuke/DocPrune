@@ -7,8 +7,14 @@ from dataclasses import dataclass
 
 import torch
 
+from docprune.ctp_policy import CTPPolicy, CTPSelectionRecord, PolicySelectionContext
 from docprune.qwen2vl.compat import assert_supported_qwen2vl
-from docprune.qwen2vl.decoder import decode_one_token, prefill_with_ctp
+from docprune.qwen2vl.decoder import (
+    ForcedInterventionRecord,
+    ForcedVisualIntervention,
+    decode_one_token,
+    prefill_with_ctp,
+)
 from docprune.qwen2vl.sequence import compact_multimodal_sequence
 from docprune.qwen2vl.vision import compact_vision_batch
 
@@ -51,6 +57,8 @@ class GenerationResult:
     first_step_logits: torch.Tensor | None = None
     encoder_seconds: float = 0.0
     decoder_seconds: float = 0.0
+    forced_intervention: ForcedInterventionRecord | None = None
+    policy_selection: CTPSelectionRecord | None = None
 
 
 def _model_device(model: object) -> torch.device | None:
@@ -90,6 +98,7 @@ def _module_timer_hooks(
         register_post = getattr(module, "register_forward_hook", None)
         if not callable(register_pre) or not callable(register_post):
             continue
+
         def callbacks() -> tuple[object, object]:
             started: list[tuple[float, torch.device | None] | object] = []
 
@@ -132,9 +141,7 @@ def _resolve_module_timer_groups(
     """Resolve hook timings, synchronizing CUDA once for all stage groups."""
 
     device = _model_device(model)
-    event_groups = [
-        [sample for sample in group if isinstance(sample, tuple)] for group in groups
-    ]
+    event_groups = [[sample for sample in group if isinstance(sample, tuple)] for group in groups]
     if any(event_groups):
         if device is None or device.type != "cuda":
             raise RuntimeError("CUDA timer events require a CUDA model device")
@@ -174,6 +181,9 @@ class DocPruneQwen2VL:
         max_new_tokens: int,
         eos_token_ids: tuple[int, ...],
         head_aggregation: str = "mean",
+        forced_intervention: ForcedVisualIntervention | None = None,
+        ctp_policy: CTPPolicy | None = None,
+        selection_context: PolicySelectionContext | None = None,
     ) -> GenerationResult:
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
@@ -231,6 +241,9 @@ class DocPruneQwen2VL:
                 comprehension_threshold=comprehension_threshold,
                 attention_threshold=attention_threshold,
                 head_aggregation=head_aggregation,
+                forced_intervention=forced_intervention,
+                ctp_policy=ctp_policy,
+                selection_context=selection_context,
             )
             generated: list[torch.Tensor] = []
             logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
@@ -261,11 +274,18 @@ class DocPruneQwen2VL:
         finally:
             decoder_elapsed = _end_synchronized_timer(decoder_started, decoder_device)
         decoder_seconds = decoder_elapsed
-        post_ctp = (
-            len(prefill.decision.retained_visual_indices)
-            if prefill.decision is not None
-            else int(combined.sum().item())
-        )
+        if prefill.forced is not None:
+            post_ctp = (
+                prefill.forced.achieved_budget
+                if prefill.forced.mode == "physical_delete"
+                else int(combined.sum().item())
+            )
+        else:
+            post_ctp = (
+                len(prefill.decision.retained_visual_indices)
+                if prefill.decision is not None
+                else int(combined.sum().item())
+            )
         trace = PruningTrace(
             original_visual_tokens=background.numel(),
             post_btp_visual_tokens=int(background.sum().item()),
@@ -279,4 +299,6 @@ class DocPruneQwen2VL:
             first_step_logits,
             encoder_seconds,
             decoder_seconds,
+            prefill.forced,
+            prefill.selection,
         )

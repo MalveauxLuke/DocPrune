@@ -518,7 +518,7 @@ def test_evaluate_factory_cannot_mutate_nested_or_scalar_invocation_identity(
 
     class Runner:
         def run_sample(self, item):
-                return SampleResult(
+            return SampleResult(
                 item.question_id,
                 item.question,
                 item.answers,
@@ -1092,6 +1092,84 @@ def test_fresh_evaluation_accepts_factory_resolved_measurement_identity(tmp_path
         config=config,
         authoritative=identity,
     )
+
+
+def test_cli_authority_rejects_random_policy_seed_context_drift(tmp_path) -> None:
+    """A factory cannot alter the manifest-authorized Task 4 seed namespace."""
+
+    from docprune.ctp_policy import fixed_retention_random_policy
+    from docprune.m3docvqa_factory import _ctp_policy_context_identity, _expected_pruning_identity
+
+    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    requested = _manifest(
+        "evaluate",
+        Path("configs/docprune-m3docvqa.toml"),
+        config,
+        1,
+        "fake:factory",
+        output=tmp_path,
+        mode="docprune",
+        run_config=None,
+        index_manifest=None,
+        limit=None,
+        sample_ids=None,
+    )
+    context = _ctp_policy_context_identity("dev-v1", 3, None)
+    identity = {
+        "schema_version": 2,
+        "status": "configured",
+        "operation": "evaluate",
+        "output": str(tmp_path.resolve()),
+        "mode": "docprune",
+        "page_count": 1,
+        "runtime_commit": "a" * 40,
+        "m3docrag_commit": "b" * 40,
+        "resources": {},
+        "processor_contract_path": "contract.json",
+        "processor_contract_sha256": "c" * 64,
+        "processor_contract": {},
+        "run_config_source_path": None,
+        "run_config_source_sha256": None,
+        "index_manifest_source_path": None,
+        "index_manifest_source_sha256": None,
+        "corpus": {},
+        "generation": {},
+        "pruning_config": _expected_pruning_identity(config, mode="docprune", page_count=1),
+        "selection": {
+            "requested_sample_ids": None,
+            "limit": None,
+            "resolved_question_ids": [],
+            "count": 0,
+        },
+        "index_manifest": {},
+        "measurement": measurement_identity(sample_ids=()),
+        "ctp_policy": fixed_retention_random_policy("global-uniform-random", "11/20").to_dict(),
+        "ctp_policy_context": context,
+    }
+    workload = {**identity, "command": "evaluate"}
+    workload["run_manifest_sha256"] = _manifest_digest(workload)
+
+    _validate_evaluation_workload_manifest(
+        workload,
+        existing=requested,
+        requested=requested,
+        config=config,
+        authoritative=identity,
+    )
+
+    drifted = dict(workload)
+    drifted["ctp_policy_context"] = _ctp_policy_context_identity("dev-v1", 4, None)
+    drifted["run_manifest_sha256"] = _manifest_digest(
+        {key: value for key, value in drifted.items() if key != "run_manifest_sha256"}
+    )
+    with pytest.raises(ValueError, match="ctp_policy_context"):
+        _validate_evaluation_workload_manifest(
+            drifted,
+            existing=requested,
+            requested=requested,
+            config=config,
+            authoritative=identity,
+        )
 
 
 def test_embed_publication_ignores_factory_rewritten_invocation_manifest(

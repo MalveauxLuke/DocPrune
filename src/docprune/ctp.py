@@ -75,6 +75,39 @@ def visual_attention_scores(
     return aggregated * indices.numel()
 
 
+def boundary_score_vectors_from_logits(
+    attention_logits: torch.Tensor,
+    visual_indices: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Derive literal and aggregate native scores from one prompt-boundary tensor.
+
+    Literal CTP is the full-key float32 softmax followed by query-head mean and
+    post-QTP visual-count scaling.  The accepted aggregate reconstruction first
+    averages raw query-head logits, softmaxes only visual keys in float32, then
+    applies the same scale.  Both vectors are returned together so ranking arms
+    cannot observe a different boundary tensor.
+    """
+
+    logits = torch.as_tensor(attention_logits)
+    indices = torch.as_tensor(visual_indices, dtype=torch.long, device=logits.device)
+    if logits.ndim != 4 or logits.shape[0] != 1:
+        raise ValueError("attention_logits must have shape [1, heads, queries, keys]")
+    if indices.ndim != 1:
+        raise ValueError("visual_indices must be one-dimensional")
+    if indices.numel() and (indices.min() < 0 or indices.max() >= logits.shape[-1]):
+        raise ValueError("visual_indices are outside the attention key range")
+    if indices.numel() == 0:
+        empty = logits.new_empty((0,), dtype=torch.float32)
+        return empty, empty.clone()
+    full_probabilities = torch.softmax(logits, dim=-1, dtype=torch.float32)
+    literal = (
+        full_probabilities[0, :, -1, :].index_select(-1, indices).mean(dim=0) * indices.numel()
+    )
+    aggregate_logits = logits[0, :, -1, :].index_select(-1, indices).float().mean(dim=0)
+    aggregate = torch.softmax(aggregate_logits, dim=-1, dtype=torch.float32) * indices.numel()
+    return literal, aggregate
+
+
 def ctp_keep_indices(
     *,
     token_count: int,

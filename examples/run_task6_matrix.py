@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+"""Run one sealed Task 6 QID shard while loading each model only once."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+from docprune.answerers import DocPruneQwenAnswerer
+from docprune.cli import _bind_task6_result_evidence, _manifest_digest
+from docprune.config import load_config
+from docprune.m3docrag import DocPruneM3DocRAG
+from docprune.m3docvqa_factory import (
+    _load_index_manifest,
+    _resolve_run_config,
+    _validate_result_record,
+    _validate_run_identity,
+    build_workload,
+)
+from docprune.metrics import append_result_jsonl
+from docprune.task6_runtime import (
+    Task6ResultIdentity,
+    load_fixed_page_fixture,
+    task6_policy_matrix,
+    validate_task6_result_record,
+)
+
+
+def _sha256(path: Path) -> str:
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        raise ValueError(f"authenticated input must be an absolute regular file: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_json(path: Path, expected_sha256: str, label: str) -> dict[str, object]:
+    if _sha256(path) != expected_sha256:
+        raise ValueError(f"{label} checksum mismatch")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    return payload
+
+
+def _atomic_json(path: Path, payload: dict[str, object]) -> None:
+    descriptor, raw = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(raw)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        descriptor = -1
+        os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
+def _expected_cells(gate: dict[str, object], kind: str) -> list[dict[str, object]]:
+    key = f"{kind.replace('-', '_')}_cells"
+    cells = gate.get(key)
+    if not isinstance(cells, list):
+        raise ValueError("gate manifest policy matrix is invalid")
+    frozen = task6_policy_matrix("native" if kind == "smoke" else kind)
+    if kind == "smoke":
+        frozen = tuple(frozen[index] for index in (0, 1, 2, 3, 4, 5, 15, 25, 35))
+    if len(cells) != len(frozen):
+        raise ValueError("gate manifest policy matrix count drifted")
+    for index, (persisted, expected) in enumerate(zip(cells, frozen, strict=True)):
+        if not isinstance(persisted, dict):
+            raise ValueError("gate manifest policy cell is invalid")
+        expected_version = (
+            f"task6-{'native' if kind == 'smoke' else kind}-v1"
+            if expected.policy.family in {"random-top-m", "coverage-top-m"}
+            else None
+        )
+        if persisted != {
+            "cell": index,
+            "policy": expected.policy.to_dict(),
+            "experiment_version": expected_version,
+            "repetition": expected.repetition,
+        }:
+            raise ValueError("gate manifest policy cell identity drifted")
+    return cells
+
+
+def _existing_prefix(
+    path: Path,
+    *,
+    cells: list[dict[str, object]],
+    qid: str,
+    fixture_sha256: str,
+    kind: str,
+) -> int:
+    if not path.exists():
+        return 0
+    count = 0
+    with path.open(encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            if not isinstance(record, dict) or count >= len(cells):
+                raise ValueError("Task 6 resume results are not a valid cell prefix")
+            cell = cells[count]
+            policy = cell["policy"]
+            if (
+                record.get("question_id") != qid
+                or record.get("matrix_cell") != count
+                or record.get("matrix_kind") != kind
+                or record.get("experiment_version") != cell["experiment_version"]
+                or record.get("repetition") != cell["repetition"]
+                or not isinstance(policy, dict)
+            ):
+                raise ValueError("Task 6 resume results are not an exact cell prefix")
+            _validate_result_record(
+                record,
+                line_number=line_number,
+                expected_page_count=4,
+                production=True,
+                expected_policy=policy,
+                allowed_extra_fields={
+                    "matrix_cell",
+                    "matrix_kind",
+                    "experiment_version",
+                    "repetition",
+                },
+            )
+            validate_task6_result_record(
+                record,
+                Task6ResultIdentity(
+                    fixture_sha256,
+                    str(policy["name"]),
+                    cell["experiment_version"],
+                    cell["repetition"],
+                ),
+            )
+            count += 1
+    return count
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--run-config", type=Path, required=True)
+    parser.add_argument("--index-manifest", type=Path, required=True)
+    parser.add_argument("--fixture", type=Path, required=True)
+    parser.add_argument("--fixture-sha256", required=True)
+    parser.add_argument("--gate-manifest", type=Path, required=True)
+    parser.add_argument("--gate-manifest-sha256", required=True)
+    parser.add_argument("--runtime-dir", type=Path, required=True)
+    parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--shard", type=int, required=True)
+    parser.add_argument(
+        "--kind", choices=("smoke", "native", "native-extension", "fixed"), required=True
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--validate-only", action="store_true")
+    args = parser.parse_args()
+    for name in (
+        "config",
+        "run_config",
+        "index_manifest",
+        "fixture",
+        "gate_manifest",
+        "runtime_dir",
+        "output",
+    ):
+        value = getattr(args, name)
+        if not value.is_absolute():
+            raise ValueError(f"--{name.replace('_', '-')} must be absolute")
+    if len(args.runtime_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in args.runtime_commit
+    ):
+        raise ValueError("--runtime-commit must be a lowercase 40-character commit hash")
+    observed_commit = subprocess.run(
+        ["git", "-C", str(args.runtime_dir), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    observed_status = subprocess.run(
+        ["git", "-C", str(args.runtime_dir), "status", "--porcelain", "--untracked-files=all"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if observed_commit != args.runtime_commit or observed_status:
+        raise ValueError("Task 6 execution runtime must be the exact clean committed checkout")
+
+    gate = _load_json(args.gate_manifest, args.gate_manifest_sha256, "gate manifest")
+    if (
+        gate.get("status") != "sealed-development-gate"
+        or gate.get("fixture_path") != str(args.fixture)
+        or gate.get("fixture_sha256") != args.fixture_sha256
+        or gate.get("fixed_page_provenance") is not True
+        or gate.get("global_index_loaded") is not False
+    ):
+        raise ValueError("gate manifest fixed-page identity is invalid")
+    fixture = load_fixed_page_fixture(
+        args.fixture,
+        expected_sha256=args.fixture_sha256,
+        validate_external_bytes=False,
+    )
+    shards = gate.get("qid_shards")
+    if not isinstance(shards, list) or not 0 <= args.shard < len(shards):
+        raise ValueError("Task 6 shard is outside the sealed gate")
+    shard = shards[args.shard]
+    if not isinstance(shard, dict) or shard.get("shard") != args.shard:
+        raise ValueError("Task 6 shard map is invalid")
+    qid = shard.get("qid")
+    if not isinstance(qid, str):
+        raise ValueError("Task 6 shard QID is invalid")
+    fixture.question(qid)
+    cells = _expected_cells(gate, args.kind)
+
+    config = load_config(args.config)
+    resolved_run = _resolve_run_config(args.run_config, mode="docprune", page_count=4)
+    identity = _validate_run_identity(resolved_run, mode="docprune", page_count=4)
+    feature_manifest = _load_index_manifest(args.index_manifest, validate_files=False)
+    if (
+        feature_manifest.mode != "docprune"
+        or feature_manifest.page_count != 4
+        or str(fixture.feature_manifest_path) != str(args.index_manifest)
+        or fixture.feature_manifest_sha256 != _sha256(args.index_manifest)
+        or fixture.completion_ledger_path != feature_manifest.completion_ledger_path
+        or fixture.completion_ledger_sha256 != feature_manifest.completion_ledger_sha256
+    ):
+        raise ValueError("Task 6 selected feature-manifest provenance is invalid")
+
+    run_manifest = {
+        "schema_version": 1,
+        "status": "configured-task6-matrix",
+        "output": str(args.output),
+        "matrix_kind": args.kind,
+        "shard": args.shard,
+        "qid": qid,
+        "cell_count": len(cells),
+        "fixture_path": str(args.fixture),
+        "fixture_sha256": args.fixture_sha256,
+        "gate_manifest_path": str(args.gate_manifest),
+        "gate_manifest_sha256": args.gate_manifest_sha256,
+        "feature_manifest_path": str(args.index_manifest),
+        "feature_manifest_sha256": fixture.feature_manifest_sha256,
+        "feature_build_source_order_sha256": feature_manifest.source_order_sha256,
+        "fixed_page_provenance": True,
+        "global_index_loaded": False,
+        "feature_build_runtime_commit": identity["runtime_commit"],
+        "runtime_commit": args.runtime_commit,
+        "m3docrag_commit": identity["m3docrag_commit"],
+        "resources": identity["resources"],
+        "generation": identity["generation"],
+        "cells": cells,
+    }
+    run_manifest["run_manifest_sha256"] = _manifest_digest(run_manifest)
+    if args.validate_only:
+        print(
+            json.dumps(
+                {
+                    "status": "validated-without-model-or-output",
+                    "qid": qid,
+                    "matrix_kind": args.kind,
+                    "cell_count": len(cells),
+                    "run_manifest_sha256": run_manifest["run_manifest_sha256"],
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+    manifest_path = args.output / "run_manifest.json"
+    if args.resume:
+        if not args.output.is_dir() or not manifest_path.is_file():
+            raise ValueError("Task 6 resume requires an existing complete output")
+        existing = _load_json(manifest_path, _sha256(manifest_path), "Task 6 run manifest")
+        if existing != run_manifest:
+            raise ValueError("Task 6 resume manifest does not exactly match")
+    else:
+        if args.output.exists() or args.output.is_symlink():
+            raise FileExistsError(f"Task 6 output already exists: {args.output}")
+        args.output.mkdir(parents=True)
+        _atomic_json(manifest_path, run_manifest)
+
+    results_path = args.output / "results.jsonl"
+    completed = _existing_prefix(
+        results_path,
+        cells=cells,
+        qid=qid,
+        fixture_sha256=args.fixture_sha256,
+        kind=args.kind,
+    )
+    bootstrap_output = args.output / "bootstrap"
+    workload = build_workload(
+        operation="evaluate",
+        config=config,
+        page_count=4,
+        output=bootstrap_output,
+        mode="docprune",
+        run_config=args.run_config,
+        index_manifest=args.index_manifest,
+        sample_ids=(qid,),
+        resume=args.resume,
+        ctp_policy=task6_policy_matrix("native")[0].policy,
+        fixed_page_fixture=args.fixture,
+        fixed_page_fixture_sha256=args.fixture_sha256,
+        execution_runtime_commit=args.runtime_commit,
+    )
+    samples = tuple(workload.samples)
+    if len(samples) != 1 or samples[0].question_id != qid:
+        raise ValueError("Task 6 bootstrap workload selected the wrong QID")
+    sample = samples[0]
+    base_runner = workload.runner
+    base_runner.warmup(sample)
+    base_answerer = base_runner.answerer
+    append_mode = results_path.exists()
+    for cell_index in range(completed, len(cells)):
+        cell = cells[cell_index]
+        source_matrix = task6_policy_matrix("native" if args.kind == "smoke" else args.kind)
+        if args.kind == "smoke":
+            source_matrix = tuple(source_matrix[index] for index in (0, 1, 2, 3, 4, 5, 15, 25, 35))
+        policy = source_matrix[cell_index].policy
+        answerer = DocPruneQwenAnswerer(
+            base_answerer.model,
+            base_answerer.processor,
+            page_config=config.for_pages(4),
+            qa_stage="full",
+            ctp_policy=policy,
+            policy_experiment_version=cell["experiment_version"],
+            policy_repetition=cell["repetition"],
+        )
+        runner = DocPruneM3DocRAG(
+            base_runner.retriever,
+            base_runner.page_loader,
+            answerer,
+            top_k=4,
+        )
+        runner.inherit_warmup_state(base_runner)
+        record = runner.run_sample(sample).to_dict()
+        cell_manifest = {
+            "fixed_page_fixture_sha256": args.fixture_sha256,
+            "fixed_page_provenance": True,
+            "global_index_loaded": False,
+            "ctp_policy": policy.to_dict(),
+        }
+        if cell["experiment_version"] is not None:
+            cell_manifest["ctp_policy_context"] = {
+                "experiment_version": cell["experiment_version"],
+                "repetition": cell["repetition"],
+                "geometry": None,
+            }
+        _bind_task6_result_evidence(record, cell_manifest)
+        _validate_result_record(
+            record,
+            line_number=cell_index + 1,
+            expected_page_count=4,
+            production=True,
+            expected_policy=policy.to_dict(),
+        )
+        validate_task6_result_record(
+            record,
+            Task6ResultIdentity(
+                args.fixture_sha256,
+                policy.name,
+                cell["experiment_version"],
+                cell["repetition"],
+            ),
+        )
+        record.update(
+            {
+                "matrix_cell": cell_index,
+                "matrix_kind": args.kind,
+                "experiment_version": cell["experiment_version"],
+                "repetition": cell["repetition"],
+            }
+        )
+        append_result_jsonl(results_path, record, resume=append_mode)
+        append_mode = True
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

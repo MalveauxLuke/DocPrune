@@ -10,6 +10,8 @@ from typing import Any, Protocol
 import numpy as np
 import torch
 
+from docprune.ctp_policy import CTPSelectionRecord
+from docprune.qwen2vl.decoder import ForcedInterventionRecord
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -130,6 +132,8 @@ class AnswerOutput:
     flops: float | None = None
     encoder_seconds: float = 0.0
     decoder_seconds: float = 0.0
+    forced_intervention: ForcedInterventionRecord | None = None
+    policy_selection: CTPSelectionRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -141,9 +145,11 @@ class SampleResult:
     retrieved_pages: tuple[RetrievedPage, ...]
     trace: PruningTrace
     timing: SampleTiming
+    forced_intervention: ForcedInterventionRecord | None = None
+    policy_selection: CTPSelectionRecord | None = None
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "question_id": self.question_id,
             "question": self.question,
             "answers": list(self.answers),
@@ -152,12 +158,15 @@ class SampleResult:
             "trace": self.trace.to_dict(),
             "timing": self.timing.to_dict(),
         }
+        if self.forced_intervention is not None:
+            payload["forced_intervention"] = self.forced_intervention.to_dict()
+        if self.policy_selection is not None:
+            payload["policy_selection"] = self.policy_selection.to_dict()
+        return payload
 
 
 class Retriever(Protocol):
-    def retrieve(
-        self, question: str, top_k: int
-    ) -> RetrievalOutput | Sequence[RetrievedPage]: ...
+    def retrieve(self, question: str, top_k: int) -> RetrievalOutput | Sequence[RetrievedPage]: ...
 
 
 class PageLoader(Protocol):
@@ -199,17 +208,16 @@ class DocPruneM3DocRAG:
         retrieval_start = time.perf_counter()
         retrieval = self.retriever.retrieve(item.question, self.top_k)
         retrieval_output = retrieval if isinstance(retrieval, RetrievalOutput) else None
-        pages = (
-            tuple(retrieval.pages)
-            if retrieval_output is not None
-            else tuple(retrieval)
-        )
+        pages = tuple(retrieval.pages) if retrieval_output is not None else tuple(retrieval)
         retrieval_seconds = time.perf_counter() - retrieval_start
         if len(pages) != self.top_k:
             raise ValueError(f"retriever returned {len(pages)} pages; expected {self.top_k}")
         page_load_start = time.perf_counter()
         images = [self.page_loader.load_page(page.doc_id, page.page_index) for page in pages]
         page_load_seconds = time.perf_counter() - page_load_start
+        set_policy_question_id = getattr(self.answerer, "set_policy_question_id", None)
+        if callable(set_policy_question_id):
+            set_policy_question_id(item.question_id)
         answer_method = self.answerer.answer
         if retrieval_output is not None:
             answer = answer_method(
@@ -242,6 +250,8 @@ class DocPruneM3DocRAG:
                 page_load_seconds,
                 total_sample_seconds,
             ),
+            forced_intervention=answer.forced_intervention,
+            policy_selection=answer.policy_selection,
         )
 
     def warmup(self, sample: SampleInput | Mapping[str, Any]) -> None:
@@ -250,6 +260,15 @@ class DocPruneM3DocRAG:
         if self._warmup_complete:
             return
         self.run_sample(sample)
+        self._warmup_complete = True
+
+    def inherit_warmup_state(self, source: DocPruneM3DocRAG) -> None:
+        """Share an already-executed warmup across runners using the same backend."""
+
+        if not isinstance(source, DocPruneM3DocRAG) or not source._warmup_complete:
+            raise ValueError("warmup state can be inherited only from a warmed runner")
+        if self.retriever is not source.retriever or self.page_loader is not source.page_loader:
+            raise ValueError("warmup state requires the identical retrieval/page backend")
         self._warmup_complete = True
 
 
@@ -286,9 +305,7 @@ class OfficialM3DocRAGBoundary:
             "all_token_embeddings": all_token_embeddings,
         }
 
-    def retrieve(
-        self, question: str, top_k: int
-    ) -> RetrievalOutput | tuple[RetrievedPage, ...]:
+    def retrieve(self, question: str, top_k: int) -> RetrievalOutput | tuple[RetrievedPage, ...]:
         if top_k not in {1, 2, 4}:
             raise ValueError("top_k must be 1, 2, or 4")
         if (
@@ -442,8 +459,10 @@ class OfficialM3DocRAGBoundary:
                 raise ValueError("retrieved page has no visual rows")
             visual_positions = valid.nonzero(as_tuple=False).flatten()
             first, last = int(visual_positions[0]), int(visual_positions[-1])
-            if not bool(valid[first : last + 1].all()) or bool(valid[:first].any()) or bool(
-                valid[last + 1 :].any()
+            if (
+                not bool(valid[first : last + 1].all())
+                or bool(valid[:first].any())
+                or bool(valid[last + 1 :].any())
             ):
                 raise ValueError("retrieved page raster rows are not one compact visual span")
             page_rasters = rows[valid]

@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch
 
+from docprune import experiment_design
 from docprune.m3docrag import (
     AnswerOutput,
     DocPruneM3DocRAG,
@@ -14,6 +15,7 @@ from docprune.m3docrag import (
     RetrievedPageFeatures,
     SampleInput,
 )
+from docprune.qwen2vl.decoder import ForcedInterventionRecord
 from docprune.qwen2vl.model import PruningTrace
 
 
@@ -92,6 +94,120 @@ def test_runner_passes_retrieval_context_to_answerer() -> None:
     assert result.predicted_answer == "42"
 
 
+def test_forced_record_survives_answer_to_sample_serialization_and_artifact_binding() -> None:
+    """Catch a forced boundary record disappearing or being relabeled as native CTP in evaluation."""
+
+    forced = ForcedInterventionRecord(
+        boundary="B_1",
+        mode="physical_delete",
+        selection_kind="forced",
+        visual_population=2,
+        requested_budget=1,
+        achieved_budget=1,
+        retained_visual_ids=(1,),
+        logical_retained_sequence_ids=(0, 1, 3, 4, 5),
+        prefill_cache_lengths=(6, 6, 5, 5),
+        retained_mrope_position_shape=(3, 1, 5),
+        retained_mrope_position_sha256="a" * 64,
+    )
+
+    class ForcedAnswerer:
+        def answer(self, images, question: str) -> AnswerOutput:
+            assert images == ["doc-b:3", "doc-a:1"]
+            assert question == "Which value is largest?"
+            return AnswerOutput(
+                "42", PruningTrace(2, 2, 2, 1, None), 0.1, forced_intervention=forced
+            )
+
+    result = DocPruneM3DocRAG(FakeRetriever(), FakePages(), ForcedAnswerer(), top_k=2).run_sample(
+        SampleInput("q-1", "Which value is largest?")
+    )
+
+    assert result.forced_intervention is forced
+    assert result.trace.ctp_layer is None
+    assert result.to_dict()["forced_intervention"] == forced.to_dict()
+    artifact = experiment_design.build_intervention_artifact(
+        qid=result.question_id,
+        cohort_classification="synthetic",
+        page_hashes=["1" * 64] * 4,
+        feature_hashes=["2" * 64] * 4,
+        policy_family="score-top-m",
+        policy_name="attention-score-top-m",
+        mode=forced.mode,
+        selection_kind=forced.selection_kind,
+        boundary=forced.boundary,
+        native_layer=None,
+        visual_population=forced.visual_population,
+        requested_budget=forced.requested_budget,
+        achieved_budget=forced.achieved_budget,
+        retained_original_indices=forced.retained_visual_ids,
+        seed=0,
+        per_layer_cache_lengths={
+            str(index): length for index, length in enumerate(forced.prefill_cache_lengths)
+        },
+        runtime_pins={"runtime_commit": "d" * 40},
+    )
+    assert artifact["selection_kind"] == "forced"
+    assert artifact["boundary"] == "B_1"
+    assert artifact["native_layer"] is None
+
+
+def test_native_policy_selection_survives_answer_to_result_serialization() -> None:
+    """A native selection record must not be lost or rewritten as Task 3 forced evidence."""
+
+    from docprune.ctp_policy import aggregate_native_threshold_policy, select_boundary_policy
+
+    selection = select_boundary_policy(
+        aggregate_native_threshold_policy(),
+        literal_scores=(0.1, 0.9),
+        aggregate_scores=(0.2, 0.8),
+        attention_threshold=0.5,
+        boundary="B_1",
+        native_layer=1,
+    )
+
+    class NativeAnswerer:
+        def answer(self, images, question: str) -> AnswerOutput:
+            return AnswerOutput(
+                "42",
+                PruningTrace(2, 2, 2, 1, 1),
+                0.1,
+                policy_selection=selection,
+            )
+
+    result = DocPruneM3DocRAG(FakeRetriever(), FakePages(), NativeAnswerer(), top_k=2).run_sample(
+        SampleInput("q-native", "Which value is largest?")
+    )
+
+    assert result.forced_intervention is None
+    assert result.policy_selection is selection
+    payload = result.to_dict()["policy_selection"]
+    assert payload["policy"]["family"] == "native-threshold"
+    assert payload["policy"]["selection_kind"] == "native_threshold"
+    assert payload["aggregate_native_reference_ids"] == [1]
+
+
+def test_runner_supplies_actual_qid_to_optional_policy_context_before_answering() -> None:
+    """Random policy seeds must receive the sample QID, never question or answer text."""
+
+    class ContextAwareAnswerer:
+        def __init__(self) -> None:
+            self.qids: list[str] = []
+
+        def set_policy_question_id(self, qid: str) -> None:
+            self.qids.append(qid)
+
+        def answer(self, images, question: str) -> AnswerOutput:
+            return AnswerOutput("42", PruningTrace(2, 2, 2, 2, None), 0.1)
+
+    answerer = ContextAwareAnswerer()
+    DocPruneM3DocRAG(FakeRetriever(), FakePages(), answerer, top_k=2).run_sample(
+        SampleInput("qid-from-source", "Which value is largest?", ("42",))
+    )
+
+    assert answerer.qids == ["qid-from-source"]
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [(300.0, "300.0"), (True, "True"), (None, "None")],
@@ -112,9 +228,7 @@ def test_sample_input_from_mapping_uses_official_answer_conversion(
 
 def test_sample_input_from_mapping_requires_answer_key() -> None:
     with pytest.raises(ValueError, match="answer key"):
-        SampleInput.from_mapping(
-            {"qid": "q-1", "question": "How many?", "answers": [{"value": 1}]}
-        )
+        SampleInput.from_mapping({"qid": "q-1", "question": "How many?", "answers": [{"value": 1}]})
 
 
 def test_runner_marks_rows_warmup_excluded_only_after_explicit_warmup() -> None:
@@ -122,10 +236,14 @@ def test_runner_marks_rows_warmup_excluded_only_after_explicit_warmup() -> None:
     sample = SampleInput("q-1", "Which value is largest?")
 
     assert runner.run_sample(sample).timing.warmup_excluded is False
-    runner = DocPruneM3DocRAG(FakeRetriever(), FakePages(), FakeAnswerer(), top_k=2)
+    retriever, pages = FakeRetriever(), FakePages()
+    runner = DocPruneM3DocRAG(retriever, pages, FakeAnswerer(), top_k=2)
     runner.warmup(sample)
 
     assert runner.run_sample(sample).timing.warmup_excluded is True
+    child = DocPruneM3DocRAG(retriever, pages, FakeAnswerer(), top_k=2)
+    child.inherit_warmup_state(runner)
+    assert child.run_sample(sample).timing.warmup_excluded is True
 
 
 @dataclass

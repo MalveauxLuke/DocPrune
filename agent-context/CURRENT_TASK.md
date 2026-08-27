@@ -10,8 +10,85 @@ grounded in the CVPR 2026 paper and supplement.
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
 altering their bytes into fresh attempt `/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2`.
-The approved first action is the reusable paired top-4 256-question checkpoint: four 64-question
-shards per mode on A100 80GB. These are final top-4 inputs, not disposable pilot work.
+The reusable paired top-4 256-question checkpoint completed as arrays `62008122` (DocPrune) and
+`62008123` (all-kept). After inspecting those paired results, the user approved the full top-4
+continuation. Original arrays `62030328` (DocPrune) and `62030329` (all-kept) cover exact remaining
+shard IDs 4–38; the completed checkpoint shards remain final inputs and will not be recomputed.
+DocPrune shards 4–16 and all-kept shards 4 and 6 completed valid. On 2026-08-24, original DocPrune tasks
+17–38 and all-kept task 5 failed in 6–9 seconds at the clean-check preflight because generated,
+untracked M3DocRAG `__pycache__` files made the pinned checkout dirty; no model was loaded and no
+question was evaluated. The bytecode was preserved at `/tmp/m3docrag-pycache-20260823-2316`, the
+checkout clean-check passes again, and authorized exact retries are `62041375` (DocPrune 17–38)
+and `62041383` (all-kept 5). Original all-kept task 6 then passed preflight and completed valid as
+job `62041373` with 64/64 questions. All-kept shards 7–10 later completed valid, bringing that
+mode to 10/39 validated shards. Redundant shard-17 probe `62046530` remains held.
+
+The user approved replacing only unfinished A100-80 work with mixed-hardware quality-only HTC
+shards. Old pending records `62030329`, `62041375`, and `62041383` were canceled at zero additional
+runtime after shard 10 validated. Supplemental control
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/broad-gpu-control.json` binds clean control
+checkout `/home/lmalveau/DocPrune-broad-control-fdb5e91` at
+`fdb5e918622a422cc90fbd6e62a610719ee49974`. Replacement arrays `62068296` (all-kept shards
+5 and 11–38) and `62068302` (DocPrune shards 17–38) run at most eight independent tasks per array
+on reviewed A100/H100/L40 GPUs with at least 39,000 MiB. Quality can be merged across hardware;
+efficiency aggregation is explicitly excluded.
+
+A quick stage-localization diagnostic was first sealed under
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/diagnostics/stage64-v1`.
+It deterministically selects 64 questions, without using answer outcomes, from all 245 single-hop
+questions currently complete in both modes. Runtime `2abcc22ea2f2d9d60849da5f89c37a7b16d5d9da`
+adds BTP-only and BTP+QTP diagnostic factories. Initial four-by-16 arrays `62063320` and
+`62063380` had no estimated start and were canceled at zero runtime with no results. Replacement
+arrays `62065503` and `62065508` failed at preflight without evaluating questions because their
+nominal runtime worktree had been advanced away from sealed commit `2abcc22`. Preserve that
+advanced worktree unchanged. Retry arrays `62071272` and `62071274` loaded both models but failed
+before their first question because diagnostic stages passed a non-finite CTP-disable threshold
+to a controller that correctly rejects non-finite values. Commit
+`607fc38e23198864705db62084fcd91fd2f234da` replaces that sentinel with the existing finite `1e9`
+disable value and adds a controller-level regression test. Corrected diagnostic root
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/diagnostics/stage64-v2` preserves the exact
+v1 question selection and reference. Two-by-32 HTC arrays `62072829` (BTP only) and `62072828`
+(BTP+QTP) use clean detached runtime `/home/lmalveau/DocPrune-stage64-runtime-607fc38` and request
+any supported 40GB-or-larger A100/H100/L40 GPU with 45-minute limits. They must validate retrieved
+page IDs and order against the existing paired reference. They do not replace the full benchmark.
+Arrays `62072828` completed both BTP+QTP shards and `62072829_0` completed BTP shard 0 with exact
+reference retrieval. `62072829_1` completed 32 answers on an H100 but correctly failed the final
+fidelity guard because 9/32 ordered page lists drifted. Preserve it but exclude it from the
+controlled comparison. Isolated recovery root
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/diagnostics/stage64-v3-btp1-a10040`
+binds the exact same shard-1 QIDs to A100-40GB-only recovery job `62074548_1`.
+
+Recovery job `62074548_1` completed valid with exact reference retrieval. Across the controlled
+64 questions, F1 is 41.0625 all-kept, 39.265625 BTP-only, 39.5625 BTP+QTP, and 39.625 full
+DocPrune. The endpoint loss is -1.4375 F1, but every adjacent-stage bootstrap interval includes
+zero, so this quick diagnostic is inconclusive. The approved expansion is sealed at
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/diagnostics/stage245-v1-incremental`.
+It reuses plan shards 0-3 (the completed 64) and evaluates only the remaining 181 questions in
+plan shards 4-15. Arrays `62075807` (BTP only) and `62075816` (BTP+QTP) each contain 12 independent
+A100-40GB-only HTC jobs, at most 16 questions per job, using clean runtime
+`/home/lmalveau/DocPrune-stage245-runtime-a2bd8f2` at
+`a2bd8f27d6e38009daf0898926abb6787ad7d216`. Every completed shard must exactly match the sealed
+245-question retrieved-page reference; H100 output is excluded from this controlled comparison.
+
+Both diagnostic arrays completed 12/12 at exit 0. The sealed 245-question analysis is
+`stage245-analysis.json` in that root. F1 follows 44.8612 all-kept -> 43.1143 BTP-only ->
+43.6327 BTP+QTP -> 41.3347 full DocPrune. CTP loses 2.2980 F1 points with paired 95% interval
+[-4.2980, -0.6286]; BTP and QTP intervals include zero.
+
+The complete top-4 evaluation is finished at 39/39 valid shards and 2,441/2,441 rows in each
+mode. Sealed analysis
+`/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/analysis/top4-paired-quality.json` reports
+37.7911 all-kept versus 36.7603 DocPrune F1. Single-hop is 46.4497 versus 44.8303; multi-hop is
+24.8827 versus 24.7296. Ordered retrieved-page identities match on 2,126 questions; within that
+controlled stratum the paired delta is -1.1980 F1 with interval [-2.3471, -0.0640]. Full
+DocPrune drops 81.72% of original visual tokens after CTP versus the paper's 74% decoder drop.
+
+Canonical quality-only merge packaging remains unpublished. Jobs `62086624`/`62086625` (32 GB)
+and `62087740`/`62087864` (64 GB) failed only by OOM and published no output. The merger invokes
+deep index validation for every already-validated shard, materializing 23.9 GB embeddings, a
+2.8 GB JSON token map, and a 23.5 GB FAISS index. Do not request more memory blindly; correct the
+quality merge path to authenticate saved successful shard validations without redundant full-index
+materialization.
 
 ## Historical execution records (immutable, non-promotable)
 
@@ -51,7 +128,7 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Execute the active sharded benchmark handoff in
-[`../sol/handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md`](../sol/handoffs/DOCPRUNE_M3DOCVQA_SHARDED_BENCHMARK_HANDOFF.md).
-Submit only the two top-4 arrays `0-3` and their dependent checkpoint publication first. Inspect
-the paired report before submitting the remainder. Preserve every historical root and job.
+Implement and verify the lightweight quality-only merge validation path, then publish the two
+atomic top-4 quality runs without efficiency aggregation. Next audit CTP attention-score
+normalization because the controlled loss is localized to CTP and local decoder dropping is
+materially higher than Table 2. Top-1 and top-2 remain unsubmitted.

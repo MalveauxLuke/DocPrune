@@ -43,6 +43,53 @@ def _manifest_digest(payload: dict[str, object]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _task6_result_identity(manifest: Mapping[str, object]):
+    """Resolve the per-row Task 6 authority from an immutable run manifest."""
+
+    from docprune.task6_runtime import Task6ResultIdentity
+
+    if manifest.get("fixed_page_provenance") is not True:
+        raise ValueError("run manifest is not an authenticated Task 6 fixed-page run")
+    if manifest.get("global_index_loaded") is not False:
+        raise ValueError("Task 6 run manifest permits a global index")
+    policy = manifest.get("ctp_policy")
+    if not isinstance(policy, Mapping) or not isinstance(policy.get("name"), str):
+        raise ValueError("Task 6 run manifest lacks a policy identity")
+    context = manifest.get("ctp_policy_context")
+    experiment_version = None
+    repetition = None
+    if context is not None:
+        if not isinstance(context, Mapping):
+            raise ValueError("Task 6 run manifest has invalid policy context")
+        experiment_version = context.get("experiment_version")
+        repetition = context.get("repetition")
+    return Task6ResultIdentity(
+        fixture_sha256=manifest.get("fixed_page_fixture_sha256"),
+        policy_name=policy["name"],
+        experiment_version=experiment_version,
+        repetition=repetition,
+    )
+
+
+def _bind_task6_result_evidence(record: dict[str, object], manifest: Mapping[str, object]) -> None:
+    """Attach only manifest-derived fixed-input evidence before validation/write."""
+
+    expected = _task6_result_identity(manifest)
+    evidence = {
+        "fixed_page_fixture_sha256": expected.fixture_sha256,
+        "fixed_page_provenance": True,
+        "global_index_loaded": False,
+        "policy_context": {
+            "experiment_version": expected.experiment_version,
+            "repetition": expected.repetition,
+        },
+    }
+    for key, value in evidence.items():
+        if key in record and record[key] != value:
+            raise ValueError(f"Task 6 result attempts to replace immutable evidence: {key}")
+        record[key] = value
+
+
 _COMMON_COMPLETE_MANIFEST_FIELDS = frozenset(
     {
         "output",
@@ -63,6 +110,17 @@ _COMMON_COMPLETE_MANIFEST_FIELDS = frozenset(
         "generation",
         "pruning_config",
         "selection",
+    }
+)
+_TASK6_COMPLETE_MANIFEST_FIELDS = frozenset(
+    {
+        "fixed_page_fixture_path",
+        "fixed_page_fixture_sha256",
+        "feature_build_runtime_commit",
+        "feature_build_source_order_sha256",
+        "fixed_page_provenance",
+        "global_index_loaded",
+        "geometry_derivation",
     }
 )
 
@@ -89,6 +147,10 @@ def _validate_complete_run_manifest(existing: dict[str, object]) -> None:
         raise ValueError("resume requires a complete run manifest")
     if operation == "evaluate":
         required.add("index_manifest")
+    if existing.get("fixed_page_provenance") is True:
+        required.update(_TASK6_COMPLETE_MANIFEST_FIELDS)
+        if existing.get("global_index_loaded") is not False:
+            raise ValueError("resume Task 6 manifest permits a global index")
     if not required <= set(existing):
         raise ValueError("resume requires a complete run manifest")
     supplied_digest = existing.get("run_manifest_sha256")
@@ -106,9 +168,18 @@ def _validate_evaluation_workload_manifest(
     config: DocPruneConfig,
     authoritative: Mapping[str, object],
 ) -> None:
-    from docprune.m3docvqa_factory import _is_cli_placeholder
+    from docprune.m3docvqa_factory import (
+        _is_cli_placeholder,
+        _validate_ctp_policy_context_identity,
+    )
 
     required = set(_COMMON_COMPLETE_MANIFEST_FIELDS)
+    if "ctp_policy" in authoritative:
+        required.add("ctp_policy")
+    if "ctp_policy_context" in authoritative or "ctp_policy_context" in workload:
+        required.add("ctp_policy_context")
+    if authoritative.get("fixed_page_provenance") is True:
+        required.update(_TASK6_COMPLETE_MANIFEST_FIELDS)
     required.update({"schema_version", "status", "index_manifest", "run_manifest_sha256"})
     if not required <= set(workload):
         raise ValueError("evaluate workload manifest is incomplete")
@@ -122,6 +193,20 @@ def _validate_evaluation_workload_manifest(
         raise ValueError("evaluate workload manifest operation does not match")
     if "command" in workload and workload.get("command") != "evaluate":
         raise ValueError("evaluate workload manifest command does not match")
+    policy_data = workload.get("ctp_policy")
+    policy_context = workload.get("ctp_policy_context")
+    if policy_context is not None:
+        _validate_ctp_policy_context_identity(policy_context)
+        if not isinstance(policy_data, Mapping) or policy_data.get("family") not in {
+            "random-top-m",
+            "coverage-top-m",
+        }:
+            raise ValueError("evaluate workload policy context does not match a random policy")
+    elif isinstance(policy_data, Mapping) and policy_data.get("family") in {
+        "random-top-m",
+        "coverage-top-m",
+    }:
+        raise ValueError("evaluate workload random policy is missing immutable seed context")
     for key in ("output", "mode", "page_count"):
         if workload.get(key) != requested.get(key):
             raise ValueError(f"evaluate workload manifest {key} does not match the invocation")
@@ -200,7 +285,19 @@ def _validate_evaluation_workload_manifest(
         "status",
         "index_manifest",
     }
+    if "ctp_policy" in authoritative:
+        identity_keys.add("ctp_policy")
+    if (
+        "ctp_policy_context" in authoritative
+        or "ctp_policy_context" in workload
+        or "ctp_policy_context" in existing
+    ):
+        identity_keys.add("ctp_policy_context")
+    if authoritative.get("fixed_page_provenance") is True:
+        identity_keys.update(_TASK6_COMPLETE_MANIFEST_FIELDS)
     for key in identity_keys:
+        if key == "ctp_policy_context" and key not in authoritative:
+            continue
         if workload.get(key) != authoritative.get(key):
             raise ValueError(
                 f"evaluate workload identity does not match the authoritative run: {key}"
@@ -329,7 +426,9 @@ def _parser() -> argparse.ArgumentParser:
     validate_run.add_argument("--expected-questions", type=int, default=2441)
 
     compare = subparsers.add_parser(
-        "compare", aliases=("compare-runs",), help="validate and report the six-cell benchmark matrix"
+        "compare",
+        aliases=("compare-runs",),
+        help="validate and report the six-cell benchmark matrix",
     )
     compare.add_argument("--corpus-root", type=Path, required=True)
     for mode in ("all-kept", "docprune"):
@@ -491,17 +590,22 @@ def _resolve_evaluate_authority(
     index_manifest: Path | None,
     limit: int | None,
     sample_ids: tuple[str, ...] | None,
+    factory: str | None = None,
 ) -> dict[str, object]:
     """Resolve every evaluate identity without constructing a model or processor."""
 
     from docprune.m3docvqa_factory import (
+        _ctp_policy_context_identity,
         _expected_pruning_identity,
         _load_index_manifest,
+        _load_task6_fixed_page_samples,
         _make_dataset,
         _require_source_order_sha256,
         _resolve_run_config,
         _selection_identity,
         _source_file_identity,
+        _task6_environment_identity,
+        _task6_execution_identity,
         _validate_m3docrag_checkout,
         _validate_run_identity,
         filter_samples,
@@ -518,12 +622,31 @@ def _resolve_evaluate_authority(
     index_source_path, index_source_sha256 = _source_file_identity(
         index_manifest, label="index manifest"
     )
-    loaded_index = _load_index_manifest(index_manifest)
+    task6_factory = factory == "docprune.m3docvqa_factory:build_task6_fixed_page_workload"
+    task6_fixture = None
+    task6_policy = None
+    task6_fixture_path = None
+    task6_fixture_sha256 = None
+    task6_version = None
+    task6_repetition = None
+    if task6_factory:
+        (
+            task6_policy,
+            task6_fixture_path,
+            task6_fixture_sha256,
+            task6_version,
+            task6_repetition,
+            execution_runtime_commit,
+        ) = _task6_environment_identity()
+        identity = _task6_execution_identity(identity, execution_runtime_commit)
+    loaded_index = _load_index_manifest(index_manifest, validate_files=not task6_factory)
     if loaded_index.mode != mode or loaded_index.page_count != pages:
         raise ValueError("index manifest mode/page_count does not match the requested run")
     if loaded_index.m3docrag_commit != identity["m3docrag_commit"]:
         raise ValueError("index manifest uses the wrong M3DocRAG commit")
-    if loaded_index.runtime_commit != identity["runtime_commit"]:
+    if loaded_index.runtime_commit != identity.get(
+        "feature_build_runtime_commit", identity["runtime_commit"]
+    ):
         raise ValueError("index manifest runtime commit does not match the run configuration")
     if loaded_index.processor_contract_sha256 != identity["processor_contract_sha256"]:
         raise ValueError("index manifest processor contract does not match the run configuration")
@@ -544,11 +667,23 @@ def _resolve_evaluate_authority(
     corpus = identity["corpus"]
     if loaded_index.corpus_integrity_sha256 != corpus["integrity_sha256"]:
         raise ValueError("index manifest corpus identity does not match the run configuration")
-    dataset = _make_dataset(resolved_run)
-    source_order = _require_source_order_sha256(dataset)
-    if loaded_index.source_order_sha256 != source_order:
-        raise ValueError("index manifest source order does not match the corpus")
-    samples = filter_samples(dataset, limit=limit, sample_ids=sample_ids)
+    if task6_factory:
+        if task6_fixture_path is None or task6_fixture_sha256 is None:
+            raise AssertionError("Task 6 environment identity must be resolved")
+        task6_fixture, samples = _load_task6_fixed_page_samples(
+            task6_fixture_path,
+            task6_fixture_sha256,
+            sample_ids=sample_ids,
+            limit=limit,
+            page_count=pages,
+        )
+        identity["feature_build_source_order_sha256"] = loaded_index.source_order_sha256
+    else:
+        dataset = _make_dataset(resolved_run)
+        source_order = _require_source_order_sha256(dataset)
+        if loaded_index.source_order_sha256 != source_order:
+            raise ValueError("index manifest source order does not match the corpus")
+        samples = filter_samples(dataset, limit=limit, sample_ids=sample_ids)
     authority = {
         "schema_version": 2,
         "status": "configured",
@@ -563,6 +698,43 @@ def _resolve_evaluate_authority(
         "selection": _selection_identity(samples, limit=limit, sample_ids=sample_ids),
         "index_manifest": loaded_index.to_dict(),
     }
+    if factory is not None:
+        from docprune.m3docvqa_factory import controlled_policy_identity
+
+        policy = controlled_policy_identity(factory)
+        if policy is not None:
+            authority["ctp_policy"] = policy
+    if task6_factory:
+        if (
+            task6_fixture is None
+            or task6_policy is None
+            or task6_fixture_path is None
+            or task6_fixture_sha256 is None
+        ):
+            raise AssertionError("Task 6 fixed-page identity must be complete")
+        if (
+            str(task6_fixture.feature_manifest_path) != index_source_path
+            or task6_fixture.feature_manifest_sha256 != index_source_sha256
+            or task6_fixture.completion_ledger_path != loaded_index.completion_ledger_path
+            or task6_fixture.completion_ledger_sha256 != loaded_index.completion_ledger_sha256
+        ):
+            raise ValueError("Task 6 fixture feature-manifest provenance does not match")
+        authority.update(
+            {
+                "fixed_page_fixture_path": str(task6_fixture_path.resolve()),
+                "fixed_page_fixture_sha256": task6_fixture_sha256,
+                "fixed_page_provenance": True,
+                "global_index_loaded": False,
+                "geometry_derivation": {
+                    "version": "task6-post-btp-qtp-grid-v1",
+                    "order": "sealed-page-major-row-major-filtered-by-combined-mask",
+                },
+            }
+        )
+        if task6_policy.family in {"random-top-m", "coverage-top-m"}:
+            authority["ctp_policy_context"] = _ctp_policy_context_identity(
+                task6_version, task6_repetition, None
+            )
     # Keep the authoritative source rows alongside the in-memory authority.
     # This is deliberately not part of the persisted manifest: it lets the
     # CLI validate a custom factory's sample payload against the immutable
@@ -656,6 +828,14 @@ def _run_evaluate(
     )
     _atomic_write_json(manifest_path, existing_manifest)
     results_path = output / "results.jsonl"
+    manifest_policy = existing_manifest.get("ctp_policy")
+    expected_policy = manifest_policy if isinstance(manifest_policy, Mapping) else None
+    forbid_policy = expected_policy is None
+    task6_expected = (
+        _task6_result_identity(existing_manifest)
+        if existing_manifest.get("fixed_page_provenance") is True
+        else None
+    )
     completed: set[str] = set()
     if resume:
         from docprune.m3docvqa_factory import (
@@ -669,6 +849,8 @@ def _run_evaluate(
             expected_samples=samples,
             expected_page_count=pages,
             production=True,
+            expected_policy=expected_policy,
+            forbid_policy=forbid_policy,
         )
         existing_order = []
         if results_path.exists():
@@ -679,6 +861,10 @@ def _run_evaluate(
                         if not isinstance(record, dict):
                             raise ValueError("resume results contain a non-object record")
                         canonical = _canonicalize_result_record(record, line_number=1)
+                        if task6_expected is not None:
+                            from docprune.task6_runtime import validate_task6_result_record
+
+                            validate_task6_result_record(canonical, task6_expected)
                         existing_order.append(canonical.get("question_id"))
         if tuple(existing_order) != qids[: len(existing_order)]:
             raise ValueError("resume results must be an exact source-order prefix")
@@ -691,6 +877,8 @@ def _run_evaluate(
             continue
         result = workload.runner.run_sample(sample)
         record = result.to_dict()
+        if task6_expected is not None:
+            _bind_task6_result_evidence(record, existing_manifest)
         from docprune.m3docvqa_factory import (
             _canonicalize_result_record,
             _validate_result_record,
@@ -702,7 +890,13 @@ def _run_evaluate(
             line_number=1,
             expected_page_count=pages,
             production=True,
+            expected_policy=expected_policy,
+            forbid_policy=forbid_policy,
         )
+        if task6_expected is not None:
+            from docprune.task6_runtime import validate_task6_result_record
+
+            validate_task6_result_record(record, task6_expected)
         if (
             record.get("question_id") != sample.question_id
             or record.get("question") != sample.question
@@ -925,6 +1119,7 @@ def _run_external(command: str, args: argparse.Namespace) -> int:
             index_manifest=args.index_manifest,
             limit=args.limit,
             sample_ids=sample_ids,
+            factory=args.factory,
         )
     if not args.resume:
         _prepare_output(args.output, manifest, resume=False)

@@ -10,8 +10,10 @@ import torch
 
 from docprune.benchmark_config import MAX_NEW_TOKENS, SHORT_ANSWER_TEMPLATE
 from docprune.config import DocPruneConfig, PagePruningConfig, ReconstructionDefaults
+from docprune.ctp_policy import CTPPolicy, PolicySelectionContext
 from docprune.m3docrag import AnswerOutput, RetrievalOutput
 from docprune.pipeline import prepare_qa_pruning_masks
+from docprune.qwen2vl.decoder import ForcedVisualIntervention
 from docprune.qwen2vl.model import (
     DocPruneQwen2VL,
     PruningTrace,
@@ -27,6 +29,7 @@ from docprune.qwen2vl.preprocessing import (
     prepare_qwen_page,
     prepared_raster_image,
 )
+from docprune.task6_runtime import derive_post_qtp_geometry
 
 
 def _value(container: object, name: str) -> object:
@@ -170,8 +173,10 @@ def _resolved_eos_token_ids(model: object) -> tuple[int, ...]:
     values = (value,) if isinstance(value, int) and not isinstance(value, bool) else value
     if values is None:
         return ()
-    if not isinstance(values, Sequence) or isinstance(values, str | bytes) or any(
-        not isinstance(item, int) or isinstance(item, bool) for item in values
+    if (
+        not isinstance(values, Sequence)
+        or isinstance(values, str | bytes)
+        or any(not isinstance(item, int) or isinstance(item, bool) for item in values)
     ):
         raise ValueError("Qwen EOS token IDs must be an integer or a sequence of integers")
     return tuple(dict.fromkeys(int(item) for item in values))
@@ -336,6 +341,11 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         attention_threshold: float | None = None,
         qa_stage: str = "full",
         max_new_tokens: int = MAX_NEW_TOKENS,
+        forced_intervention: ForcedVisualIntervention | None = None,
+        ctp_policy: CTPPolicy | None = None,
+        selection_context: PolicySelectionContext | None = None,
+        policy_experiment_version: object | None = None,
+        policy_repetition: object | None = None,
     ) -> None:
         del colpali_model, colpali_processor
         super().__init__(model=model, processor=processor, max_new_tokens=max_new_tokens)
@@ -346,6 +356,46 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         if qa_stage not in {"full", "btp-only", "btp-qtp"}:
             raise ValueError("qa_stage must be full, btp-only, or btp-qtp")
         self.qa_stage = qa_stage
+        self.forced_intervention = forced_intervention
+        self.ctp_policy = ctp_policy
+        self.selection_context = selection_context
+        self._policy_experiment_version = policy_experiment_version
+        self._policy_repetition = policy_repetition
+        if self.forced_intervention is not None and self.ctp_policy is not None:
+            raise ValueError("forced intervention and corrected CTP policy cannot be combined")
+        if (
+            self.ctp_policy is not None
+            and self.ctp_policy.family in {"random-top-m", "coverage-top-m"}
+            and (policy_experiment_version is None or policy_repetition is None)
+        ):
+            raise ValueError("random CTP policy requires experiment version and repetition context")
+
+    def set_policy_question_id(self, qid: str) -> None:
+        """Receive the source QID from the runner without inspecting question or answer text."""
+
+        if self.ctp_policy is None or self.ctp_policy.family not in {
+            "random-top-m",
+            "coverage-top-m",
+        }:
+            return
+        if not isinstance(qid, str) or not qid:
+            raise ValueError("random CTP policy requires a nonempty source QID")
+        geometry = None if self.selection_context is None else self.selection_context.geometry
+        geometry_count = (
+            None if self.selection_context is None else self.selection_context.geometry_count
+        )
+        geometry_sha256 = (
+            None if self.selection_context is None else self.selection_context.geometry_sha256
+        )
+        self.selection_context = PolicySelectionContext(
+            self._policy_experiment_version,
+            qid,
+            None,
+            self._policy_repetition,
+            geometry,
+            geometry_count,
+            geometry_sha256,
+        )
 
     def _effective_page_config(self, page_count: int) -> PagePruningConfig:
         if self.page_config is not None:
@@ -433,6 +483,26 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 background_keep=masks.background_keep,
                 question_keep=torch.ones_like(masks.question_keep, dtype=torch.bool),
             )
+        if self.ctp_policy is not None:
+            if self.ctp_policy.family in {"random-top-m", "coverage-top-m"} and (
+                self.selection_context is None or not self.selection_context.qid
+            ):
+                raise ValueError("random CTP policy requires source QID context before generation")
+            geometry = derive_post_qtp_geometry(
+                grid,
+                masks.combined(),
+                merge_size=prepared[0].merge_size,
+            )
+            prior = self.selection_context
+            self.selection_context = PolicySelectionContext(
+                None if prior is None else prior.experiment_version,
+                None if prior is None else prior.qid,
+                None if prior is None else prior.boundary,
+                None if prior is None else prior.repetition,
+                geometry.geometry,
+                geometry.count,
+                geometry.sha256,
+            )
         page_config = self._effective_page_config(len(images))
         adapter = (
             self.model
@@ -441,13 +511,13 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         )
         eos = _resolved_eos_token_ids(self.model)
         with torch.no_grad():
-            result = adapter.generate_with_trace(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                pixel_values=pixel_values,
-                image_grid_thw=grid,
-                pruning_masks=masks,
-                comprehension_threshold=(
+            generation_kwargs = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "pixel_values": pixel_values,
+                "image_grid_thw": grid,
+                "pruning_masks": masks,
+                "comprehension_threshold": (
                     1e9
                     if self.qa_stage != "full"
                     else (
@@ -456,13 +526,22 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                         else (page_config.comprehension_threshold if page_config else 1e9)
                     )
                 ),
-                attention_threshold=(
+                "attention_threshold": (
                     self.attention_threshold
                     if self.attention_threshold is not None
                     else (page_config.attention_threshold if page_config else 0.0)
                 ),
-                max_new_tokens=self.max_new_tokens,
-                eos_token_ids=eos,
+                "max_new_tokens": self.max_new_tokens,
+                "eos_token_ids": eos,
+            }
+            if self.forced_intervention is not None:
+                generation_kwargs["forced_intervention"] = self.forced_intervention
+            if self.ctp_policy is not None:
+                generation_kwargs["ctp_policy"] = self.ctp_policy
+            if self.selection_context is not None:
+                generation_kwargs["selection_context"] = self.selection_context
+            result = adapter.generate_with_trace(
+                **generation_kwargs,
             )
         peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
         # The adapter intentionally returns only generated IDs; stock Qwen
@@ -479,4 +558,6 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             None,
             max(float(result.encoder_seconds), 1e-12),
             max(float(result.decoder_seconds), 1e-12),
+            result.forced_intervention,
+            result.policy_selection,
         )
