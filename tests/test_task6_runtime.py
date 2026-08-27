@@ -267,9 +267,9 @@ def test_fixed_retriever_encodes_query_but_never_searches_or_reorders_pages(
         def __init__(self) -> None:
             self.calls: list[list[str]] = []
 
-        def encode_queries(self, questions: list[str]) -> torch.Tensor:
+        def encode_queries(self, questions: list[str]) -> list[torch.Tensor]:
             self.calls.append(questions)
-            return torch.ones((1, 2, 128))
+            return [torch.ones((2, 128))]
 
     encoder = QueryEncoder()
     retriever = AuthenticatedFixedPageRetriever(fixture, encoder)
@@ -458,8 +458,8 @@ def test_task6_factory_components_use_only_sealed_fixture_without_global_index(
     fixture_sha256 = publish_fixed_page_fixture(fixture, fixture_path)
 
     class QueryEncoder:
-        def encode_queries(self, questions: list[str]) -> torch.Tensor:
-            return torch.ones((1, 2, 128))
+        def encode_queries(self, questions: list[str]) -> list[torch.Tensor]:
+            return [torch.ones((2, 128))]
 
     class ForbiddenGlobalIndex:
         def __getattr__(self, name: str) -> object:

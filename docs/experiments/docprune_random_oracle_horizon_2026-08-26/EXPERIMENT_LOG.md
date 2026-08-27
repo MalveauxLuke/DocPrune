@@ -929,3 +929,39 @@ suite passed. Independent review returned technical **GO** and identified only
 the intentional procedural gate: create the clean commit and exact SOL
 handoff before submission. No model, GPU, scheduler, retrieval, index, or
 feature-build action occurred in this CPU phase.
+
+### Task 6 portability smoke submission — 2026-08-27
+
+The exact sealed handoff
+`sol/handoffs/DOCPRUNE_TASK6_PORTABILITY_SMOKE_2026-08-27.md` was submitted
+once from clean runtime `b0c8742d358319b7b617b9b1d36ba1f5d1ea6c86` into
+fresh root `/scratch/lmalveau/docprune/task6-smoke-b0c8742-v1`. Returned job
+IDs, in the exact submission order, are:
+
+- `62277597` — A30;
+- `62277598` — A100-40GB;
+- `62277599` — H100;
+- `62277600` — L40S.
+
+All four use the same sealed one-QID, nine-cell fixed-page smoke. No result was
+inspected before recording these IDs. No development matrix, sensitivity,
+retrieval, index, feature-build, or holdout job was submitted.
+
+### Task 6 portability smoke failure — 2026-08-27
+
+All four smoke jobs failed before their first answer with the same runtime
+interface error: `62277597` A30 in `00:00:24`, `62277598` A100-40GB in
+`00:00:24`, `62277599` H100 in `00:00:33`, and `62277600` L40S in
+`00:00:24`, each at exit `1:0`. ColPali loaded and encoded the one question;
+Qwen did not load and no `results.jsonl` was created.
+
+Root cause is localized to `AuthenticatedFixedPageRetriever.retrieve`.
+`_ColPaliQueryAdapter.encode_queries` follows the normal retriever contract and
+returns a list containing one `[tokens,128]` tensor per query. The fixed
+retriever incorrectly called `torch.as_tensor` on that list instead of
+selecting its sole batch element. CPU tests used a synthetic encoder returning
+a rank-3 tensor and therefore missed the production interface. Preserve all
+four failed roots under
+`/scratch/lmalveau/docprune/task6-smoke-b0c8742-v1`; the handoff grants no
+retry. The 64-QID and sensitivity matrices remain blocked pending a test-first
+fix, clean successor commit, and successor smoke handoff.

@@ -1,5 +1,24 @@
 # Current SOL Task
 
+## Active authority — Task 6 portability smoke, 2026-08-27
+
+The only new executable authority is
+[`handoffs/DOCPRUNE_TASK6_PORTABILITY_SMOKE_2026-08-27.md`](handoffs/DOCPRUNE_TASK6_PORTABILITY_SMOKE_2026-08-27.md).
+It permits exactly four independent one-QID fixed-page jobs on A30,
+A100-40GB, H100, and L40S from clean runtime
+`/home/lmalveau/DocPrune-task6-runtime-20260827` at
+`b0c8742d358319b7b617b9b1d36ba1f5d1ea6c86`. No retrieval/global index,
+feature build, 64-QID matrix, sensitivity matrix, or holdout job is authorized
+by this active handoff. The historical state below is retained for provenance
+and is not current submission authority.
+
+The four authorized jobs were submitted once as `62277597` (A30), `62277598`
+(A100-40GB), `62277599` (H100), and `62277600` (L40S). All failed consistently
+before the first answer because the fixed retriever mishandled the normal
+one-element list returned by the ColPali query adapter. Do not resubmit them.
+All roots are preserved, and progression is stopped before the 64-QID matrix
+until a clean corrected commit and successor handoff exist.
+
 ## State
 
 The active runtime is `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`, with M3DocRAG pinned to

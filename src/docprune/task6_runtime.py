@@ -776,9 +776,9 @@ class AuthenticatedFixedPageRetriever:
                 "fixed-page query encoder was released before this question was primed"
             )
         encoded = self.query_encoder.encode_queries([question])
-        query = torch.as_tensor(encoded)
-        if query.ndim == 3 and query.shape[0] == 1:
-            query = query[0]
+        if not isinstance(encoded, Sequence) or isinstance(encoded, str | bytes) or len(encoded) != 1:
+            raise ValueError("fixed-page query encoder must return one tensor per query")
+        query = torch.as_tensor(encoded[0])
         if query.ndim != 2 or query.shape[1] != 128:
             raise ValueError("fixed-page query embeddings must have shape [tokens, 128]")
         pages = tuple(
