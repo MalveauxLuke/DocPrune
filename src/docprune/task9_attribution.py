@@ -13,6 +13,11 @@ _CONTEXTCITE_REPOSITORY = "https://github.com/MadryLab/context-cite"
 _CONTEXTCITE_COMMIT = "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4"
 _CONTEXTCITE_UTILS_SHA256 = "d3825dc3292886e0fc9e4c4f0d397f45a84ce1a1ee387ce6985d3006e1c28a4b"
 _CONTEXTCITE_SOLVER_SHA256 = "9c3de5c4b06b08a82245431105a58aecada0944a7bb38f506b6eb23f434fd37c"
+_MASK_DESIGN_ADAPTATION = (
+    "whole MinerU-derived regions replace text chunks; seeds 64..95 are an added "
+    "independent held-out split; zero-token audit regions are excluded"
+)
+_SURROGATE_ADAPTATION = "upstream num_output_tokens=1 because targets are already per-token means"
 
 
 def _canonical_sha256(value: object) -> str:
@@ -89,10 +94,7 @@ def build_region_mask_design(
         "upstream_repository": _CONTEXTCITE_REPOSITORY,
         "upstream_commit": _CONTEXTCITE_COMMIT,
         "upstream_utils_sha256": _CONTEXTCITE_UTILS_SHA256,
-        "adaptation": (
-            "whole MinerU-derived regions replace text chunks; seeds 64..95 are an added "
-            "independent held-out split; zero-token audit regions are excluded"
-        ),
+        "adaptation": _MASK_DESIGN_ADAPTATION,
         "keep_probability": 0.5,
         "source_ids": source_ids,
         "excluded_zero_cost_source_ids": excluded,
@@ -106,7 +108,7 @@ def build_region_mask_design(
 
 def _validated_mask_design(
     design: Mapping[str, object],
-) -> tuple[list[str], list[dict[str, object]]]:
+) -> tuple[list[str], list[dict[str, object]], list[dict[str, object]]]:
     required = {
         "method",
         "upstream_repository",
@@ -132,6 +134,7 @@ def _validated_mask_design(
         or design["upstream_repository"] != _CONTEXTCITE_REPOSITORY
         or design["upstream_commit"] != _CONTEXTCITE_COMMIT
         or design["upstream_utils_sha256"] != _CONTEXTCITE_UTILS_SHA256
+        or design["adaptation"] != _MASK_DESIGN_ADAPTATION
         or design["keep_probability"] != 0.5
         or observed_digest != _canonical_sha256(unsigned)
         or not isinstance(source_ids, list)
@@ -152,7 +155,7 @@ def _validated_mask_design(
     ]
     if design["fit_masks"] != expected_fit or design["holdout_masks"] != expected_holdout:
         raise ValueError("ContextCite mask design is not the canonical seed schedule")
-    return source_ids, expected_fit
+    return source_ids, expected_fit, expected_holdout
 
 
 def fit_contextcite_lasso(
@@ -167,7 +170,7 @@ def fit_contextcite_lasso(
     effective token count of one and records that interface change.
     """
 
-    source_ids, fit_masks = _validated_mask_design(design)
+    source_ids, fit_masks, _ = _validated_mask_design(design)
     if (
         not isinstance(fit_outcomes, Sequence)
         or isinstance(fit_outcomes, str | bytes)
@@ -221,7 +224,7 @@ def fit_contextcite_lasso(
         "fit_intercept": True,
         "fit_mask_count": 64,
         "target": "normalized-full-sequence-loglikelihood",
-        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means",
+        "adaptation": _SURROGATE_ADAPTATION,
         "source_ids": list(source_ids),
         "mask_design_sha256": design["design_sha256"],
         "coefficients": {
@@ -231,8 +234,225 @@ def fit_contextcite_lasso(
         "intercept": intercept,
         "fit_masks_sha256": _canonical_sha256(checked_masks),
         "fit_targets_sha256": _canonical_sha256(checked_targets),
+        "fit_target_mean": float(np.mean(targets)),
     }
     result["surrogate_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def _finite_float(value: object, *, label: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} must be a finite number")
+    try:
+        checked = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{label} must be a finite number") from error
+    if not math.isfinite(checked):
+        raise ValueError(f"{label} must be a finite number")
+    return checked
+
+
+def _is_sha256(value: object) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    try:
+        int(value, 16)
+    except ValueError:
+        return False
+    return True
+
+
+def _validated_surrogate(
+    surrogate: Mapping[str, object],
+    *,
+    design: Mapping[str, object],
+    source_ids: Sequence[str],
+    fit_masks: Sequence[Mapping[str, object]],
+) -> tuple[dict[str, float], float, float]:
+    required = {
+        "method",
+        "upstream_repository",
+        "upstream_commit",
+        "upstream_solver_sha256",
+        "lasso_alpha",
+        "random_state",
+        "fit_intercept",
+        "fit_mask_count",
+        "target",
+        "adaptation",
+        "source_ids",
+        "mask_design_sha256",
+        "coefficients",
+        "intercept",
+        "fit_masks_sha256",
+        "fit_targets_sha256",
+        "fit_target_mean",
+        "surrogate_sha256",
+    }
+    if not isinstance(surrogate, Mapping) or set(surrogate) != required:
+        raise ValueError("ContextCite surrogate schema is invalid")
+    unsigned = dict(surrogate)
+    observed_digest = unsigned.pop("surrogate_sha256")
+    coefficients = surrogate["coefficients"]
+    expected_fit_masks_sha256 = _canonical_sha256([mask["vector"] for mask in fit_masks])
+    if (
+        surrogate["method"] != "pinned-contextcite-standardscaler-lasso"
+        or surrogate["upstream_repository"] != _CONTEXTCITE_REPOSITORY
+        or surrogate["upstream_commit"] != _CONTEXTCITE_COMMIT
+        or surrogate["upstream_solver_sha256"] != _CONTEXTCITE_SOLVER_SHA256
+        or surrogate["lasso_alpha"] != 0.01
+        or type(surrogate["random_state"]) is not int
+        or surrogate["random_state"] != 0
+        or surrogate["fit_intercept"] is not True
+        or type(surrogate["fit_mask_count"]) is not int
+        or surrogate["fit_mask_count"] != 64
+        or surrogate["target"] != "normalized-full-sequence-loglikelihood"
+        or surrogate["adaptation"] != _SURROGATE_ADAPTATION
+        or surrogate["source_ids"] != list(source_ids)
+        or surrogate["mask_design_sha256"] != design["design_sha256"]
+        or surrogate["fit_masks_sha256"] != expected_fit_masks_sha256
+        or not _is_sha256(surrogate["fit_targets_sha256"])
+        or not _is_sha256(observed_digest)
+        or observed_digest != _canonical_sha256(unsigned)
+        or not isinstance(coefficients, Mapping)
+        or set(coefficients) != set(source_ids)
+    ):
+        raise ValueError("ContextCite surrogate identity is invalid")
+    checked_coefficients = {
+        source_id: _finite_float(coefficients[source_id], label="ContextCite coefficient")
+        for source_id in source_ids
+    }
+    intercept = _finite_float(surrogate["intercept"], label="ContextCite intercept")
+    fit_target_mean = _finite_float(
+        surrogate["fit_target_mean"], label="ContextCite fit-target mean"
+    )
+    return checked_coefficients, intercept, fit_target_mean
+
+
+def _average_tie_ranks(values: Sequence[float]) -> np.ndarray:
+    checked = np.asarray(values, dtype=np.float64)
+    order = np.argsort(checked, kind="mergesort")
+    ranks = np.empty(len(checked), dtype=np.float64)
+    start = 0
+    while start < len(order):
+        stop = start + 1
+        while stop < len(order) and checked[order[stop]] == checked[order[start]]:
+            stop += 1
+        # Ranks are one-based; every exact tie gets the group's average rank.
+        average_rank = ((start + 1) + stop) / 2.0
+        ranks[order[start:stop]] = average_rank
+        start = stop
+    return ranks
+
+
+def _spearman_rank_correlation(
+    predictions: Sequence[float], targets: Sequence[float]
+) -> float | None:
+    prediction_ranks = _average_tie_ranks(predictions)
+    target_ranks = _average_tie_ranks(targets)
+    centered_predictions = prediction_ranks - prediction_ranks.mean()
+    centered_targets = target_ranks - target_ranks.mean()
+    denominator = float(np.linalg.norm(centered_predictions) * np.linalg.norm(centered_targets))
+    if denominator == 0.0:
+        return None
+    correlation = float(centered_predictions @ centered_targets / denominator)
+    return max(-1.0, min(1.0, correlation))
+
+
+def _root_mean_square(errors: Sequence[float]) -> float:
+    scale = math.sqrt(len(errors))
+    if any(not math.isfinite(error) for error in errors):
+        raise ValueError("ContextCite fidelity errors must be finite")
+    result = math.hypot(*(error / scale for error in errors))
+    if not math.isfinite(result):
+        raise ValueError("ContextCite fidelity RMSE must be finite")
+    return result
+
+
+def evaluate_contextcite_holdout(
+    design: Mapping[str, object],
+    surrogate: Mapping[str, object],
+    holdout_outcomes: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Evaluate one question's surrogate on the frozen 32-mask holdout.
+
+    LDS is exactly Spearman rank correlation with average ranks for ties. The
+    constant comparator is the fit-target mean persisted when the surrogate is
+    fit; held-out targets never determine that baseline.
+    """
+
+    source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
+    coefficients, intercept, fit_target_mean = _validated_surrogate(
+        surrogate,
+        design=design,
+        source_ids=source_ids,
+        fit_masks=fit_masks,
+    )
+    if (
+        not isinstance(holdout_outcomes, Sequence)
+        or isinstance(holdout_outcomes, str | bytes)
+        or len(holdout_outcomes) != 32
+    ):
+        raise ValueError("ContextCite fidelity requires exactly 32 keyed holdout outcomes")
+
+    checked_outcomes: list[dict[str, object]] = []
+    targets: list[float] = []
+    predictions: list[float] = []
+    for outcome, mask in zip(holdout_outcomes, holdout_masks, strict=True):
+        if (
+            not isinstance(outcome, Mapping)
+            or set(outcome) != {"split", "seed", "vector_sha256", "normalized_target"}
+            or outcome["split"] != "holdout"
+            or type(outcome["seed"]) is not int
+            or outcome["seed"] != mask["seed"]
+            or outcome["vector_sha256"] != mask["vector_sha256"]
+        ):
+            raise ValueError("ContextCite holdout outcomes are not bound to canonical masks")
+        target = _finite_float(outcome["normalized_target"], label="ContextCite normalized target")
+        prediction = intercept + sum(
+            coefficients[source_id] * float(retained)
+            for source_id, retained in zip(source_ids, mask["vector"], strict=True)
+        )
+        if not math.isfinite(prediction):
+            raise ValueError("ContextCite holdout predictions must be finite")
+        checked_outcomes.append(
+            {
+                "split": "holdout",
+                "seed": mask["seed"],
+                "vector_sha256": mask["vector_sha256"],
+                "normalized_target": target,
+            }
+        )
+        targets.append(target)
+        predictions.append(prediction)
+
+    lds = _spearman_rank_correlation(predictions, targets)
+    heldout_rmse = _root_mean_square(
+        [prediction - target for prediction, target in zip(predictions, targets)]
+    )
+    constant_rmse = _root_mean_square([fit_target_mean - target for target in targets])
+    result: dict[str, object] = {
+        "method": "contextcite-per-question-heldout-fidelity",
+        "mask_design_sha256": design["design_sha256"],
+        "surrogate_sha256": surrogate["surrogate_sha256"],
+        "fit_targets_sha256": surrogate["fit_targets_sha256"],
+        "holdout_mask_count": 32,
+        "holdout_seed_start": 64,
+        "holdout_seed_stop_exclusive": 96,
+        "lds_definition": "spearman-rank-correlation-average-ties",
+        "lds_spearman": lds,
+        "lds_defined": lds is not None,
+        "heldout_rmse": heldout_rmse,
+        "constant_baseline": "fit-target-mean",
+        "constant_prediction": fit_target_mean,
+        "constant_rmse": constant_rmse,
+        "surrogate_beats_constant": heldout_rmse < constant_rmse,
+        "holdout_masks_sha256": _canonical_sha256([mask["vector"] for mask in holdout_masks]),
+        "holdout_outcomes_sha256": _canonical_sha256(checked_outcomes),
+        "holdout_targets_sha256": _canonical_sha256(targets),
+        "holdout_predictions_sha256": _canonical_sha256(predictions),
+    }
+    result["fidelity_sha256"] = _canonical_sha256(result)
     return result
 
 
@@ -318,4 +538,9 @@ def whole_region_knapsack(
     }
 
 
-__all__ = ["build_region_mask_design", "fit_contextcite_lasso", "whole_region_knapsack"]
+__all__ = [
+    "build_region_mask_design",
+    "evaluate_contextcite_holdout",
+    "fit_contextcite_lasso",
+    "whole_region_knapsack",
+]
