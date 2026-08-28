@@ -711,6 +711,36 @@ def test_member_authority_sealer_reauthenticates_destination_bytes(
     assert output.read_bytes() == b"substituted\n"
 
 
+def test_failed_member_authority_stage_is_preserved_without_name_unlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed private stage must not delete a replacement through its name."""
+
+    output = tmp_path / "sealed-member-hashes.json"
+    content = b'{"status":"staged"}\n'
+
+    def fail_file_fsync(descriptor: int) -> None:
+        raise OSError("injected pre-rename fsync failure")
+
+    def forbid_name_unlink(*args: object, **kwargs: object) -> None:
+        raise AssertionError("failed publication must not unlink a staged name")
+
+    monkeypatch.setattr(task7_report_driver.os, "fsync", fail_file_fsync)
+    monkeypatch.setattr(task7_report_driver.os, "unlink", forbid_name_unlink)
+
+    with pytest.raises(OSError, match="injected pre-rename fsync failure"):
+        task7_report_driver._publish_regular_file_noreplace(
+            output,
+            content,
+            "Task 7 member authority",
+        )
+
+    staged = list(tmp_path.glob(".sealed-member-hashes.json.*"))
+    assert len(staged) == 1
+    assert staged[0].read_bytes() == content
+    assert not output.exists()
+
+
 def test_snapshot_uses_relative_authority_and_survives_source_mutation_at_publish(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

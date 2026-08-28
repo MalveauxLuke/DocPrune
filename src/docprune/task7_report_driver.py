@@ -455,7 +455,6 @@ def _publish_regular_file_noreplace(path: Path, content: bytes, label: str) -> N
     parent_identity = _directory_identity(parent_fd)
     temporary_name = f".{path.name}.{secrets.token_hex(16)}"
     descriptor: int | None = None
-    temporary_created = False
     expected_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(
@@ -464,7 +463,6 @@ def _publish_regular_file_noreplace(path: Path, content: bytes, label: str) -> N
             0o600,
             dir_fd=parent_fd,
         )
-        temporary_created = True
         metadata = os.fstat(descriptor)
         expected_identity = metadata.st_dev, metadata.st_ino
         remaining = memoryview(content)
@@ -476,7 +474,6 @@ def _publish_regular_file_noreplace(path: Path, content: bytes, label: str) -> N
         if (current.st_dev, current.st_ino) != expected_identity:
             raise RuntimeError(f"{label} staging identity changed; file preserved")
         _renameat2_noreplace(parent_fd, temporary_name, parent_fd, path.name)
-        temporary_created = False
         try:
             for fsync_parent in (False, True):
                 published_fd = os.open(
@@ -521,17 +518,7 @@ def _publish_regular_file_noreplace(path: Path, content: bytes, label: str) -> N
     finally:
         if descriptor is not None:
             os.close(descriptor)
-        try:
-            if temporary_created:
-                current = os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
-                if (
-                    expected_identity is None
-                    or (current.st_dev, current.st_ino) != expected_identity
-                ):
-                    raise RuntimeError(f"{label} staging identity changed; file preserved")
-                os.unlink(temporary_name, dir_fd=parent_fd)
-        finally:
-            os.close(parent_fd)
+        os.close(parent_fd)
 
 
 def seal_task7_member_hash_authority(
