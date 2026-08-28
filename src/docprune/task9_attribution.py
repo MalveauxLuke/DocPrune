@@ -12,7 +12,8 @@ from itertools import combinations
 
 import numpy as np
 
-from docprune.qwen2vl.decoder import _forced_boundary_name
+from docprune.qwen2vl.decoder import ForcedVisualIntervention, _forced_boundary_name
+from docprune.segmentation import RegionTokenMapping
 
 _CONTEXTCITE_REPOSITORY = "https://github.com/MadryLab/context-cite"
 _CONTEXTCITE_COMMIT = "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4"
@@ -231,6 +232,136 @@ def build_region_mask_design(
     }
     design["design_sha256"] = _canonical_sha256(design)
     return design
+
+
+def build_regional_intervention_plan(
+    mapping: RegionTokenMapping,
+    design: Mapping[str, object],
+    *,
+    mapping_artifact_sha256: str,
+    split: str,
+) -> tuple[dict[str, object], ...]:
+    """Translate whole-source masks into physical post-QTP token retention.
+
+    ContextCite mask booleans mean that a source is retained. Each row therefore
+    passes the exact union of that row's retained source memberships to the
+    decoder's existing physical-delete intervention.
+    """
+
+    if not isinstance(mapping, RegionTokenMapping):
+        raise TypeError("regional intervention mapping must be a RegionTokenMapping")
+    if not _is_sha256(mapping_artifact_sha256):
+        raise ValueError("mapping artifact SHA-256 is invalid")
+    try:
+        source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
+    except ValueError as error:
+        raise ValueError("regional mask design is invalid") from error
+    identity = design["attribution_identity"]
+    if identity["mapping_artifact_sha256"] != mapping_artifact_sha256:
+        raise ValueError("mapping artifact does not match the regional mask design")
+    if split == "fit":
+        masks = fit_masks
+    elif split == "holdout":
+        masks = holdout_masks
+    else:
+        raise ValueError("regional intervention split must be fit or holdout")
+
+    population = mapping.geometry_count
+    mapping_source_ids = [source.source_id for source in mapping.sources]
+    membership = {source.source_id: source.token_ids for source in mapping.sources}
+    flattened = [token_id for source in mapping.sources for token_id in source.token_ids]
+    if (
+        type(population) is not int
+        or population <= 0
+        or len(mapping.geometry) != population
+        or len(mapping.token_to_source) != population
+        or mapping_source_ids != source_ids
+        or len(set(mapping_source_ids)) != len(mapping_source_ids)
+        or sorted(flattened) != list(range(population))
+        or any(
+            mapping.token_to_source[token_id] != source.source_id
+            for source in mapping.sources
+            for token_id in source.token_ids
+        )
+    ):
+        raise ValueError("regional mapping is not an exact post-QTP token partition")
+
+    boundary_label = identity["forced_boundary"]
+    boundary: str | int = (
+        "input" if boundary_label == "B_input" else int(str(boundary_label).removeprefix("B_"))
+    )
+    plan: list[dict[str, object]] = []
+    for mask in masks:
+        retained_sources = list(mask["retained_source_ids"])
+        retained_visual_ids = tuple(
+            sorted(token_id for source_id in retained_sources for token_id in membership[source_id])
+        )
+        row: dict[str, object] = {
+            "split": split,
+            "seed": mask["seed"],
+            "vector": list(mask["vector"]),
+            "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "retained_source_ids": retained_sources,
+            "retained_visual_ids": list(retained_visual_ids),
+            "retained_visual_count": len(retained_visual_ids),
+            "visual_population": population,
+            "forced_intervention": ForcedVisualIntervention(
+                boundary=boundary,
+                mode="physical_delete",
+                retained_visual_ids=retained_visual_ids,
+            ),
+        }
+        plan.append(row)
+    return tuple(plan)
+
+
+def build_regional_target_outcome(
+    design: Mapping[str, object],
+    intervention: Mapping[str, object],
+    *,
+    mean_sequence_loglikelihoods: Sequence[float],
+) -> dict[str, object]:
+    """Bind one physical mask to its already per-token-normalized target."""
+
+    try:
+        _, fit_masks, holdout_masks = _validated_mask_design(design)
+    except ValueError as error:
+        raise ValueError("regional mask design is invalid") from error
+    split = intervention.get("split") if isinstance(intervention, Mapping) else None
+    masks = fit_masks if split == "fit" else holdout_masks if split == "holdout" else None
+    seed = intervention.get("seed") if isinstance(intervention, Mapping) else None
+    expected = (
+        next((mask for mask in masks if mask["seed"] == seed), None) if masks is not None else None
+    )
+    if (
+        expected is None
+        or intervention.get("vector_sha256") != expected["vector_sha256"]
+        or intervention.get("attribution_identity_sha256") != design["attribution_identity_sha256"]
+    ):
+        raise ValueError("regional target outcome intervention identity is invalid")
+    values = tuple(mean_sequence_loglikelihoods)
+    if not values or any(
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(float(value))
+        for value in values
+    ):
+        raise ValueError("regional target outcome requires finite normalized likelihoods")
+    target_kind = design["attribution_identity"]["target_kind"]
+    if target_kind == _SECONDARY_TARGET_KIND:
+        if len(values) != 1:
+            raise ValueError("generated-response attribution requires exactly one target sequence")
+        target = float(values[0])
+    else:
+        target = max(float(value) for value in values)
+    return {
+        "split": split,
+        "seed": seed,
+        "vector_sha256": expected["vector_sha256"],
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
+        "normalized_target": target,
+    }
 
 
 def _validated_mask_design(
