@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import random
 import re
 from collections.abc import Mapping, Sequence
 from itertools import combinations
@@ -876,8 +877,456 @@ def _defined_pairwise_summary(values: Sequence[object]) -> dict[str, object]:
     }
 
 
+def _validated_aggregate_fidelity(value: object) -> dict[str, object]:
+    required = {
+        "method",
+        "mask_design_sha256",
+        "attribution_identity",
+        "attribution_identity_sha256",
+        "surrogate_sha256",
+        "fit_outcomes_sha256",
+        "fit_targets_sha256",
+        "holdout_mask_count",
+        "holdout_seed_start",
+        "holdout_seed_stop_exclusive",
+        "lds_definition",
+        "lds_spearman",
+        "lds_defined",
+        "heldout_rmse",
+        "constant_baseline",
+        "constant_prediction",
+        "constant_rmse",
+        "surrogate_beats_constant",
+        "holdout_masks_sha256",
+        "holdout_outcomes_sha256",
+        "holdout_targets_sha256",
+        "holdout_predictions_sha256",
+        "fidelity_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ValueError("per-question fidelity artifact schema is invalid")
+    fidelity = dict(value)
+    digest = fidelity.pop("fidelity_sha256")
+    if not _is_sha256(digest) or digest != _canonical_sha256(fidelity):
+        raise ValueError("per-question fidelity artifact digest is invalid")
+    identity = _validated_attribution_identity(
+        fidelity["attribution_identity"],
+        expected_sha256=fidelity["attribution_identity_sha256"],
+    )
+    hashes = (
+        "mask_design_sha256",
+        "surrogate_sha256",
+        "fit_outcomes_sha256",
+        "fit_targets_sha256",
+        "holdout_masks_sha256",
+        "holdout_outcomes_sha256",
+        "holdout_targets_sha256",
+        "holdout_predictions_sha256",
+    )
+    if (
+        fidelity["method"] != "contextcite-per-question-heldout-fidelity"
+        or any(not _is_sha256(fidelity[key]) for key in hashes)
+        or type(fidelity["holdout_mask_count"]) is not int
+        or fidelity["holdout_mask_count"] != 32
+        or type(fidelity["holdout_seed_start"]) is not int
+        or fidelity["holdout_seed_start"] != 64
+        or type(fidelity["holdout_seed_stop_exclusive"]) is not int
+        or fidelity["holdout_seed_stop_exclusive"] != 96
+        or fidelity["lds_definition"] != "spearman-rank-correlation-average-ties"
+        or fidelity["constant_baseline"] != "fit-target-mean"
+        or type(fidelity["lds_defined"]) is not bool
+        or type(fidelity["surrogate_beats_constant"]) is not bool
+    ):
+        raise ValueError("per-question fidelity artifact contract is invalid")
+    lds: float | None
+    if fidelity["lds_defined"]:
+        lds = _finite_float(fidelity["lds_spearman"], label="per-question LDS")
+        if not -1.0 <= lds <= 1.0:
+            raise ValueError("per-question LDS must be a correlation")
+    elif fidelity["lds_spearman"] is None:
+        lds = None
+    else:
+        raise ValueError("undefined per-question LDS must be explicit")
+    heldout_rmse = _finite_float(fidelity["heldout_rmse"], label="heldout RMSE")
+    constant_prediction = _finite_float(
+        fidelity["constant_prediction"], label="constant prediction"
+    )
+    constant_rmse = _finite_float(fidelity["constant_rmse"], label="constant RMSE")
+    if heldout_rmse < 0 or constant_rmse < 0:
+        raise ValueError("per-question RMSE must be nonnegative")
+    if fidelity["surrogate_beats_constant"] != (heldout_rmse < constant_rmse):
+        raise ValueError("per-question RMSE comparison is inconsistent")
+    return {
+        **fidelity,
+        "attribution_identity": identity,
+        "lds_spearman": lds,
+        "heldout_rmse": heldout_rmse,
+        "constant_prediction": constant_prediction,
+        "constant_rmse": constant_rmse,
+        "fidelity_sha256": digest,
+    }
+
+
+def _validated_pairwise_rows(
+    value: object, *, metric: str, label: str
+) -> tuple[list[dict[str, object]], list[float | None]]:
+    if not isinstance(value, list) or len(value) != 10:
+        raise ValueError(f"{label} must contain the exact ten refit pairs")
+    expected_pairs = tuple(combinations(range(5), 2))
+    rows: list[dict[str, object]] = []
+    values: list[float | None] = []
+    for raw, (left, right) in zip(value, expected_pairs, strict=True):
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "left_seed",
+            "right_seed",
+            metric,
+            "defined",
+        }:
+            raise ValueError(f"{label} row schema is invalid")
+        if (
+            type(raw["left_seed"]) is not int
+            or raw["left_seed"] != left
+            or type(raw["right_seed"]) is not int
+            or raw["right_seed"] != right
+            or type(raw["defined"]) is not bool
+        ):
+            raise ValueError(f"{label} order or defined flag is invalid")
+        raw_metric = raw[metric]
+        if raw["defined"]:
+            checked = _finite_float(raw_metric, label=label)
+            lower_bound = 0.0 if metric == "jaccard" else -1.0
+            if not lower_bound <= checked <= 1.0:
+                raise ValueError(f"{label} value is outside its range")
+        elif raw_metric is None:
+            checked = None
+        else:
+            raise ValueError(f"undefined {label} must be explicit")
+        rows.append(dict(raw, **{metric: checked}))
+        values.append(checked)
+    return rows, values
+
+
+def _validated_aggregate_stability(value: object) -> dict[str, object]:
+    required = {
+        "method",
+        "bootstrap_rng",
+        "bootstrap_seed_start",
+        "bootstrap_seed_stop_exclusive",
+        "bootstrap_draw_count",
+        "bootstrap_replace",
+        "mask_design_sha256",
+        "attribution_identity",
+        "attribution_identity_sha256",
+        "surrogate_sha256",
+        "fit_outcomes_sha256",
+        "fit_targets_sha256",
+        "regions_sha256",
+        "source_ids",
+        "requested_budget",
+        "achieved_budget",
+        "refits",
+        "coefficient_pairwise",
+        "coefficient_summary",
+        "top_selection_pairwise",
+        "top_selection_summary",
+        "stability_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ValueError("per-question stability artifact schema is invalid")
+    stability = dict(value)
+    digest = stability.pop("stability_sha256")
+    if not _is_sha256(digest) or digest != _canonical_sha256(stability):
+        raise ValueError("per-question stability artifact digest is invalid")
+    identity = _validated_attribution_identity(
+        stability["attribution_identity"],
+        expected_sha256=stability["attribution_identity_sha256"],
+    )
+    source_ids = stability["source_ids"]
+    if (
+        stability["method"] != "contextcite-five-bootstrap-refit-stability"
+        or stability["bootstrap_rng"] != "numpy-legacy-randomstate-choice"
+        or type(stability["bootstrap_seed_start"]) is not int
+        or stability["bootstrap_seed_start"] != 0
+        or type(stability["bootstrap_seed_stop_exclusive"]) is not int
+        or stability["bootstrap_seed_stop_exclusive"] != 5
+        or type(stability["bootstrap_draw_count"]) is not int
+        or stability["bootstrap_draw_count"] != 64
+        or stability["bootstrap_replace"] is not True
+        or any(
+            not _is_sha256(stability[key])
+            for key in (
+                "mask_design_sha256",
+                "surrogate_sha256",
+                "fit_outcomes_sha256",
+                "fit_targets_sha256",
+                "regions_sha256",
+            )
+        )
+        or not isinstance(source_ids, list)
+        or not source_ids
+        or any(not isinstance(source_id, str) or not source_id for source_id in source_ids)
+        or len(set(source_ids)) != len(source_ids)
+        or type(stability["requested_budget"]) is not int
+        or stability["requested_budget"] < 0
+        or type(stability["achieved_budget"]) is not int
+        or not 0 <= stability["achieved_budget"] <= stability["requested_budget"]
+    ):
+        raise ValueError("per-question stability artifact contract is invalid")
+    raw_refits = stability["refits"]
+    if not isinstance(raw_refits, list) or len(raw_refits) != 5:
+        raise ValueError("per-question stability requires five refits")
+    refit_keys = {
+        "seed",
+        "resample_indices",
+        "resample_indices_sha256",
+        "coefficients",
+        "coefficients_sha256",
+        "intercept",
+        "top_source_ids",
+        "top_source_ids_sha256",
+        "achieved_budget",
+        "refit_sha256",
+    }
+    for seed, raw_refit in enumerate(raw_refits):
+        if not isinstance(raw_refit, Mapping) or set(raw_refit) != refit_keys:
+            raise ValueError("stability refit schema is invalid")
+        refit = dict(raw_refit)
+        refit_digest = refit.pop("refit_sha256")
+        indices = refit["resample_indices"]
+        coefficients = refit["coefficients"]
+        top_ids = refit["top_source_ids"]
+        if (
+            type(refit["seed"]) is not int
+            or refit["seed"] != seed
+            or not isinstance(indices, list)
+            or len(indices) != 64
+            or any(type(index) is not int or not 0 <= index < 64 for index in indices)
+            or refit["resample_indices_sha256"] != _canonical_sha256(indices)
+            or not isinstance(coefficients, Mapping)
+            or list(coefficients) != source_ids
+            or any(
+                not math.isfinite(_finite_float(coefficient, label="refit coefficient"))
+                for coefficient in coefficients.values()
+            )
+            or refit["coefficients_sha256"] != _canonical_sha256(coefficients)
+            or not math.isfinite(_finite_float(refit["intercept"], label="refit intercept"))
+            or not isinstance(top_ids, list)
+            or any(source_id not in source_ids for source_id in top_ids)
+            or len(top_ids) != len(set(top_ids))
+            or refit["top_source_ids_sha256"] != _canonical_sha256(top_ids)
+            or type(refit["achieved_budget"]) is not int
+            or refit["achieved_budget"] != stability["achieved_budget"]
+            or not _is_sha256(refit_digest)
+            or refit_digest != _canonical_sha256(refit)
+        ):
+            raise ValueError("stability refit identity is invalid")
+    coefficient_rows, coefficient_values = _validated_pairwise_rows(
+        stability["coefficient_pairwise"], metric="spearman", label="coefficient stability"
+    )
+    selection_rows, selection_values = _validated_pairwise_rows(
+        stability["top_selection_pairwise"], metric="jaccard", label="selection stability"
+    )
+    if _canonical_bytes(stability["coefficient_summary"]) != _canonical_bytes(
+        _defined_pairwise_summary(coefficient_values)
+    ):
+        raise ValueError("coefficient stability summary is inconsistent")
+    if _canonical_bytes(stability["top_selection_summary"]) != _canonical_bytes(
+        _defined_pairwise_summary(selection_values)
+    ):
+        raise ValueError("selection stability summary is inconsistent")
+    return {
+        **stability,
+        "attribution_identity": identity,
+        "coefficient_pairwise": coefficient_rows,
+        "top_selection_pairwise": selection_rows,
+        "stability_sha256": digest,
+    }
+
+
+def _bootstrap_quantile(values: Sequence[float], fraction: float) -> float:
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * fraction
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    weight = position - lower
+    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+def aggregate_contextcite_admission_metrics(
+    fidelity_artifacts: Sequence[Mapping[str, object]],
+    stability_artifacts: Sequence[Mapping[str, object]],
+    *,
+    support_components: Sequence[Sequence[str]],
+    draws: int = 100_000,
+    seed: int = 20_260_827,
+) -> dict[str, object]:
+    """Aggregate outcome-blind Task 9 fidelity and selection-stability gate inputs."""
+
+    if type(draws) is not int or draws < 1 or type(seed) is not int:
+        raise ValueError("aggregate fidelity bootstrap draws/seed are invalid")
+    if (
+        not isinstance(fidelity_artifacts, Sequence)
+        or isinstance(fidelity_artifacts, str | bytes)
+        or not isinstance(stability_artifacts, Sequence)
+        or isinstance(stability_artifacts, str | bytes)
+        or not fidelity_artifacts
+        or len(fidelity_artifacts) != len(stability_artifacts)
+    ):
+        raise ValueError("aggregate fidelity requires paired per-question artifacts")
+    fidelities = tuple(_validated_aggregate_fidelity(value) for value in fidelity_artifacts)
+    stabilities = tuple(_validated_aggregate_stability(value) for value in stability_artifacts)
+    fidelity_qids = tuple(row["attribution_identity"]["question_id"] for row in fidelities)
+    stability_qids = tuple(row["attribution_identity"]["question_id"] for row in stabilities)
+    if (
+        fidelity_qids != stability_qids
+        or len(set(fidelity_qids)) != len(fidelity_qids)
+        or any(
+            _canonical_bytes(fidelity["attribution_identity"])
+            != _canonical_bytes(stability["attribution_identity"])
+            or any(
+                fidelity[key] != stability[key]
+                for key in (
+                    "mask_design_sha256",
+                    "surrogate_sha256",
+                    "fit_outcomes_sha256",
+                    "fit_targets_sha256",
+                )
+            )
+            for fidelity, stability in zip(fidelities, stabilities, strict=True)
+        )
+    ):
+        raise ValueError("aggregate fidelity artifacts mix QID order or attribution identity")
+    boundaries = {row["attribution_identity"]["forced_boundary"] for row in fidelities}
+    targets = {row["attribution_identity"]["target_kind"] for row in fidelities}
+    if len(boundaries) != 1 or len(targets) != 1:
+        raise ValueError("aggregate fidelity requires one forced boundary and target kind")
+
+    components = tuple(tuple(component) for component in support_components)
+    flattened = [qid for component in components for qid in component]
+    if (
+        len(components) < 2
+        or any(not component for component in components)
+        or any(not isinstance(qid, str) or not qid for qid in flattened)
+        or len(flattened) != len(set(flattened))
+        or set(flattened) != set(fidelity_qids)
+    ):
+        raise ValueError("support-document components must partition aggregate fidelity QIDs")
+
+    lds_by_qid = {
+        qid: fidelity["lds_spearman"]
+        for qid, fidelity in zip(fidelity_qids, fidelities, strict=True)
+    }
+    undefined_lds = [qid for qid in fidelity_qids if lds_by_qid[qid] is None]
+    point_lds: float | None = None
+    interval: list[float] | None = None
+    lower_bound: float | None = None
+    draws_sha256: str | None = None
+    if not undefined_lds:
+        point_lds = math.fsum(float(lds_by_qid[qid]) for qid in fidelity_qids) / len(fidelity_qids)
+        generator = random.Random(seed)
+        bootstrap_draws: list[float] = []
+        for _ in range(draws):
+            sampled_components = [
+                components[generator.randrange(len(components))] for _ in range(len(components))
+            ]
+            sampled_qids = [qid for component in sampled_components for qid in component]
+            bootstrap_draws.append(
+                math.fsum(float(lds_by_qid[qid]) for qid in sampled_qids) / len(sampled_qids)
+            )
+        interval = [
+            _bootstrap_quantile(bootstrap_draws, 0.025),
+            _bootstrap_quantile(bootstrap_draws, 0.975),
+        ]
+        lower_bound = interval[0]
+        draws_sha256 = _canonical_sha256(bootstrap_draws)
+
+    aggregate_heldout_rmse = _root_mean_square(
+        [float(fidelity["heldout_rmse"]) for fidelity in fidelities]
+    )
+    aggregate_constant_rmse = _root_mean_square(
+        [float(fidelity["constant_rmse"]) for fidelity in fidelities]
+    )
+    undefined_stability = [
+        qid
+        for qid, stability in zip(fidelity_qids, stabilities, strict=True)
+        if stability["top_selection_summary"]["all_defined"] is not True
+    ]
+    stability_minimum: float | None = None
+    if not undefined_stability:
+        stability_minimum = min(
+            float(stability["top_selection_summary"]["minimum_defined"])
+            for stability in stabilities
+        )
+    result: dict[str, object] = {
+        "schema_version": 1,
+        "method": "contextcite-aggregate-fidelity-and-five-refit-stability",
+        "qids": list(fidelity_qids),
+        "forced_boundary": next(iter(boundaries)),
+        "target_kind": next(iter(targets)),
+        "support_components": [list(component) for component in components],
+        "fidelity_sha256s": [row["fidelity_sha256"] for row in fidelities],
+        "stability_sha256s": [row["stability_sha256"] for row in stabilities],
+        "lds": {
+            "definition": "mean-per-question-spearman-lds",
+            "undefined_policy": (
+                "any undefined per-question LDS makes the aggregate point and interval "
+                "unavailable and both LDS threshold inputs false"
+            ),
+            "defined_count": len(fidelity_qids) - len(undefined_lds),
+            "undefined_count": len(undefined_lds),
+            "all_defined": not undefined_lds,
+            "undefined_qids": undefined_lds,
+            "point_mean_per_question": point_lds,
+            "bootstrap": {
+                "method": "support-component-nonparametric-percentile",
+                "confidence_level": 0.95,
+                "interval_95": interval,
+                "lower_bound_95": lower_bound,
+                "draw_count": draws,
+                "seed": seed,
+                "draws_sha256": draws_sha256,
+            },
+        },
+        "rmse": {
+            "aggregation": "sqrt(mean(per-question-rmse-squared))",
+            "heldout": aggregate_heldout_rmse,
+            "constant": aggregate_constant_rmse,
+        },
+        "stability": {
+            "aggregation": "minimum-pairwise-jaccard-across-all-questions",
+            "undefined_policy": (
+                "any undefined question-level pair makes the cross-question minimum "
+                "unavailable and both stability threshold inputs false"
+            ),
+            "all_defined": not undefined_stability,
+            "undefined_qids": undefined_stability,
+            "minimum_pairwise_jaccard_across_questions": stability_minimum,
+        },
+        "thresholds": {
+            "lds_point_minimum_inclusive": 0.5,
+            "lds_95_lower_bound_minimum_strict": 0.2,
+            "aggregate_rmse_must_be_below_constant": True,
+            "all_selection_jaccards_must_be_defined": True,
+            "minimum_selection_jaccard_inclusive": 0.8,
+        },
+        "threshold_inputs": {
+            "lds_point_at_least_0_5": point_lds is not None and point_lds >= 0.5,
+            "lds_95_lower_bound_above_0_2": lower_bound is not None and lower_bound > 0.2,
+            "aggregate_rmse_beats_constant": aggregate_heldout_rmse < aggregate_constant_rmse,
+            "all_selection_jaccards_defined": not undefined_stability,
+            "minimum_selection_jaccard_at_least_0_8": stability_minimum is not None
+            and stability_minimum >= 0.8,
+        },
+    }
+    result["aggregate_metrics_sha256"] = _canonical_sha256(result)
+    return result
+
+
 __all__ = [
     "build_region_mask_design",
+    "aggregate_contextcite_admission_metrics",
     "evaluate_contextcite_holdout",
     "evaluate_contextcite_refit_stability",
     "fit_contextcite_lasso",
