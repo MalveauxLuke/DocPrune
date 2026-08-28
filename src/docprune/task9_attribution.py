@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping, Sequence
 
 import numpy as np
@@ -18,11 +19,96 @@ _MASK_DESIGN_ADAPTATION = (
     "independent held-out split; zero-token audit regions are excluded"
 )
 _SURROGATE_ADAPTATION = "upstream num_output_tokens=1 because targets are already per-token means"
+_PRIMARY_TARGET_KIND = "max-accepted-reference-mean-loglikelihood"
+_SECONDARY_TARGET_KIND = "unpruned-generated-response-mean-loglikelihood"
+_TARGET_KINDS = {_PRIMARY_TARGET_KIND, _SECONDARY_TARGET_KIND}
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+_BOUNDARY_PATTERN = re.compile(r"B_(?:input|0|[1-9][0-9]*)")
 
 
 def _canonical_sha256(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and _SHA256_PATTERN.fullmatch(value) is not None
+
+
+def _build_attribution_identity(
+    *,
+    question_id: object,
+    forced_boundary: object,
+    mapping_artifact_sha256: object,
+    prompt_input_sha256: object,
+    target_kind: object,
+    reference_set_token_ids_sha256: object,
+    generated_response_token_ids_sha256: object,
+) -> dict[str, object]:
+    if (
+        not isinstance(question_id, str)
+        or not question_id
+        or question_id != question_id.strip()
+        or not isinstance(forced_boundary, str)
+        or _BOUNDARY_PATTERN.fullmatch(forced_boundary) is None
+        or not _is_sha256(mapping_artifact_sha256)
+        or not _is_sha256(prompt_input_sha256)
+        or not isinstance(target_kind, str)
+        or target_kind not in _TARGET_KINDS
+    ):
+        raise ValueError("regional attribution identity is invalid")
+    if target_kind == _PRIMARY_TARGET_KIND:
+        valid_target = _is_sha256(reference_set_token_ids_sha256) and (
+            generated_response_token_ids_sha256 is None
+        )
+    else:
+        valid_target = _is_sha256(generated_response_token_ids_sha256) and (
+            reference_set_token_ids_sha256 is None
+        )
+    if not valid_target:
+        raise ValueError("regional attribution target identity is invalid")
+    identity: dict[str, object] = {
+        "question_id": question_id,
+        "forced_boundary": forced_boundary,
+        "mapping_artifact_sha256": mapping_artifact_sha256,
+        "prompt_input_sha256": prompt_input_sha256,
+        "target_kind": target_kind,
+        "reference_set_token_ids_sha256": reference_set_token_ids_sha256,
+        "generated_response_token_ids_sha256": generated_response_token_ids_sha256,
+    }
+    identity["attribution_identity_sha256"] = _canonical_sha256(identity)
+    return identity
+
+
+def _validated_attribution_identity(
+    value: object,
+    *,
+    expected_sha256: object,
+) -> dict[str, object]:
+    required = {
+        "question_id",
+        "forced_boundary",
+        "mapping_artifact_sha256",
+        "prompt_input_sha256",
+        "target_kind",
+        "reference_set_token_ids_sha256",
+        "generated_response_token_ids_sha256",
+        "attribution_identity_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ValueError("regional attribution identity schema is invalid")
+    expected = _build_attribution_identity(
+        question_id=value["question_id"],
+        forced_boundary=value["forced_boundary"],
+        mapping_artifact_sha256=value["mapping_artifact_sha256"],
+        prompt_input_sha256=value["prompt_input_sha256"],
+        target_kind=value["target_kind"],
+        reference_set_token_ids_sha256=value["reference_set_token_ids_sha256"],
+        generated_response_token_ids_sha256=value["generated_response_token_ids_sha256"],
+    )
+    if value != expected or expected_sha256 != expected["attribution_identity_sha256"]:
+        raise ValueError("regional attribution identity digest is invalid")
+    return expected
 
 
 def _validated_regions(
@@ -71,6 +157,14 @@ def _mask_record(source_ids: Sequence[str], *, split: str, seed: int) -> dict[st
 
 def build_region_mask_design(
     regions: Sequence[Mapping[str, object]],
+    *,
+    question_id: str,
+    forced_boundary: str,
+    mapping_artifact_sha256: str,
+    prompt_input_sha256: str,
+    target_kind: str,
+    reference_set_token_ids_sha256: str | None,
+    generated_response_token_ids_sha256: str | None,
 ) -> dict[str, object]:
     """Build the frozen 64-fit/32-held-out whole-region mask schedule.
 
@@ -78,6 +172,15 @@ def build_region_mask_design(
     the regression design because toggling them cannot change a physical mask.
     """
 
+    attribution_identity = _build_attribution_identity(
+        question_id=question_id,
+        forced_boundary=forced_boundary,
+        mapping_artifact_sha256=mapping_artifact_sha256,
+        prompt_input_sha256=prompt_input_sha256,
+        target_kind=target_kind,
+        reference_set_token_ids_sha256=reference_set_token_ids_sha256,
+        generated_response_token_ids_sha256=generated_response_token_ids_sha256,
+    )
     validated = _validated_regions(regions, allow_zero_cost=True)
     source_ids = [source_id for source_id, cost in validated if cost > 0]
     excluded = [source_id for source_id, cost in validated if cost == 0]
@@ -96,6 +199,8 @@ def build_region_mask_design(
         "upstream_utils_sha256": _CONTEXTCITE_UTILS_SHA256,
         "adaptation": _MASK_DESIGN_ADAPTATION,
         "keep_probability": 0.5,
+        "attribution_identity": attribution_identity,
+        "attribution_identity_sha256": attribution_identity["attribution_identity_sha256"],
         "source_ids": source_ids,
         "excluded_zero_cost_source_ids": excluded,
         "source_order_sha256": hashlib.sha256("\n".join(source_ids).encode("utf-8")).hexdigest(),
@@ -116,6 +221,8 @@ def _validated_mask_design(
         "upstream_utils_sha256",
         "adaptation",
         "keep_probability",
+        "attribution_identity",
+        "attribution_identity_sha256",
         "source_ids",
         "excluded_zero_cost_source_ids",
         "source_order_sha256",
@@ -129,6 +236,10 @@ def _validated_mask_design(
     observed_digest = unsigned.pop("design_sha256")
     source_ids = design["source_ids"]
     excluded = design["excluded_zero_cost_source_ids"]
+    _validated_attribution_identity(
+        design["attribution_identity"],
+        expected_sha256=design["attribution_identity_sha256"],
+    )
     if (
         design["method"] != "pinned-contextcite-bernoulli-source-ablation"
         or design["upstream_repository"] != _CONTEXTCITE_REPOSITORY
@@ -178,15 +289,29 @@ def fit_contextcite_lasso(
     ):
         raise ValueError("ContextCite fitting requires exactly 64 keyed fit outcomes")
     checked_masks = [list(mask["vector"]) for mask in fit_masks]
+    checked_outcomes: list[dict[str, object]] = []
     checked_targets: list[float] = []
     for index, (outcome, mask) in enumerate(zip(fit_outcomes, fit_masks, strict=True)):
         if (
+            isinstance(outcome, Mapping)
+            and outcome.get("attribution_identity_sha256") != design["attribution_identity_sha256"]
+        ):
+            raise ValueError("ContextCite fit outcome attribution identity is invalid")
+        if (
             not isinstance(outcome, Mapping)
-            or set(outcome) != {"split", "seed", "vector_sha256", "normalized_target"}
+            or set(outcome)
+            != {
+                "split",
+                "seed",
+                "vector_sha256",
+                "attribution_identity_sha256",
+                "normalized_target",
+            }
             or outcome["split"] != "fit"
             or type(outcome["seed"]) is not int
             or outcome["seed"] != index
             or outcome["vector_sha256"] != mask["vector_sha256"]
+            or outcome["attribution_identity_sha256"] != design["attribution_identity_sha256"]
         ):
             raise ValueError("ContextCite fit outcomes are not bound to canonical masks")
         value = outcome["normalized_target"]
@@ -198,6 +323,15 @@ def fit_contextcite_lasso(
             raise ValueError("ContextCite normalized targets must be finite numbers") from error
         if not math.isfinite(target):
             raise ValueError("ContextCite normalized targets must be finite numbers")
+        checked_outcomes.append(
+            {
+                "split": "fit",
+                "seed": mask["seed"],
+                "vector_sha256": mask["vector_sha256"],
+                "attribution_identity_sha256": design["attribution_identity_sha256"],
+                "normalized_target": target,
+            }
+        )
         checked_targets.append(target)
     try:
         from sklearn.linear_model import Lasso
@@ -225,6 +359,8 @@ def fit_contextcite_lasso(
         "fit_mask_count": 64,
         "target": "normalized-full-sequence-loglikelihood",
         "adaptation": _SURROGATE_ADAPTATION,
+        "attribution_identity": dict(design["attribution_identity"]),
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
         "source_ids": list(source_ids),
         "mask_design_sha256": design["design_sha256"],
         "coefficients": {
@@ -233,6 +369,7 @@ def fit_contextcite_lasso(
         },
         "intercept": intercept,
         "fit_masks_sha256": _canonical_sha256(checked_masks),
+        "fit_outcomes_sha256": _canonical_sha256(checked_outcomes),
         "fit_targets_sha256": _canonical_sha256(checked_targets),
         "fit_target_mean": float(np.mean(targets)),
     }
@@ -250,16 +387,6 @@ def _finite_float(value: object, *, label: str) -> float:
     if not math.isfinite(checked):
         raise ValueError(f"{label} must be a finite number")
     return checked
-
-
-def _is_sha256(value: object) -> bool:
-    if not isinstance(value, str) or len(value) != 64:
-        return False
-    try:
-        int(value, 16)
-    except ValueError:
-        return False
-    return True
 
 
 def _validated_surrogate(
@@ -280,11 +407,14 @@ def _validated_surrogate(
         "fit_mask_count",
         "target",
         "adaptation",
+        "attribution_identity",
+        "attribution_identity_sha256",
         "source_ids",
         "mask_design_sha256",
         "coefficients",
         "intercept",
         "fit_masks_sha256",
+        "fit_outcomes_sha256",
         "fit_targets_sha256",
         "fit_target_mean",
         "surrogate_sha256",
@@ -308,9 +438,12 @@ def _validated_surrogate(
         or surrogate["fit_mask_count"] != 64
         or surrogate["target"] != "normalized-full-sequence-loglikelihood"
         or surrogate["adaptation"] != _SURROGATE_ADAPTATION
+        or surrogate["attribution_identity"] != design["attribution_identity"]
+        or surrogate["attribution_identity_sha256"] != design["attribution_identity_sha256"]
         or surrogate["source_ids"] != list(source_ids)
         or surrogate["mask_design_sha256"] != design["design_sha256"]
         or surrogate["fit_masks_sha256"] != expected_fit_masks_sha256
+        or not _is_sha256(surrogate["fit_outcomes_sha256"])
         or not _is_sha256(surrogate["fit_targets_sha256"])
         or not _is_sha256(observed_digest)
         or observed_digest != _canonical_sha256(unsigned)
@@ -371,6 +504,7 @@ def _root_mean_square(errors: Sequence[float]) -> float:
 
 def evaluate_contextcite_holdout(
     design: Mapping[str, object],
+    fit_outcomes: Sequence[Mapping[str, object]],
     surrogate: Mapping[str, object],
     holdout_outcomes: Sequence[Mapping[str, object]],
 ) -> dict[str, object]:
@@ -382,8 +516,11 @@ def evaluate_contextcite_holdout(
     """
 
     source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
+    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    if surrogate != expected_surrogate:
+        raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
     coefficients, intercept, fit_target_mean = _validated_surrogate(
-        surrogate,
+        expected_surrogate,
         design=design,
         source_ids=source_ids,
         fit_masks=fit_masks,
@@ -400,12 +537,25 @@ def evaluate_contextcite_holdout(
     predictions: list[float] = []
     for outcome, mask in zip(holdout_outcomes, holdout_masks, strict=True):
         if (
+            isinstance(outcome, Mapping)
+            and outcome.get("attribution_identity_sha256") != design["attribution_identity_sha256"]
+        ):
+            raise ValueError("ContextCite holdout outcome attribution identity is invalid")
+        if (
             not isinstance(outcome, Mapping)
-            or set(outcome) != {"split", "seed", "vector_sha256", "normalized_target"}
+            or set(outcome)
+            != {
+                "split",
+                "seed",
+                "vector_sha256",
+                "attribution_identity_sha256",
+                "normalized_target",
+            }
             or outcome["split"] != "holdout"
             or type(outcome["seed"]) is not int
             or outcome["seed"] != mask["seed"]
             or outcome["vector_sha256"] != mask["vector_sha256"]
+            or outcome["attribution_identity_sha256"] != design["attribution_identity_sha256"]
         ):
             raise ValueError("ContextCite holdout outcomes are not bound to canonical masks")
         target = _finite_float(outcome["normalized_target"], label="ContextCite normalized target")
@@ -420,6 +570,7 @@ def evaluate_contextcite_holdout(
                 "split": "holdout",
                 "seed": mask["seed"],
                 "vector_sha256": mask["vector_sha256"],
+                "attribution_identity_sha256": design["attribution_identity_sha256"],
                 "normalized_target": target,
             }
         )
@@ -434,8 +585,11 @@ def evaluate_contextcite_holdout(
     result: dict[str, object] = {
         "method": "contextcite-per-question-heldout-fidelity",
         "mask_design_sha256": design["design_sha256"],
-        "surrogate_sha256": surrogate["surrogate_sha256"],
-        "fit_targets_sha256": surrogate["fit_targets_sha256"],
+        "attribution_identity": dict(design["attribution_identity"]),
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
+        "surrogate_sha256": expected_surrogate["surrogate_sha256"],
+        "fit_outcomes_sha256": expected_surrogate["fit_outcomes_sha256"],
+        "fit_targets_sha256": expected_surrogate["fit_targets_sha256"],
         "holdout_mask_count": 32,
         "holdout_seed_start": 64,
         "holdout_seed_stop_exclusive": 96,

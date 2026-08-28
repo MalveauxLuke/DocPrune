@@ -27,46 +27,70 @@ def _regions() -> list[dict[str, object]]:
     ]
 
 
+_PRIMARY_TARGET_KIND = "max-accepted-reference-mean-loglikelihood"
+_SECONDARY_TARGET_KIND = "unpruned-generated-response-mean-loglikelihood"
+
+
+def _identity_kwargs(
+    *,
+    question_id: str = "question-001",
+    forced_boundary: str = "B_13",
+    target_kind: str = _PRIMARY_TARGET_KIND,
+) -> dict[str, object]:
+    identity: dict[str, object] = {
+        "question_id": question_id,
+        "forced_boundary": forced_boundary,
+        "mapping_artifact_sha256": "1" * 64,
+        "prompt_input_sha256": "2" * 64,
+        "target_kind": target_kind,
+        "reference_set_token_ids_sha256": None,
+        "generated_response_token_ids_sha256": None,
+    }
+    if target_kind == _PRIMARY_TARGET_KIND:
+        identity["reference_set_token_ids_sha256"] = "3" * 64
+    elif target_kind == _SECONDARY_TARGET_KIND:
+        identity["generated_response_token_ids_sha256"] = "4" * 64
+    return identity
+
+
+def _design(
+    regions: list[dict[str, object]] | None = None,
+    **identity_overrides: object,
+) -> dict[str, object]:
+    identity = _identity_kwargs(**identity_overrides)
+    return build_region_mask_design(_regions() if regions is None else regions, **identity)
+
+
 def _sha256(value: object) -> str:
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _signed_surrogate(
+def _fit_outcomes(
     design: dict[str, object],
     *,
-    coefficient: float = 1.0,
-    intercept: float = 0.0,
-    fit_target_mean: float = 0.5,
-) -> dict[str, object]:
-    source_ids = list(design["source_ids"])
-    fit_vectors = [row["vector"] for row in design["fit_masks"]]
-    surrogate: dict[str, object] = {
-        "method": "pinned-contextcite-standardscaler-lasso",
-        "upstream_repository": "https://github.com/MadryLab/context-cite",
-        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
-        "upstream_solver_sha256": (
-            "9c3de5c4b06b08a82245431105a58aecada0944a7bb38f506b6eb23f434fd37c"
-        ),
-        "lasso_alpha": 0.01,
-        "random_state": 0,
-        "fit_intercept": True,
-        "fit_mask_count": 64,
-        "target": "normalized-full-sequence-loglikelihood",
-        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means",
-        "source_ids": source_ids,
-        "mask_design_sha256": design["design_sha256"],
-        "coefficients": {
-            source_id: coefficient if index == 0 else 0.0
-            for index, source_id in enumerate(source_ids)
-        },
-        "intercept": intercept,
-        "fit_masks_sha256": _sha256(fit_vectors),
-        "fit_targets_sha256": "a" * 64,
-        "fit_target_mean": fit_target_mean,
-    }
-    surrogate["surrogate_sha256"] = _sha256(surrogate)
-    return surrogate
+    constant: float | None = None,
+) -> list[dict[str, object]]:
+    # For the nonconstant fixture, fit y=a*x+b so pinned alpha=0.01
+    # shrinkage yields coefficient=1 and intercept=0 up to solver precision. The 64 canonical
+    # one-source fit masks contain 31 retained and 33 deleted rows.
+    scale = math.sqrt(31 * 33) / 64
+    slope = 1.0 + 0.01 / scale
+    offset = -0.01 * (31 / 64) / scale
+    return [
+        {
+            "split": "fit",
+            "seed": mask["seed"],
+            "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "normalized_target": (
+                constant + (1e-6 if mask["seed"] % 2 == 0 else -1e-6)
+                if constant is not None
+                else offset + slope * float(mask["vector"][0])
+            ),
+        }
+        for mask in design["fit_masks"]
+    ]
 
 
 def _holdout_outcomes(design: dict[str, object]) -> list[dict[str, object]]:
@@ -75,6 +99,7 @@ def _holdout_outcomes(design: dict[str, object]) -> list[dict[str, object]]:
             "split": "holdout",
             "seed": mask["seed"],
             "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
             "normalized_target": float(mask["vector"][0]),
         }
         for mask in design["holdout_masks"]
@@ -88,7 +113,7 @@ def _holdout_outcomes(design: dict[str, object]) -> list[dict[str, object]]:
 def test_region_mask_design_matches_pinned_contextcite_randomstate_schedule() -> None:
     """Catch replacing upstream RandomState masks or overlapping held-out seeds."""
 
-    design = build_region_mask_design(_regions())
+    design = _design()
 
     assert design["method"] == "pinned-contextcite-bernoulli-source-ablation"
     assert design["upstream_commit"] == "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4"
@@ -96,6 +121,11 @@ def test_region_mask_design_matches_pinned_contextcite_randomstate_schedule() ->
         "d3825dc3292886e0fc9e4c4f0d397f45a84ce1a1ee387ce6985d3006e1c28a4b"
     )
     assert design["keep_probability"] == 0.5
+    assert design["attribution_identity"] == {
+        **_identity_kwargs(),
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
+    }
+    assert len(design["attribution_identity_sha256"]) == 64
     assert design["source_ids"] == ["region-a", "region-b", "region-c", "region-d"]
     assert design["excluded_zero_cost_source_ids"] == ["empty-audit-region"]
     assert len(design["fit_masks"]) == 64
@@ -126,7 +156,7 @@ def test_region_mask_design_matches_pinned_contextcite_randomstate_schedule() ->
 def test_region_mask_design_is_replayable_and_rejects_ambiguous_sources() -> None:
     """Catch nondeterminism, duplicate IDs, negative costs, or inert fitted columns."""
 
-    assert build_region_mask_design(_regions()) == build_region_mask_design(_regions())
+    assert _design() == _design()
 
     for invalid in (
         [],
@@ -140,7 +170,37 @@ def test_region_mask_design_is_replayable_and_rejects_ambiguous_sources() -> Non
         [{"source_id": "extra", "token_cost": 1, "coefficient": 2.0}],
     ):
         with pytest.raises(ValueError, match="region"):
-            build_region_mask_design(invalid)
+            _design(invalid)
+
+
+def test_region_mask_design_rejects_cross_target_or_input_identity() -> None:
+    """Catch ambiguous or noncanonical question/intervention/target identities."""
+
+    valid_secondary = _design(target_kind=_SECONDARY_TARGET_KIND)
+    assert valid_secondary["attribution_identity"]["reference_set_token_ids_sha256"] is None
+    assert valid_secondary["attribution_identity"]["generated_response_token_ids_sha256"] == (
+        "4" * 64
+    )
+
+    invalid_identities = [
+        {**_identity_kwargs(), "question_id": ""},
+        {**_identity_kwargs(), "forced_boundary": "13"},
+        {**_identity_kwargs(), "mapping_artifact_sha256": "1" * 63},
+        {**_identity_kwargs(), "prompt_input_sha256": "Z" * 64},
+        {**_identity_kwargs(), "target_kind": "generic-target"},
+        {**_identity_kwargs(), "target_kind": ["not", "hashable"]},
+        {
+            **_identity_kwargs(),
+            "generated_response_token_ids_sha256": "4" * 64,
+        },
+        {
+            **_identity_kwargs(target_kind=_SECONDARY_TARGET_KIND),
+            "reference_set_token_ids_sha256": "3" * 64,
+        },
+    ]
+    for identity in invalid_identities:
+        with pytest.raises(ValueError, match="identity"):
+            build_region_mask_design(_regions(), **identity)
 
 
 def test_whole_region_knapsack_uses_max_attainable_cost_before_coefficient() -> None:
@@ -203,12 +263,13 @@ def test_whole_region_knapsack_reports_gap_and_deterministic_region_id_ties() ->
 def test_contextcite_lasso_rejects_noncanonical_fit_inputs_before_solver_import() -> None:
     """Catch fitting the paper-derived solver to the wrong split or target scale."""
 
-    design = build_region_mask_design(_regions())
+    design = _design()
     outcomes = [
         {
             "split": "fit",
             "seed": mask["seed"],
             "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
             "normalized_target": float(mask["seed"]) / 64,
         }
         for mask in design["fit_masks"]
@@ -237,12 +298,13 @@ def test_contextcite_lasso_persists_fit_only_constant_baseline_mean() -> None:
     """Catch a held-out mean being substituted for the fit-target baseline."""
 
     pytest.importorskip("sklearn")
-    design = build_region_mask_design([{"source_id": "region-a", "token_cost": 1}])
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
     outcomes = [
         {
             "split": "fit",
             "seed": mask["seed"],
             "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
             "normalized_target": float(mask["seed"]) / 10.0,
         }
         for mask in design["fit_masks"]
@@ -251,16 +313,21 @@ def test_contextcite_lasso_persists_fit_only_constant_baseline_mean() -> None:
     surrogate = fit_contextcite_lasso(design, outcomes)
 
     assert surrogate["fit_target_mean"] == pytest.approx(3.15)
+    assert surrogate["attribution_identity"] == design["attribution_identity"]
+    assert surrogate["attribution_identity_sha256"] == design["attribution_identity_sha256"]
+    assert len(surrogate["fit_outcomes_sha256"]) == 64
 
 
 def test_contextcite_holdout_fidelity_is_ordered_tie_aware_and_leakage_free() -> None:
     """Catch ordinal ranks, unordered masks, or a held-out constant baseline."""
 
-    design = build_region_mask_design([{"source_id": "region-a", "token_cost": 1}])
-    surrogate = _signed_surrogate(design)
+    pytest.importorskip("sklearn")
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    fit_outcomes = _fit_outcomes(design)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
     outcomes = _holdout_outcomes(design)
 
-    result = evaluate_contextcite_holdout(design, surrogate, outcomes)
+    result = evaluate_contextcite_holdout(design, fit_outcomes, surrogate, outcomes)
 
     assert result["method"] == "contextcite-per-question-heldout-fidelity"
     assert result["holdout_mask_count"] == 32
@@ -272,12 +339,15 @@ def test_contextcite_holdout_fidelity_is_ordered_tie_aware_and_leakage_free() ->
     # the binary phi coefficient 234/sqrt(13*19*14*18).
     assert result["lds_spearman"] == pytest.approx(234 / math.sqrt(13 * 19 * 14 * 18), abs=1e-15)
     assert result["lds_defined"] is True
-    assert result["heldout_rmse"] == pytest.approx(math.sqrt(1 / 32), abs=1e-15)
+    assert result["heldout_rmse"] == pytest.approx(math.sqrt(1 / 32), abs=1e-9)
     assert result["constant_baseline"] == "fit-target-mean"
-    assert result["constant_prediction"] == 0.5
-    assert result["constant_rmse"] == pytest.approx(0.5, abs=1e-15)
+    assert result["constant_prediction"] == pytest.approx(31 / 64, abs=1e-15)
+    expected_constant_rmse = math.sqrt((14 * (33 / 64) ** 2 + 18 * (31 / 64) ** 2) / 32)
+    assert result["constant_rmse"] == pytest.approx(expected_constant_rmse, abs=1e-15)
     assert result["surrogate_beats_constant"] is True
     assert result["mask_design_sha256"] == design["design_sha256"]
+    assert result["attribution_identity"] == design["attribution_identity"]
+    assert result["attribution_identity_sha256"] == design["attribution_identity_sha256"]
     assert result["surrogate_sha256"] == surrogate["surrogate_sha256"]
     assert len(result["holdout_masks_sha256"]) == 64
     assert len(result["holdout_outcomes_sha256"]) == 64
@@ -289,10 +359,17 @@ def test_contextcite_holdout_fidelity_is_ordered_tie_aware_and_leakage_free() ->
 def test_contextcite_holdout_fidelity_records_undefined_constant_rank() -> None:
     """Catch silently coercing undefined Spearman correlation to zero."""
 
-    design = build_region_mask_design([{"source_id": "region-a", "token_cost": 1}])
-    surrogate = _signed_surrogate(design, coefficient=0.0)
+    pytest.importorskip("sklearn")
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    fit_outcomes = _fit_outcomes(design, constant=0.5)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
 
-    result = evaluate_contextcite_holdout(design, surrogate, _holdout_outcomes(design))
+    result = evaluate_contextcite_holdout(
+        design,
+        fit_outcomes,
+        surrogate,
+        _holdout_outcomes(design),
+    )
 
     assert result["lds_spearman"] is None
     assert result["lds_defined"] is False
@@ -302,8 +379,10 @@ def test_contextcite_holdout_fidelity_records_undefined_constant_rank() -> None:
 def test_contextcite_holdout_fidelity_fails_closed_on_identity_or_order_drift() -> None:
     """Catch evaluating a re-signed noncanonical design or mismatched holdout rows."""
 
-    design = build_region_mask_design([{"source_id": "region-a", "token_cost": 1}])
-    surrogate = _signed_surrogate(design)
+    pytest.importorskip("sklearn")
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    fit_outcomes = _fit_outcomes(design)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
     outcomes = _holdout_outcomes(design)
 
     altered_design = deepcopy(design)
@@ -327,38 +406,98 @@ def test_contextcite_holdout_fidelity_fails_closed_on_identity_or_order_drift() 
     unsigned_surrogate.pop("surrogate_sha256")
     bool_random_state_surrogate["surrogate_sha256"] = _sha256(unsigned_surrogate)
 
-    overflow_surrogate = _signed_surrogate(
-        design,
-        coefficient=1e308,
-        intercept=1e308,
-    )
+    overflow_surrogate = deepcopy(surrogate)
+    overflow_surrogate["coefficients"]["region-a"] = 1e308
+    overflow_surrogate["intercept"] = 1e308
+    unsigned_surrogate = dict(overflow_surrogate)
+    unsigned_surrogate.pop("surrogate_sha256")
+    overflow_surrogate["surrogate_sha256"] = _sha256(unsigned_surrogate)
+
+    fully_rehashed_nonfit_surrogate = deepcopy(surrogate)
+    fully_rehashed_nonfit_surrogate["coefficients"]["region-a"] = 123.0
+    fully_rehashed_nonfit_surrogate["fit_target_mean"] = 0.75
+    fully_rehashed_nonfit_surrogate["fit_targets_sha256"] = "e" * 64
+    fully_rehashed_nonfit_surrogate["fit_outcomes_sha256"] = "f" * 64
+    unsigned_surrogate = dict(fully_rehashed_nonfit_surrogate)
+    unsigned_surrogate.pop("surrogate_sha256")
+    fully_rehashed_nonfit_surrogate["surrogate_sha256"] = _sha256(unsigned_surrogate)
+
+    changed_fit_outcomes = deepcopy(fit_outcomes)
+    changed_fit_outcomes[0]["normalized_target"] += 1.0
 
     invalid_cases = [
-        (altered_design, _signed_surrogate(altered_design), outcomes),
-        (design, altered_surrogate, outcomes),
-        (design, wrong_design_surrogate, outcomes),
-        (design, bool_random_state_surrogate, outcomes),
-        (design, overflow_surrogate, outcomes),
-        (design, surrogate, outcomes[:-1]),
-        (design, surrogate, list(reversed(outcomes))),
-        (design, surrogate, [{**outcomes[0], "split": "fit"}, *outcomes[1:]]),
-        (design, surrogate, [{**outcomes[0], "seed": False}, *outcomes[1:]]),
-        (design, surrogate, [{**outcomes[0], "seed": 65}, *outcomes[1:]]),
+        (altered_design, fit_outcomes, surrogate, outcomes),
+        (design, fit_outcomes, altered_surrogate, outcomes),
+        (design, fit_outcomes, wrong_design_surrogate, outcomes),
+        (design, fit_outcomes, bool_random_state_surrogate, outcomes),
+        (design, fit_outcomes, overflow_surrogate, outcomes),
+        (design, fit_outcomes, fully_rehashed_nonfit_surrogate, outcomes),
+        (design, changed_fit_outcomes, surrogate, outcomes),
+        (design, fit_outcomes, surrogate, outcomes[:-1]),
+        (design, fit_outcomes, surrogate, list(reversed(outcomes))),
+        (design, fit_outcomes, surrogate, [{**outcomes[0], "split": "fit"}, *outcomes[1:]]),
+        (design, fit_outcomes, surrogate, [{**outcomes[0], "seed": False}, *outcomes[1:]]),
+        (design, fit_outcomes, surrogate, [{**outcomes[0], "seed": 65}, *outcomes[1:]]),
         (
             design,
+            fit_outcomes,
             surrogate,
             [{**outcomes[0], "vector_sha256": "0" * 64}, *outcomes[1:]],
         ),
         (
             design,
+            fit_outcomes,
             surrogate,
             [{**outcomes[0], "normalized_target": float("nan")}, *outcomes[1:]],
         ),
+        (
+            design,
+            fit_outcomes,
+            surrogate,
+            [
+                {**outcomes[0], "attribution_identity_sha256": "9" * 64},
+                *outcomes[1:],
+            ],
+        ),
     ]
-    for candidate_design, candidate_surrogate, candidate_outcomes in invalid_cases:
+    for candidate_design, candidate_fit, candidate_surrogate, candidate_outcomes in invalid_cases:
         with pytest.raises(ValueError):
             evaluate_contextcite_holdout(
                 candidate_design,
+                candidate_fit,
                 candidate_surrogate,
                 candidate_outcomes,
+            )
+
+
+def test_contextcite_holdout_fidelity_rejects_cross_question_or_target_mixing() -> None:
+    """Catch fully canonical artifacts from different attribution identities being mixed."""
+
+    pytest.importorskip("sklearn")
+    regions = [{"source_id": "region-a", "token_cost": 1}]
+    design = _design(regions)
+    fit_outcomes = _fit_outcomes(design)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    holdout = _holdout_outcomes(design)
+
+    other_design = _design(
+        regions,
+        question_id="question-002",
+        target_kind=_SECONDARY_TARGET_KIND,
+    )
+    other_fit = _fit_outcomes(other_design)
+    other_surrogate = fit_contextcite_lasso(other_design, other_fit)
+    other_holdout = _holdout_outcomes(other_design)
+
+    for candidate_fit, candidate_surrogate, candidate_holdout in (
+        (other_fit, surrogate, holdout),
+        (fit_outcomes, other_surrogate, holdout),
+        (fit_outcomes, surrogate, other_holdout),
+    ):
+        with pytest.raises(ValueError, match="identity|canonical fit"):
+            evaluate_contextcite_holdout(
+                design,
+                candidate_fit,
+                candidate_surrogate,
+                candidate_holdout,
             )
