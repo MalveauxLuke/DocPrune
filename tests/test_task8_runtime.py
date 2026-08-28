@@ -17,6 +17,7 @@ from docprune.task6_runtime import (
 )
 from docprune.task8_runtime import (
     finalize_task8_mineru_smoke,
+    load_task8_mineru_completion,
     load_task8_smoke_inputs,
     prepare_task8_mineru_smoke,
     seal_task8_smoke_inputs,
@@ -371,6 +372,37 @@ def test_mineru_smoke_prepare_and_finalize_authenticate_exact_stage_contract(
     assert completed["retrieval_run"] is False
     assert [row["region_count"] for row in completed["artifacts"]] == [1, 1]
     assert (job_root / "completion-manifest.json").is_file()
+    completion_path = job_root / "completion-manifest.json"
+    assert (
+        load_task8_mineru_completion(completion_path, expected_sha256=_sha(completion_path))
+        == completed
+    )
+    run_path = job_root / "run-manifest.json"
+    canonical_run = run_path.read_bytes()
+    contradicted_run = json.loads(canonical_run)
+    contradicted_run["qid"] = "different-qid"
+    unsigned_run = {
+        key: value for key, value in contradicted_run.items() if key != "manifest_sha256"
+    }
+    contradicted_run["manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned_run, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    run_path.write_text(json.dumps(contradicted_run, sort_keys=True, separators=(",", ":")))
+    contradicted_completion = dict(completed)
+    contradicted_completion["run_manifest_sha256"] = _sha(run_path)
+    unsigned_completion = {
+        key: value for key, value in contradicted_completion.items() if key != "manifest_sha256"
+    }
+    contradicted_completion["manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned_completion, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    completion_path.write_text(
+        json.dumps(contradicted_completion, sort_keys=True, separators=(",", ":"))
+    )
+    with pytest.raises(ValueError, match="identity"):
+        load_task8_mineru_completion(completion_path, expected_sha256=_sha(completion_path))
+    run_path.write_bytes(canonical_run)
+    completion_path.write_text(json.dumps(completed, sort_keys=True, separators=(",", ":")))
     with pytest.raises(FileExistsError):
         finalize_task8_mineru_smoke(
             job_root=job_root,
@@ -378,6 +410,10 @@ def test_mineru_smoke_prepare_and_finalize_authenticate_exact_stage_contract(
             gpu_manifest_path=gpu,
             gpu_manifest_sha256=_sha(gpu),
         )
+    canonical = completion_path.read_bytes()
+    completion_path.write_bytes(canonical + b"\n")
+    with pytest.raises(ValueError, match="canonical"):
+        load_task8_mineru_completion(completion_path, expected_sha256=_sha(completion_path))
 
 
 def test_mineru_smoke_finalize_rejects_missing_or_wrong_output_without_completion(

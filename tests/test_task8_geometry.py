@@ -18,7 +18,10 @@ from docprune.task6_runtime import (
     FixedPageQuestion,
     FixedPageRecord,
 )
-from docprune.task8_geometry import capture_task8_btp_qtp_geometry
+from docprune.task8_geometry import (
+    capture_task8_btp_qtp_geometry,
+    load_task8_geometry_capture,
+)
 from docprune.task8_runtime import seal_task8_smoke_inputs
 
 
@@ -201,6 +204,7 @@ def test_geometry_capture_is_fixed_page_exact_no_replace_and_no_qwen_model(
     )
 
     assert payload == json.loads(output.read_text())
+    assert load_task8_geometry_capture(output, expected_sha256=_sha(output)) == payload
     assert payload["global_index_loaded"] is False
     assert payload["retrieval_search_run"] is False
     assert payload["qwen_generation_model_loaded"] is False
@@ -225,6 +229,30 @@ def test_geometry_capture_is_fixed_page_exact_no_replace_and_no_qwen_model(
             qwen_processor=object(),
             require_cuda=False,
         )
+    canonical = output.read_bytes()
+    contradicted = json.loads(canonical)
+    contradicted["retrieved_pages"][0]["score"] += 1.0
+    unsigned = {key: value for key, value in contradicted.items() if key != "manifest_sha256"}
+    contradicted["manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    output.write_text(json.dumps(contradicted, sort_keys=True, separators=(",", ":")))
+    with pytest.raises(ValueError, match="reference"):
+        load_task8_geometry_capture(output, expected_sha256=_sha(output))
+    output.write_bytes(canonical)
+    contradicted = json.loads(canonical)
+    contradicted["resources"]["qwen_processor_revision"] = "0" * 40
+    unsigned = {key: value for key, value in contradicted.items() if key != "manifest_sha256"}
+    contradicted["manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    output.write_text(json.dumps(contradicted, sort_keys=True, separators=(",", ":")))
+    with pytest.raises(ValueError, match="resource"):
+        load_task8_geometry_capture(output, expected_sha256=_sha(output))
+    output.write_bytes(canonical)
+    output.write_bytes(canonical + b"\n")
+    with pytest.raises(ValueError, match="canonical"):
+        load_task8_geometry_capture(output, expected_sha256=_sha(output))
 
 
 def test_geometry_capture_rejects_reference_or_live_geometry_drift_without_output(
