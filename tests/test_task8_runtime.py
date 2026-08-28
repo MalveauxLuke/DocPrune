@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -516,3 +518,57 @@ def test_task8_mineru_launcher_is_short_offline_fixed_page_and_no_requeue() -> N
     assert "retrieve" not in launcher.lower()
     assert launcher.index("prepare \\\n") < launcher.index('mkdir "$OUTPUT_DIR"')
     assert launcher.index('mkdir "$OUTPUT_DIR"') < launcher.index('"$MINERU" \\\n')
+
+
+def test_task8_gpu_probe_uses_the_single_cuda_visible_device_without_sigpipe(
+    tmp_path: Path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_nvidia_smi = fake_bin / "nvidia-smi"
+    fake_nvidia_smi.write_text(
+        "#!/usr/bin/env bash\nprintf '%s\\n' '595.71.05' '595.71.05'\n",
+        encoding="utf-8",
+    )
+    fake_nvidia_smi.chmod(0o755)
+    fake_modules = tmp_path / "modules"
+    fake_modules.mkdir()
+    (fake_modules / "torch.py").write_text(
+        "class Properties:\n"
+        "    name = 'NVIDIA L40S'\n"
+        "    total_memory = 46068 * 1024 * 1024\n"
+        "class Cuda:\n"
+        "    @staticmethod\n"
+        "    def is_available(): return True\n"
+        "    @staticmethod\n"
+        "    def device_count(): return 1\n"
+        "    @staticmethod\n"
+        "    def current_device(): return 0\n"
+        "    @staticmethod\n"
+        "    def get_device_properties(index): return Properties()\n"
+        "cuda = Cuda()\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "gpu.json"
+    probe = Path("examples/probe_task8_gpu.sh").resolve()
+    environment = dict(os.environ)
+    environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+    environment["PYTHONPATH"] = f"{fake_modules}:{environment.get('PYTHONPATH', '')}"
+
+    subprocess.run(
+        [str(probe), "/home/lmalveau/mamba-envs/docprune-sol/bin/python", str(output)],
+        check=True,
+        env=environment,
+    )
+
+    assert json.loads(output.read_text(encoding="utf-8")) == {
+        "driver_version": "595.71.05",
+        "memory_total_mib": 46068,
+        "name": "NVIDIA L40S",
+    }
+    launcher = Path("examples/sbatch/36_docprune_task8_mineru_smoke.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert "probe_task8_gpu.sh" in launcher
+    assert "nvidia-smi" not in launcher
+    assert "head -n 1" not in launcher

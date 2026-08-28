@@ -47,6 +47,7 @@ export PYTHONPATH="$MINERU_SOURCE:$RUNTIME_DIR/src"
 test -x "$PYTHON"
 test -x "$MINERU"
 test -x "$MINERU_PYTHON"
+test -x "$RUNTIME_DIR/examples/probe_task8_gpu.sh"
 test -d "$JOB_ROOT"
 test ! -L "$JOB_ROOT"
 test ! -e "$JOB_ROOT/run-manifest.json"
@@ -87,11 +88,7 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
 
-GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
-GPU_MEMORY_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1 | tr -d ' ')"
-GPU_DRIVER="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1)"
-test "$GPU_MEMORY_MIB" -ge 12000
-"$PYTHON" -c 'import json,sys; open(sys.argv[1], "x", encoding="utf-8").write(json.dumps({"driver_version":sys.argv[4],"memory_total_mib":int(sys.argv[3]),"name":sys.argv[2]},sort_keys=True,separators=(",",":")))' "$GPU_MANIFEST" "$GPU_NAME" "$GPU_MEMORY_MIB" "$GPU_DRIVER"
+"$RUNTIME_DIR/examples/probe_task8_gpu.sh" "$MINERU_PYTHON" "$GPU_MANIFEST"
 readonly GPU_MANIFEST_SHA256="$(sha256sum "$GPU_MANIFEST" | cut -d' ' -f1)"
 
 "$PYTHON" "$RUNTIME_DIR/examples/run_task8_mineru_smoke.py" prepare \
