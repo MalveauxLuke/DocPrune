@@ -727,13 +727,17 @@ def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
     assert "${PYTHON:=" not in launcher
     assert "#SBATCH --no-requeue" in launcher
     assert "readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python" in launcher
+    assert (
+        'readonly RUN_CONFIG="$ATTEMPT_ROOT/run-configs/'
+        'docprune-top4-task6-clean-m3-v1.json"' in launcher
+    )
+    assert (
+        "readonly RUN_CONFIG_SHA256="
+        "2233621303ccdf531267bb5bd2a7670775e54f90d04dede4fb19f264e8cad502"
+    ) in launcher
     assert "readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-task6-clean-20260828" in launcher
     assert (
         'test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"'
-    ) in launcher
-    assert (
-        "readonly RUN_CONFIG_SHA256="
-        "b9a6668aaf70c6059b175d18e29bc0082f76231d233a4d993b93fcb55ebbbb8f"
     ) in launcher
     assert (
         "readonly INDEX_MANIFEST_SHA256="
@@ -747,3 +751,17 @@ def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
         'test "$(sha256sum "$INDEX_MANIFEST" | cut -d\' \' -f1)" = "$INDEX_MANIFEST_SHA256"'
     ) in launcher
     assert 'test "$(sha256sum "$CONFIG" | cut -d\' \' -f1)" = "$CONFIG_SHA256"' in launcher
+
+
+def test_task6_isolated_run_config_drives_the_factory_checkout_validation() -> None:
+    from docprune.m3docvqa_factory import _resolve_run_config, _validate_m3docrag_checkout
+
+    run_config = Path(
+        "/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/run-configs/"
+        "docprune-top4-task6-clean-m3-v1.json"
+    )
+    resolved = _resolve_run_config(run_config, mode="docprune", page_count=4)
+
+    assert _validate_m3docrag_checkout(resolved) == Path(
+        "/home/lmalveau/src/m3docrag-task6-clean-20260828"
+    )
