@@ -84,9 +84,10 @@ def main() -> int:
         if not isinstance(source, dict) or not isinstance(source.get("path"), str):
             raise ValueError("projection source-file inventory is invalid")
         source_path = Path(source["path"])
-        if _sha256(source_path) != source.get("sha256"):
+        expected_digest = source.get("sha256", source.get("file_sha256"))
+        if not isinstance(expected_digest, str) or _sha256(source_path) != expected_digest:
             raise ValueError(f"projection source checksum mismatch: {source_path}")
-        input_hashes[str(source_path)] = str(source["sha256"])
+        input_hashes[str(source_path)] = expected_digest
 
     manifest = seal_holdout(
         [_eligibility_input(record) for record in records],
