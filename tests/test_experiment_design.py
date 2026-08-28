@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import importlib.util
 import json
@@ -939,6 +941,41 @@ def test_atomic_publish_does_not_replace_destination_created_after_precheck(
 
     assert (source / "manifest.json").read_text(encoding="utf-8") == "source\n"
     assert list(destination.iterdir()) == []
+
+
+def test_regular_file_publish_falls_back_when_filesystem_rejects_renameat2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch Lustre returning EINVAL for RENAME_NOREPLACE on a regular file."""
+
+    class UnsupportedRename:
+        argtypes: object = None
+        restype: object = None
+
+        def __call__(self, *args: object) -> int:
+            ctypes.set_errno(errno.EINVAL)
+            return -1
+
+    class UnsupportedLibc:
+        renameat2 = UnsupportedRename()
+
+    monkeypatch.setattr(experiment_design.ctypes, "CDLL", lambda *args, **kwargs: UnsupportedLibc())
+    source = tmp_path / ".artifact-temporary"
+    destination = tmp_path / "artifact.jsonl"
+    source.write_bytes(b"sealed artifact\n")
+    parent_fd = experiment_design._open_directory_nofollow(tmp_path)
+    try:
+        experiment_design._renameat2_noreplace(
+            parent_fd,
+            source.name,
+            parent_fd,
+            destination.name,
+        )
+    finally:
+        experiment_design.os.close(parent_fd)
+
+    assert not source.exists()
+    assert destination.read_bytes() == b"sealed artifact\n"
 
 
 def test_holdout_seal_rejects_symlinked_parent_component(tmp_path: Path) -> None:
