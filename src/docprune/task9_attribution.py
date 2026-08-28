@@ -1087,6 +1087,8 @@ def _validated_aggregate_stability(value: object) -> dict[str, object]:
         "achieved_budget",
         "refit_sha256",
     }
+    checked_coefficients: list[dict[str, float]] = []
+    checked_top_source_ids: list[list[str]] = []
     for seed, raw_refit in enumerate(raw_refits):
         if not isinstance(raw_refit, Mapping) or set(raw_refit) != refit_keys:
             raise ValueError("stability refit schema is invalid")
@@ -1095,18 +1097,21 @@ def _validated_aggregate_stability(value: object) -> dict[str, object]:
         indices = refit["resample_indices"]
         coefficients = refit["coefficients"]
         top_ids = refit["top_source_ids"]
+        expected_indices = [
+            int(index)
+            for index in np.random.RandomState(seed).choice(64, size=64, replace=True).tolist()
+        ]
         if (
             type(refit["seed"]) is not int
             or refit["seed"] != seed
             or not isinstance(indices, list)
-            or len(indices) != 64
-            or any(type(index) is not int or not 0 <= index < 64 for index in indices)
+            or indices != expected_indices
             or refit["resample_indices_sha256"] != _canonical_sha256(indices)
             or not isinstance(coefficients, Mapping)
-            or list(coefficients) != source_ids
+            or set(coefficients) != set(source_ids)
             or any(
-                not math.isfinite(_finite_float(coefficient, label="refit coefficient"))
-                for coefficient in coefficients.values()
+                not math.isfinite(_finite_float(coefficients[source_id], label="refit coefficient"))
+                for source_id in source_ids
             )
             or refit["coefficients_sha256"] != _canonical_sha256(coefficients)
             or not math.isfinite(_finite_float(refit["intercept"], label="refit intercept"))
@@ -1120,18 +1125,58 @@ def _validated_aggregate_stability(value: object) -> dict[str, object]:
             or refit_digest != _canonical_sha256(refit)
         ):
             raise ValueError("stability refit identity is invalid")
-    coefficient_rows, coefficient_values = _validated_pairwise_rows(
+        checked_coefficients.append(
+            {
+                source_id: _finite_float(coefficients[source_id], label="refit coefficient")
+                for source_id in source_ids
+            }
+        )
+        checked_top_source_ids.append(list(top_ids))
+    coefficient_rows, _ = _validated_pairwise_rows(
         stability["coefficient_pairwise"], metric="spearman", label="coefficient stability"
     )
-    selection_rows, selection_values = _validated_pairwise_rows(
+    selection_rows, _ = _validated_pairwise_rows(
         stability["top_selection_pairwise"], metric="jaccard", label="selection stability"
     )
+    expected_coefficient_rows: list[dict[str, object]] = []
+    expected_selection_rows: list[dict[str, object]] = []
+    for left, right in combinations(range(5), 2):
+        correlation = _spearman_rank_correlation(
+            [checked_coefficients[left][source_id] for source_id in source_ids],
+            [checked_coefficients[right][source_id] for source_id in source_ids],
+        )
+        expected_coefficient_rows.append(
+            {
+                "left_seed": left,
+                "right_seed": right,
+                "spearman": correlation,
+                "defined": correlation is not None,
+            }
+        )
+        left_selection = set(checked_top_source_ids[left])
+        right_selection = set(checked_top_source_ids[right])
+        union = left_selection | right_selection
+        jaccard = len(left_selection & right_selection) / len(union) if union else None
+        expected_selection_rows.append(
+            {
+                "left_seed": left,
+                "right_seed": right,
+                "jaccard": jaccard,
+                "defined": jaccard is not None,
+            }
+        )
+    expected_coefficient_values = [row["spearman"] for row in expected_coefficient_rows]
+    expected_selection_values = [row["jaccard"] for row in expected_selection_rows]
+    if _canonical_bytes(coefficient_rows) != _canonical_bytes(expected_coefficient_rows):
+        raise ValueError("coefficient stability pairs are inconsistent with refits")
+    if _canonical_bytes(selection_rows) != _canonical_bytes(expected_selection_rows):
+        raise ValueError("selection stability pairs are inconsistent with refits")
     if _canonical_bytes(stability["coefficient_summary"]) != _canonical_bytes(
-        _defined_pairwise_summary(coefficient_values)
+        _defined_pairwise_summary(expected_coefficient_values)
     ):
         raise ValueError("coefficient stability summary is inconsistent")
     if _canonical_bytes(stability["top_selection_summary"]) != _canonical_bytes(
-        _defined_pairwise_summary(selection_values)
+        _defined_pairwise_summary(expected_selection_values)
     ):
         raise ValueError("selection stability summary is inconsistent")
     return {

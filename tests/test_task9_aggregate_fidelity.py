@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import math
 from copy import deepcopy
 from itertools import combinations
 
+import numpy as np
 import pytest
 
 from docprune import task9_attribution
@@ -65,13 +67,25 @@ def _summary(values: list[float | None]) -> dict[str, object]:
     }
 
 
-def _stability(qid: str, jaccard: float | None = 0.85) -> dict[str, object]:
+def _stability(qid: str, *, undefined: bool = False) -> dict[str, object]:
     identity = _identity(qid)
+    source_ids = ["region-z", "region-a", "region-m"]
     refits = []
     for seed in range(5):
-        indices = [seed] * 64
-        coefficients = {"region-a": float(seed)}
-        top_ids = ["region-a"]
+        indices = [
+            int(index)
+            for index in np.random.RandomState(seed).choice(64, size=64, replace=True).tolist()
+        ]
+        coefficients = (
+            {source_id: 0.0 for source_id in source_ids}
+            if undefined
+            else {
+                "region-z": 3.0 + seed / 100,
+                "region-a": 2.0 + seed / 100,
+                "region-m": 1.0 + seed / 100,
+            }
+        )
+        top_ids = [] if undefined else ["region-z", "region-a"]
         row: dict[str, object] = {
             "seed": seed,
             "resample_indices": indices,
@@ -81,22 +95,28 @@ def _stability(qid: str, jaccard: float | None = 0.85) -> dict[str, object]:
             "intercept": 0.0,
             "top_source_ids": top_ids,
             "top_source_ids_sha256": task9_attribution._canonical_sha256(top_ids),
-            "achieved_budget": 1,
+            "achieved_budget": 0 if undefined else 2,
         }
         row["refit_sha256"] = task9_attribution._canonical_sha256(row)
         refits.append(row)
     coefficient_pairs = []
     selection_pairs = []
+    coefficient_spearman = None if undefined else 0.9999999999999998
     for left, right in combinations(range(5), 2):
         coefficient_pairs.append(
-            {"left_seed": left, "right_seed": right, "spearman": 1.0, "defined": True}
+            {
+                "left_seed": left,
+                "right_seed": right,
+                "spearman": coefficient_spearman,
+                "defined": not undefined,
+            }
         )
         selection_pairs.append(
             {
                 "left_seed": left,
                 "right_seed": right,
-                "jaccard": jaccard,
-                "defined": jaccard is not None,
+                "jaccard": None if undefined else 1.0,
+                "defined": not undefined,
             }
         )
     value: dict[str, object] = {
@@ -113,14 +133,14 @@ def _stability(qid: str, jaccard: float | None = 0.85) -> dict[str, object]:
         "fit_outcomes_sha256": "f" * 64,
         "fit_targets_sha256": "1" * 64,
         "regions_sha256": "6" * 64,
-        "source_ids": ["region-a"],
-        "requested_budget": 1,
-        "achieved_budget": 1,
+        "source_ids": source_ids,
+        "requested_budget": 0 if undefined else 2,
+        "achieved_budget": 0 if undefined else 2,
         "refits": refits,
         "coefficient_pairwise": coefficient_pairs,
-        "coefficient_summary": _summary([1.0] * 10),
+        "coefficient_summary": _summary([coefficient_spearman] * 10),
         "top_selection_pairwise": selection_pairs,
-        "top_selection_summary": _summary([jaccard] * 10),
+        "top_selection_summary": _summary([None if undefined else 1.0] * 10),
     }
     value["stability_sha256"] = task9_attribution._canonical_sha256(value)
     return value
@@ -129,7 +149,7 @@ def _stability(qid: str, jaccard: float | None = 0.85) -> dict[str, object]:
 def _artifacts() -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     return (
         [_fidelity("q1", 0.6, 0.2, 0.5), _fidelity("q2", 0.8, 0.4, 0.6)],
-        [_stability("q1", 0.9), _stability("q2", 0.85)],
+        [_stability("q1"), _stability("q2")],
     )
 
 
@@ -161,7 +181,7 @@ def test_aggregate_fidelity_uses_component_bootstrap_rmse_and_worst_stability() 
     assert len(first["lds"]["bootstrap"]["draws_sha256"]) == 64
     assert first["rmse"]["heldout"] == pytest.approx(math.sqrt(0.1))
     assert first["rmse"]["constant"] == pytest.approx(math.sqrt(0.305))
-    assert first["stability"]["minimum_pairwise_jaccard_across_questions"] == 0.85
+    assert first["stability"]["minimum_pairwise_jaccard_across_questions"] == 1.0
     assert first["threshold_inputs"] == {
         "lds_point_at_least_0_5": True,
         "lds_95_lower_bound_above_0_2": True,
@@ -176,7 +196,7 @@ def test_aggregate_fidelity_uses_component_bootstrap_rmse_and_worst_stability() 
 def test_aggregate_fidelity_keeps_undefined_inputs_explicit_and_nonpassing() -> None:
     fidelities, stabilities = _artifacts()
     fidelities[1] = _fidelity("q2", None, 0.4, 0.6)
-    stabilities[1] = _stability("q2", None)
+    stabilities[1] = _stability("q2", undefined=True)
 
     result = task9_attribution.aggregate_contextcite_admission_metrics(
         fidelities,
@@ -247,7 +267,7 @@ def test_aggregate_fidelity_rejects_rehashed_schema_scalar_identity_and_partitio
     invalid.append((fidelities, negative_jaccard_stability, (("q1",), ("q2",))))
 
     other_stability = deepcopy(stabilities)
-    other_stability[1] = _stability("q2", 0.85)
+    other_stability[1] = _stability("q2")
     other_stability[1]["attribution_identity"] = _identity("q2", boundary="B_20")
     other_stability[1]["attribution_identity_sha256"] = other_stability[1]["attribution_identity"][
         "attribution_identity_sha256"
@@ -269,3 +289,90 @@ def test_aggregate_fidelity_rejects_rehashed_schema_scalar_identity_and_partitio
                 draws=20,
                 seed=3,
             )
+
+
+def _rehash_refit_and_stability(stability: dict[str, object], refit_index: int) -> None:
+    refit = stability["refits"][refit_index]
+    refit["refit_sha256"] = task9_attribution._canonical_sha256(
+        {key: value for key, value in refit.items() if key != "refit_sha256"}
+    )
+    stability["stability_sha256"] = task9_attribution._canonical_sha256(
+        {key: value for key, value in stability.items() if key != "stability_sha256"}
+    )
+
+
+def test_aggregate_fidelity_reconstructs_stability_instead_of_trusting_self_rehashes() -> None:
+    fidelities, stabilities = _artifacts()
+    invalid = []
+
+    schedule = deepcopy(stabilities)
+    schedule[0]["refits"][0]["resample_indices"] = [0] * 64
+    schedule[0]["refits"][0]["resample_indices_sha256"] = task9_attribution._canonical_sha256(
+        schedule[0]["refits"][0]["resample_indices"]
+    )
+    _rehash_refit_and_stability(schedule[0], 0)
+    invalid.append(schedule)
+
+    coefficients = deepcopy(stabilities)
+    coefficients[0]["refits"][0]["coefficients"]["region-z"] = -10.0
+    coefficients[0]["refits"][0]["coefficients_sha256"] = task9_attribution._canonical_sha256(
+        coefficients[0]["refits"][0]["coefficients"]
+    )
+    _rehash_refit_and_stability(coefficients[0], 0)
+    invalid.append(coefficients)
+
+    selections = deepcopy(stabilities)
+    selections[0]["refits"][0]["top_source_ids"] = ["region-m"]
+    selections[0]["refits"][0]["top_source_ids_sha256"] = task9_attribution._canonical_sha256(
+        selections[0]["refits"][0]["top_source_ids"]
+    )
+    _rehash_refit_and_stability(selections[0], 0)
+    invalid.append(selections)
+
+    pair_rows = deepcopy(stabilities)
+    pair_rows[0]["top_selection_pairwise"][0]["jaccard"] = 0.5
+    pair_rows[0]["top_selection_summary"] = _summary([0.5, *([1.0] * 9)])
+    pair_rows[0]["stability_sha256"] = task9_attribution._canonical_sha256(
+        {key: value for key, value in pair_rows[0].items() if key != "stability_sha256"}
+    )
+    invalid.append(pair_rows)
+
+    coefficient_pairs = deepcopy(stabilities)
+    coefficient_pairs[0]["coefficient_pairwise"][0]["spearman"] = 0.0
+    coefficient_pairs[0]["coefficient_summary"] = _summary([0.0, *([0.9999999999999998] * 9)])
+    coefficient_pairs[0]["stability_sha256"] = task9_attribution._canonical_sha256(
+        {key: value for key, value in coefficient_pairs[0].items() if key != "stability_sha256"}
+    )
+    invalid.append(coefficient_pairs)
+
+    for candidate in invalid:
+        with pytest.raises(ValueError):
+            task9_attribution.aggregate_contextcite_admission_metrics(
+                fidelities,
+                candidate,
+                support_components=(("q1",), ("q2",)),
+                draws=20,
+                seed=3,
+            )
+
+
+def test_aggregate_fidelity_accepts_canonical_json_key_reordering() -> None:
+    fidelities, stabilities = _artifacts()
+    serialized_fidelities = json.loads(json.dumps(fidelities, sort_keys=True))
+    serialized_stabilities = json.loads(json.dumps(stabilities, sort_keys=True))
+
+    expected = task9_attribution.aggregate_contextcite_admission_metrics(
+        fidelities,
+        stabilities,
+        support_components=(("q1",), ("q2",)),
+        draws=20,
+        seed=3,
+    )
+    actual = task9_attribution.aggregate_contextcite_admission_metrics(
+        serialized_fidelities,
+        serialized_stabilities,
+        support_components=(("q1",), ("q2",)),
+        draws=20,
+        seed=3,
+    )
+    assert actual == expected
