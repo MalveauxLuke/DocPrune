@@ -676,9 +676,7 @@ def test_gate_manifest_seals_qid_shards_policy_matrices_and_gpu_roles(tmp_path: 
 
 def test_task6_smoke_launcher_binds_execution_checkout_and_exact_a100_40_memory() -> None:
     matrix = Path("examples/run_task6_matrix.py").read_text(encoding="utf-8")
-    launcher = Path("examples/sbatch/34_docprune_task6_smoke.sbatch").read_text(
-        encoding="utf-8"
-    )
+    launcher = Path("examples/sbatch/34_docprune_task6_smoke.sbatch").read_text(encoding="utf-8")
 
     assert 'parser.add_argument("--runtime-dir", type=Path, required=True)' in matrix
     assert 'parser.add_argument("--runtime-commit", required=True)' in matrix
@@ -728,6 +726,10 @@ def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
 
     assert "${PYTHON:=" not in launcher
     assert "readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python" in launcher
+    assert "readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-task6-clean-20260828" in launcher
+    assert (
+        'test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"'
+    ) in launcher
     assert (
         "readonly RUN_CONFIG_SHA256="
         "b9a6668aaf70c6059b175d18e29bc0082f76231d233a4d993b93fcb55ebbbb8f"
@@ -737,12 +739,10 @@ def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
         "ffa5979b3bf157adefcc132b0438af295ddafb2243377db4cdb8fcb8eaafe5da"
     ) in launcher
     assert (
-        "readonly CONFIG_SHA256="
-        "82463d2ef3296a199521f3f637b256341aad7938eb199cb55c6249debfea44aa"
+        "readonly CONFIG_SHA256=82463d2ef3296a199521f3f637b256341aad7938eb199cb55c6249debfea44aa"
     ) in launcher
     assert 'test "$(sha256sum "$RUN_CONFIG" | cut -d\' \' -f1)" = "$RUN_CONFIG_SHA256"' in launcher
     assert (
-        'test "$(sha256sum "$INDEX_MANIFEST" | cut -d\' \' -f1)" '
-        '= "$INDEX_MANIFEST_SHA256"'
+        'test "$(sha256sum "$INDEX_MANIFEST" | cut -d\' \' -f1)" = "$INDEX_MANIFEST_SHA256"'
     ) in launcher
     assert 'test "$(sha256sum "$CONFIG" | cut -d\' \' -f1)" = "$CONFIG_SHA256"' in launcher

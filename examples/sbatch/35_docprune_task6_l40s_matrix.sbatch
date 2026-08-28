@@ -38,7 +38,7 @@ readonly CONFIG_SHA256=82463d2ef3296a199521f3f637b256341aad7938eb199cb55c6249deb
 readonly ENV_DIR=/home/lmalveau/mamba-envs/docprune-sol
 readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python
 readonly PDFTOOLS_DIR=/home/lmalveau/mamba-envs/m3docvqa-acquisition
-readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-benchmark-29e6ac2
+readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-task6-clean-20260828
 readonly M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 SHARD_NAME="$(printf 'shard-%04d' "$SLURM_ARRAY_TASK_ID")"
 readonly SHARD_NAME
