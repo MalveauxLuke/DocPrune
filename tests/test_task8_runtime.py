@@ -15,7 +15,12 @@ from docprune.task6_runtime import (
     FixedPageQuestion,
     FixedPageRecord,
 )
-from docprune.task8_runtime import load_task8_smoke_inputs, seal_task8_smoke_inputs
+from docprune.task8_runtime import (
+    finalize_task8_mineru_smoke,
+    load_task8_smoke_inputs,
+    prepare_task8_mineru_smoke,
+    seal_task8_smoke_inputs,
+)
 
 
 def _sha(path: Path) -> str:
@@ -184,3 +189,294 @@ def test_smoke_input_seal_does_not_replace_destination_created_during_staging(
         )
     assert (output / "owner-marker").read_text() == "preexisting"
     assert not (output / "smoke-input-manifest.json").exists()
+
+
+def _write_mineru_contract(
+    tmp_path: Path,
+) -> tuple[Path, str, Path, str, Path, Path, str]:
+    model = tmp_path / "model"
+    model.mkdir()
+    weights = model / "model.safetensors"
+    weights.write_bytes(b"pinned model")
+    model_config = model / "config.json"
+    model_config.write_bytes(b"pinned config")
+    config = tmp_path / "mineru-config.json"
+    config.write_text(
+        json.dumps({"models-dir": {"vlm": str(model)}}, sort_keys=True, separators=(",", ":")),
+        encoding="utf-8",
+    )
+    config_sha = _sha(config)
+    tool = tmp_path / "mineru-tool.json"
+    tool.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "pinned-mineru-tool",
+                "backend": "vlm",
+                "version": "3.0.9",
+                "repository_id": "https://github.com/opendatalab/MinerU",
+                "repository_revision": "d9cd58add047c2364c1198eefcb1ee9cd63a971a",
+                "model_repository_id": "opendatalab/MinerU2.5-Pro-2604-1.2B",
+                "model_revision": "d3f5e08d073c21466bbabe21c71bb1e9c2e595da",
+                "configuration_path": str(config),
+                "configuration_sha256": config_sha,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    inventory = tmp_path / "model-sha256.txt"
+    inventory.write_text(
+        "".join(f"{_sha(path)}  {path}\n" for path in sorted((model_config, weights))),
+        encoding="utf-8",
+    )
+    return config, config_sha, tool, _sha(tool), weights, inventory, _sha(inventory)
+
+
+def _write_middle(path: Path, *, version: str = "3.0.9") -> None:
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "_backend": "vlm",
+                "_version_name": version,
+                "pdf_info": [
+                    {
+                        "page_idx": 0,
+                        "page_size": [8, 6],
+                        "para_blocks": [{"type": "text", "bbox": [0, 0, 8, 6]}],
+                    }
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_mineru_smoke_prepare_and_finalize_authenticate_exact_stage_contract(
+    tmp_path: Path,
+) -> None:
+    fixture_path, fixture_sha, images = _fixture(tmp_path)
+    sealed = tmp_path / "sealed"
+    smoke = seal_task8_smoke_inputs(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha,
+        qid="q-1",
+        output_root=sealed,
+        runtime_commit="a" * 40,
+        render_page=lambda _path, page: images[page - 3].copy(),
+    )
+    smoke_path = sealed / "smoke-input-manifest.json"
+    config, config_sha, tool, tool_sha, weights, inventory, inventory_sha = _write_mineru_contract(
+        tmp_path
+    )
+    model_config = weights.parent / "config.json"
+    original_model_config = model_config.read_bytes()
+    model_config.write_bytes(b"drifted config")
+    drift_job = tmp_path / "drift-job"
+    drift_job.mkdir()
+    with pytest.raises(ValueError, match="snapshot file SHA-256 mismatch"):
+        prepare_task8_mineru_smoke(
+            smoke_input_manifest_path=smoke_path,
+            smoke_input_manifest_sha256=_sha(smoke_path),
+            configuration_path=config,
+            configuration_sha256=config_sha,
+            tool_manifest_path=tool,
+            tool_manifest_sha256=tool_sha,
+            model_weights_path=weights,
+            model_weights_sha256=_sha(weights),
+            model_inventory_path=inventory,
+            model_inventory_sha256=inventory_sha,
+            job_root=drift_job,
+            output_dir=drift_job / "mineru-output",
+            runtime_commit="f" * 40,
+        )
+    assert not (drift_job / "run-manifest.json").exists()
+    model_config.write_bytes(original_model_config)
+    job_root = tmp_path / "job"
+    job_root.mkdir()
+    output = job_root / "mineru-output"
+    gpu = job_root / "gpu.json"
+    gpu.write_text(
+        json.dumps(
+            {"name": "NVIDIA L40S", "memory_total_mib": 46068, "driver_version": "1"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+
+    prepared = prepare_task8_mineru_smoke(
+        smoke_input_manifest_path=smoke_path,
+        smoke_input_manifest_sha256=_sha(smoke_path),
+        configuration_path=config,
+        configuration_sha256=config_sha,
+        tool_manifest_path=tool,
+        tool_manifest_sha256=tool_sha,
+        model_weights_path=weights,
+        model_weights_sha256=_sha(weights),
+        model_inventory_path=inventory,
+        model_inventory_sha256=inventory_sha,
+        job_root=job_root,
+        output_dir=output,
+        runtime_commit="f" * 40,
+    )
+
+    assert prepared["status"] == "prepared"
+    assert prepared["engine_expected"] == "transformers"
+    assert prepared["model_inventory_count"] == 2
+    assert prepared["global_index_loaded"] is False
+    assert prepared["retrieval_run"] is False
+    assert [Path(row["path"]).name for row in prepared["inputs"]] == [
+        "page-00.png",
+        "page-01.png",
+    ]
+    assert not output.exists()
+    assert (job_root / "run-manifest.json").is_file()
+    with pytest.raises(FileExistsError):
+        prepare_task8_mineru_smoke(
+            smoke_input_manifest_path=smoke_path,
+            smoke_input_manifest_sha256=_sha(smoke_path),
+            configuration_path=config,
+            configuration_sha256=config_sha,
+            tool_manifest_path=tool,
+            tool_manifest_sha256=tool_sha,
+            model_weights_path=weights,
+            model_weights_sha256=_sha(weights),
+            model_inventory_path=inventory,
+            model_inventory_sha256=inventory_sha,
+            job_root=job_root,
+            output_dir=output,
+            runtime_commit="f" * 40,
+        )
+
+    for page in smoke["pages"]:
+        stem = Path(page["mineru_input_path"]).stem
+        _write_middle(output / stem / "vlm" / f"{stem}_middle.json")
+    (output / "page-00" / "vlm" / "page-00.md").write_text("parsed", encoding="utf-8")
+
+    completed = finalize_task8_mineru_smoke(
+        job_root=job_root,
+        output_dir=output,
+        gpu_manifest_path=gpu,
+        gpu_manifest_sha256=_sha(gpu),
+    )
+
+    assert completed["status"] == "complete"
+    assert completed["raw_middle_json_count"] == 2
+    assert completed["global_index_loaded"] is False
+    assert completed["retrieval_run"] is False
+    assert [row["region_count"] for row in completed["artifacts"]] == [1, 1]
+    assert (job_root / "completion-manifest.json").is_file()
+    with pytest.raises(FileExistsError):
+        finalize_task8_mineru_smoke(
+            job_root=job_root,
+            output_dir=output,
+            gpu_manifest_path=gpu,
+            gpu_manifest_sha256=_sha(gpu),
+        )
+
+
+def test_mineru_smoke_finalize_rejects_missing_or_wrong_output_without_completion(
+    tmp_path: Path,
+) -> None:
+    fixture_path, fixture_sha, images = _fixture(tmp_path)
+    sealed = tmp_path / "sealed"
+    seal_task8_smoke_inputs(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha,
+        qid="q-1",
+        output_root=sealed,
+        runtime_commit="a" * 40,
+        render_page=lambda _path, page: images[page - 3].copy(),
+    )
+    smoke_path = sealed / "smoke-input-manifest.json"
+    config, config_sha, tool, tool_sha, weights, inventory, inventory_sha = _write_mineru_contract(
+        tmp_path
+    )
+    job_root = tmp_path / "job"
+    job_root.mkdir()
+    output = job_root / "mineru-output"
+    gpu = job_root / "gpu.json"
+    gpu.write_text(
+        json.dumps(
+            {"name": "GPU", "memory_total_mib": 24000, "driver_version": "1"},
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    prepare_task8_mineru_smoke(
+        smoke_input_manifest_path=smoke_path,
+        smoke_input_manifest_sha256=_sha(smoke_path),
+        configuration_path=config,
+        configuration_sha256=config_sha,
+        tool_manifest_path=tool,
+        tool_manifest_sha256=tool_sha,
+        model_weights_path=weights,
+        model_weights_sha256=_sha(weights),
+        model_inventory_path=inventory,
+        model_inventory_sha256=inventory_sha,
+        job_root=job_root,
+        output_dir=output,
+        runtime_commit="f" * 40,
+    )
+    run_path = job_root / "run-manifest.json"
+    original_run = run_path.read_bytes()
+    tampered_run = json.loads(original_run)
+    tampered_run["qid"] = "wrong-qid"
+    unsigned = {key: value for key, value in tampered_run.items() if key != "manifest_sha256"}
+    tampered_run["manifest_sha256"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    run_path.write_text(
+        json.dumps(tampered_run, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="identity does not replay"):
+        finalize_task8_mineru_smoke(
+            job_root=job_root,
+            output_dir=output,
+            gpu_manifest_path=gpu,
+            gpu_manifest_sha256=_sha(gpu),
+        )
+    assert not (job_root / "completion-manifest.json").exists()
+    run_path.write_bytes(original_run)
+    _write_middle(output / "page-00" / "vlm" / "page-00_middle.json", version="3.1.0")
+
+    with pytest.raises(ValueError, match="exact expected middle JSON set|backend or version"):
+        finalize_task8_mineru_smoke(
+            job_root=job_root,
+            output_dir=output,
+            gpu_manifest_path=gpu,
+            gpu_manifest_sha256=_sha(gpu),
+        )
+    assert not (job_root / "completion-manifest.json").exists()
+
+
+def test_task8_mineru_launcher_is_short_offline_fixed_page_and_no_requeue() -> None:
+    launcher = Path("examples/sbatch/36_docprune_task8_mineru_smoke.sbatch").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#SBATCH --time=00:20:00" in launcher
+    assert "#SBATCH --no-requeue" in launcher
+    assert "#SBATCH --array" not in launcher
+    assert "--backend vlm-auto-engine" in launcher
+    assert "MINERU_MODEL_SOURCE=local" in launcher
+    assert "MINERU_API_MAX_CONCURRENT_REQUESTS=1" in launcher
+    assert 'find_spec("vllm") is None' in launcher
+    assert 'find_spec("lmdeploy") is None' in launcher
+    assert 'PYTHONPATH="$MINERU_SOURCE:$RUNTIME_DIR/src"' in launcher
+    assert "print(mineru.__file__)" in launcher
+    assert 'sha256sum --quiet -c "$MODEL_INVENTORY"' in launcher
+    assert "MODEL_INVENTORY_SHA256=5ec9100c" in launcher
+    assert "HF_HUB_OFFLINE=1" in launcher
+    assert "TRANSFORMERS_OFFLINE=1" in launcher
+    assert "smoke-input-manifest.json" in launcher
+    assert "global index" not in launcher.lower()
+    assert "retrieve" not in launcher.lower()
+    assert launcher.index("prepare \\\n") < launcher.index('mkdir "$OUTPUT_DIR"')
+    assert launcher.index('mkdir "$OUTPUT_DIR"') < launcher.index('"$MINERU" \\\n')
