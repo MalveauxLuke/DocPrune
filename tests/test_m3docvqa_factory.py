@@ -31,6 +31,8 @@ from docprune.m3docvqa_factory import (
     build_workload,
     filter_samples,
     load_completed_qids,
+    load_pinned_colpali_query_encoder,
+    load_pinned_qwen_processor,
     validate_processor_contract_file,
 )
 
@@ -304,6 +306,89 @@ def test_model_loaders_explicitly_place_production_models_on_cuda(monkeypatch) -
     assert model.devices == [torch.device("cuda")]
     assert qwen_calls[0]["attn_implementation"] == "flash_attention_2"
     assert qwen_calls[0]["torch_dtype"] is torch.bfloat16
+
+
+def test_public_query_encoder_loader_wraps_only_pinned_colpali(monkeypatch) -> None:
+    model = object()
+    processor = object()
+    calls = []
+    monkeypatch.setattr(
+        factory_module,
+        "_load_colpali",
+        lambda run_config: calls.append(run_config) or (model, processor),
+    )
+
+    encoder = load_pinned_colpali_query_encoder()
+
+    assert calls == [None]
+    assert encoder.model is model
+    assert encoder.processor is processor
+
+
+def test_public_qwen_processor_loader_does_not_load_qwen_model(monkeypatch) -> None:
+    snapshot = Path("/cached/qwen-snapshot")
+    calls = []
+    tokenizer = SimpleNamespace(
+        convert_tokens_to_ids=lambda token: calls.append(("token", token)) or 151655,
+        convert_ids_to_tokens=lambda token_id: (
+            calls.append(("token-id", token_id)) or "<|image_pad|>"
+        ),
+    )
+    processor = SimpleNamespace(tokenizer=tokenizer)
+    monkeypatch.setattr(
+        factory_module,
+        "_cached_snapshot",
+        lambda repo, revision: (calls.append(("snapshot", repo, revision)) or snapshot),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoConfig=SimpleNamespace(
+                from_pretrained=lambda path: (
+                    calls.append(("config", path)) or SimpleNamespace(image_token_id=151655)
+                )
+            ),
+            AutoProcessor=SimpleNamespace(
+                from_pretrained=lambda path: calls.append(("processor", path)) or processor
+            ),
+        ),
+    )
+
+    assert load_pinned_qwen_processor() is processor
+    assert calls == [
+        ("snapshot", QWEN_MODEL, QWEN_REVISION),
+        ("config", str(snapshot)),
+        ("processor", str(snapshot)),
+        ("token", "<|image_pad|>"),
+        ("token-id", 151655),
+    ]
+    assert processor.image_token_id == 151655
+
+
+def test_public_qwen_processor_loader_rejects_config_tokenizer_identity_drift(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(factory_module, "_cached_snapshot", lambda *_: Path("/cached/qwen"))
+    processor = SimpleNamespace(
+        tokenizer=SimpleNamespace(
+            convert_tokens_to_ids=lambda _token: 7,
+            convert_ids_to_tokens=lambda _token_id: "<|wrong|>",
+        )
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoConfig=SimpleNamespace(
+                from_pretrained=lambda _path: SimpleNamespace(image_token_id=151655)
+            ),
+            AutoProcessor=SimpleNamespace(from_pretrained=lambda _path: processor),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="image token"):
+        load_pinned_qwen_processor()
 
 
 def test_model_loaders_fail_before_import_when_cuda_is_unavailable(monkeypatch) -> None:

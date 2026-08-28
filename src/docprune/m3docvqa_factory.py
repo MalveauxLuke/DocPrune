@@ -1090,12 +1090,16 @@ def _task6_execution_identity(
     """Separate historical feature construction from the code executing Task 6."""
 
     feature_commit = feature_identity.get("runtime_commit")
-    if not isinstance(feature_commit, str) or len(feature_commit) != 40 or any(
-        character not in "0123456789abcdefABCDEF" for character in feature_commit
+    if (
+        not isinstance(feature_commit, str)
+        or len(feature_commit) != 40
+        or any(character not in "0123456789abcdefABCDEF" for character in feature_commit)
     ):
         raise ValueError("feature-build runtime commit must be a 40-character hexadecimal hash")
-    if not isinstance(execution_runtime_commit, str) or len(execution_runtime_commit) != 40 or any(
-        character not in "0123456789abcdefABCDEF" for character in execution_runtime_commit
+    if (
+        not isinstance(execution_runtime_commit, str)
+        or len(execution_runtime_commit) != 40
+        or any(character not in "0123456789abcdefABCDEF" for character in execution_runtime_commit)
     ):
         raise ValueError("execution runtime commit must be a 40-character hexadecimal hash")
     return {
@@ -1197,6 +1201,31 @@ def _load_qwen(run_config: object) -> tuple[object, object]:
     _validate_qwen_generation_identity(model)
     processor = AutoProcessor.from_pretrained(str(snapshot))
     return model, processor
+
+
+def load_pinned_qwen_processor() -> object:
+    """Load only the pinned cached Qwen processor, never the generation model."""
+
+    from transformers import AutoConfig, AutoProcessor
+
+    snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
+    config = AutoConfig.from_pretrained(str(snapshot))
+    processor = AutoProcessor.from_pretrained(str(snapshot))
+    image_token_id = getattr(config, "image_token_id", None)
+    tokenizer = getattr(processor, "tokenizer", None)
+    convert_token = getattr(tokenizer, "convert_tokens_to_ids", None)
+    convert_id = getattr(tokenizer, "convert_ids_to_tokens", None)
+    if (
+        not isinstance(image_token_id, int)
+        or isinstance(image_token_id, bool)
+        or not callable(convert_token)
+        or not callable(convert_id)
+        or convert_token("<|image_pad|>") != image_token_id
+        or convert_id(image_token_id) != "<|image_pad|>"
+    ):
+        raise ValueError("pinned Qwen config and tokenizer image token identity mismatch")
+    setattr(processor, "image_token_id", image_token_id)
+    return processor
 
 
 def _require_benchmark_cuda() -> torch.device:
@@ -1340,6 +1369,13 @@ class _ColPaliQueryAdapter:
         if attention_mask.shape != output.shape[:2]:
             raise ValueError("ColPali query attention mask must match query embeddings")
         return [rows[mask.bool()] for rows, mask in zip(output, attention_mask, strict=True)]
+
+
+def load_pinned_colpali_query_encoder() -> object:
+    """Load the pinned ColPali model as the query-only retrieval adapter."""
+
+    model, processor = _load_colpali(None)
+    return _ColPaliQueryAdapter(model, processor)
 
 
 def _load_task6_fixed_page_samples(
@@ -2051,9 +2087,7 @@ def build_aggregate_score_top_m_workload(**kwargs: object) -> object:
     return _build_corrected_policy_workload(aggregate_score_top_m_policy(), **kwargs)
 
 
-def _task6_environment_identity() -> tuple[
-    CTPPolicy, Path, str, object | None, int | None, str
-]:
+def _task6_environment_identity() -> tuple[CTPPolicy, Path, str, object | None, int | None, str]:
     """Resolve the closed Task 6 launcher identity without loading any model."""
 
     raw_fixture = os.environ.get("DOCPRUNE_TASK6_FIXED_PAGE_FIXTURE")
@@ -2139,6 +2173,8 @@ __all__ = [
     "controlled_policy_identity",
     "build_workload",
     "filter_samples",
+    "load_pinned_colpali_query_encoder",
+    "load_pinned_qwen_processor",
     "load_completed_qids",
     "validate_processor_contract_file",
 ]
