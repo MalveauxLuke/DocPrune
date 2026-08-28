@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -114,14 +115,52 @@ def _prompt(processor: object, page_count: int, question: str) -> str:
     return str(apply(messages, tokenize=False, add_generation_prompt=True))
 
 
+def prepare_task7_likelihood_target_for_question(
+    processor: object,
+    *,
+    page_count: int,
+    question: str,
+    accepted_references: Sequence[str],
+) -> dict[str, object]:
+    """Derive a Task 7 target from the production prompt constructor only."""
+
+    if type(page_count) is not int or page_count <= 0:
+        raise ValueError("Task 7 likelihood target requires a positive page count")
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is None:
+        raise ValueError("Task 7 likelihood target requires the production tokenizer")
+    from docprune.task7_runtime import prepare_task7_likelihood_target
+
+    return prepare_task7_likelihood_target(
+        tokenizer,
+        accepted_references,
+        assistant_prompt=_prompt(processor, page_count, question),
+    )
+
+
 def _prepare_batch(processor: object, images: Sequence[object], question: str) -> dict[str, object]:
+    return _prepare_batch_with_prompt(processor, images, question)[1]
+
+
+def _prepare_batch_with_prompt(
+    processor: object, images: Sequence[object], question: str
+) -> tuple[str, dict[str, object]]:
     if not images:
         raise ValueError("at least one page image is required")
     prompt = _prompt(processor, len(images), question)
     call = getattr(processor, "__call__", None)
     if not callable(call):
         raise ValueError("Qwen processor is not callable")
-    return dict(call(text=[prompt], images=list(images), padding=True, return_tensors="pt"))
+    return prompt, dict(call(text=[prompt], images=list(images), padding=True, return_tensors="pt"))
+
+
+def _input_ids_identity(input_ids: torch.Tensor) -> tuple[tuple[int, int], str]:
+    canonical = input_ids.detach().to(device="cpu", dtype=torch.int64).contiguous()
+    if canonical.ndim != 2 or canonical.shape[0] != 1 or not canonical.shape[1]:
+        raise ValueError("Qwen input_ids must have nonempty batch-one shape")
+    return (int(canonical.shape[0]), int(canonical.shape[1])), hashlib.sha256(
+        canonical.numpy().tobytes()
+    ).hexdigest()
 
 
 def _grid(batch: Mapping[str, object]) -> torch.Tensor:
@@ -346,6 +385,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         selection_context: PolicySelectionContext | None = None,
         policy_experiment_version: object | None = None,
         policy_repetition: object | None = None,
+        teacher_forced_target_token_ids: tuple[tuple[int, ...], ...] | None = None,
     ) -> None:
         del colpali_model, colpali_processor
         super().__init__(model=model, processor=processor, max_new_tokens=max_new_tokens)
@@ -361,6 +401,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         self.selection_context = selection_context
         self._policy_experiment_version = policy_experiment_version
         self._policy_repetition = policy_repetition
+        self.teacher_forced_target_token_ids = teacher_forced_target_token_ids
         if self.forced_intervention is not None and self.ctp_policy is not None:
             raise ValueError("forced intervention and corrected CTP policy cannot be combined")
         if (
@@ -468,12 +509,16 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         measurement_device = _begin_gpu_measurement(self.model)
         prepared = [prepare_qwen_page(self.processor, image) for image in images]
         qwen_images = [prepared_raster_image(page) for page in prepared]
-        batch = _prepare_batch(self.processor, qwen_images, question)
+        prompt, batch = _prepare_batch_with_prompt(self.processor, qwen_images, question)
         grid = _grid(batch)
         _validate_prepared_batch(prepared, batch, self.model, self.processor)
         model_device = _model_device(self.model)
         moved = _move_batch(batch, model_device)
         input_ids = torch.as_tensor(_value(moved, "input_ids"), dtype=torch.long)
+        capture_likelihood = self.teacher_forced_target_token_ids is not None
+        input_ids_shape, input_ids_sha256 = (
+            _input_ids_identity(input_ids) if capture_likelihood else (None, None)
+        )
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         attention_mask = torch.as_tensor(_value(moved, "attention_mask"), dtype=torch.long)
         pixel_values = torch.as_tensor(_value(moved, "pixel_values"))
@@ -540,6 +585,10 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 generation_kwargs["ctp_policy"] = self.ctp_policy
             if self.selection_context is not None:
                 generation_kwargs["selection_context"] = self.selection_context
+            if self.teacher_forced_target_token_ids is not None:
+                generation_kwargs["teacher_forced_target_token_ids"] = (
+                    self.teacher_forced_target_token_ids
+                )
             result = adapter.generate_with_trace(
                 **generation_kwargs,
             )
@@ -560,4 +609,8 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             max(float(result.decoder_seconds), 1e-12),
             result.forced_intervention,
             result.policy_selection,
+            result.teacher_forced_loglikelihoods,
+            hashlib.sha256(prompt.encode("utf-8")).hexdigest() if capture_likelihood else None,
+            input_ids_shape,
+            input_ids_sha256,
         )

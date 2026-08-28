@@ -134,6 +134,10 @@ class AnswerOutput:
     decoder_seconds: float = 0.0
     forced_intervention: ForcedInterventionRecord | None = None
     policy_selection: CTPSelectionRecord | None = None
+    teacher_forced_loglikelihoods: tuple[float, ...] | None = None
+    assistant_prompt_sha256: str | None = None
+    prefill_input_ids_shape: tuple[int, int] | None = None
+    prefill_input_ids_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +151,10 @@ class SampleResult:
     timing: SampleTiming
     forced_intervention: ForcedInterventionRecord | None = None
     policy_selection: CTPSelectionRecord | None = None
+    teacher_forced_loglikelihoods: tuple[float, ...] | None = None
+    assistant_prompt_sha256: str | None = None
+    prefill_input_ids_shape: tuple[int, int] | None = None
+    prefill_input_ids_sha256: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -252,6 +260,10 @@ class DocPruneM3DocRAG:
             ),
             forced_intervention=answer.forced_intervention,
             policy_selection=answer.policy_selection,
+            teacher_forced_loglikelihoods=answer.teacher_forced_loglikelihoods,
+            assistant_prompt_sha256=answer.assistant_prompt_sha256,
+            prefill_input_ids_shape=answer.prefill_input_ids_shape,
+            prefill_input_ids_sha256=answer.prefill_input_ids_sha256,
         )
 
     def warmup(self, sample: SampleInput | Mapping[str, Any]) -> None:

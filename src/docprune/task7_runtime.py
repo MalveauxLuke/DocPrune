@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +37,12 @@ _TASK7_LIKELIHOOD_RECORD_KEYS = {
     "intervention_name",
     "target",
     "likelihood_target_sha256",
+    "fixture_sha256",
+    "run_manifest_sha256",
+    "source_result_sha256",
+    "assistant_prompt_sha256",
+    "prefill_input_ids_shape",
+    "prefill_input_ids_sha256",
     "per_reference_mean_loglikelihood",
     "best_reference_index",
     "best_reference_mean_loglikelihood",
@@ -238,6 +246,11 @@ def build_task7_likelihood_record(
     intervention_name: str,
     target: Mapping[str, object],
     per_reference_mean_loglikelihood: Sequence[float],
+    fixture_sha256: str,
+    run_manifest_sha256: str,
+    source_result_sha256: str,
+    prefill_input_ids_shape: Sequence[int],
+    prefill_input_ids_sha256: str,
 ) -> dict[str, object]:
     """Build one authenticated intervention likelihood record."""
 
@@ -246,6 +259,21 @@ def build_task7_likelihood_record(
     if not isinstance(intervention_name, str) or not intervention_name:
         raise ValueError("Task 7 likelihood record requires an intervention name")
     validated_target = _validated_likelihood_target(target)
+    input_shape = tuple(prefill_input_ids_shape)
+    if (
+        any(
+            not _is_sha256(value)
+            for value in (
+                fixture_sha256,
+                run_manifest_sha256,
+                source_result_sha256,
+                prefill_input_ids_sha256,
+            )
+        )
+        or len(input_shape) != 2
+        or any(type(value) is not int or value <= 0 for value in input_shape)
+    ):
+        raise ValueError("Task 7 likelihood provenance identity is invalid")
     values = tuple(per_reference_mean_loglikelihood)
     if len(values) != len(validated_target["accepted_references"]) or any(
         type(value) not in {int, float} or not math.isfinite(float(value)) for value in values
@@ -258,6 +286,12 @@ def build_task7_likelihood_record(
         "intervention_name": intervention_name,
         "target": validated_target,
         "likelihood_target_sha256": validated_target["likelihood_target_sha256"],
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_sha256": run_manifest_sha256,
+        "source_result_sha256": source_result_sha256,
+        "assistant_prompt_sha256": validated_target["assistant_prompt_sha256"],
+        "prefill_input_ids_shape": list(input_shape),
+        "prefill_input_ids_sha256": prefill_input_ids_sha256,
         "per_reference_mean_loglikelihood": [float(value) for value in values],
         "best_reference_index": best_index,
         "best_reference_mean_loglikelihood": float(values[best_index]),
@@ -276,10 +310,68 @@ def _validated_likelihood_record(value: object) -> dict[str, object]:
         intervention_name=record.get("intervention_name"),
         target=record.get("target"),
         per_reference_mean_loglikelihood=record.get("per_reference_mean_loglikelihood", ()),
+        fixture_sha256=record.get("fixture_sha256"),
+        run_manifest_sha256=record.get("run_manifest_sha256"),
+        source_result_sha256=record.get("source_result_sha256"),
+        prefill_input_ids_shape=record.get("prefill_input_ids_shape", ()),
+        prefill_input_ids_sha256=record.get("prefill_input_ids_sha256"),
     )
     if not _is_sha256(digest) or digest != rebuilt["likelihood_record_sha256"] or value != rebuilt:
         raise ValueError("Task 7 likelihood record identity is invalid")
     return rebuilt
+
+
+def write_task7_likelihood_artifact(path: Path, rows: Sequence[Mapping[str, object]]) -> str:
+    """Atomically publish the exact reference/B_input likelihood pair once."""
+
+    destination = Path(path)
+    if (
+        not destination.is_absolute()
+        or destination.parent.is_symlink()
+        or not destination.parent.is_dir()
+    ):
+        raise ValueError("Task 7 likelihood destination requires an absolute real parent")
+    validated = tuple(_validated_likelihood_record(row) for row in rows)
+    if (
+        len(validated) != 2
+        or tuple(row["intervention_name"] for row in validated)
+        != ("btp-qtp-no-ctp", "all-visual-drop-B_input")
+        or validated[0]["qid"] != validated[1]["qid"]
+        or validated[0]["target"] != validated[1]["target"]
+        or validated[0]["fixture_sha256"] != validated[1]["fixture_sha256"]
+        or validated[0]["run_manifest_sha256"] != validated[1]["run_manifest_sha256"]
+        or validated[0]["assistant_prompt_sha256"] != validated[1]["assistant_prompt_sha256"]
+        or validated[0]["prefill_input_ids_shape"] != validated[1]["prefill_input_ids_shape"]
+        or validated[0]["prefill_input_ids_sha256"] != validated[1]["prefill_input_ids_sha256"]
+    ):
+        raise ValueError("Task 7 likelihoods must match reference and B_input in order")
+    payload = b"".join(
+        (json.dumps(row, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode(
+            "utf-8"
+        )
+        for row in validated
+    )
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, destination, follow_symlinks=False)
+        directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        return hashlib.sha256(payload).hexdigest()
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +460,34 @@ def bind_task7_result_evidence(
     for key, value in evidence.items():
         if key in record and record[key] != value:
             raise ValueError(f"Task 7 result attempts to replace immutable evidence: {key}")
+        record[key] = value
+
+
+def bind_task7_prefill_identity(
+    record: dict[str, object],
+    *,
+    assistant_prompt_sha256: str,
+    prefill_input_ids_shape: Sequence[int],
+    prefill_input_ids_sha256: str,
+) -> None:
+    """Attach the exact complete prompt and processor input identity once."""
+
+    shape = tuple(prefill_input_ids_shape)
+    if (
+        not _is_sha256(assistant_prompt_sha256)
+        or not _is_sha256(prefill_input_ids_sha256)
+        or len(shape) != 2
+        or any(type(value) is not int or value <= 0 for value in shape)
+    ):
+        raise ValueError("Task 7 prefill identity is invalid")
+    evidence = {
+        "assistant_prompt_sha256": assistant_prompt_sha256,
+        "prefill_input_ids_shape": list(shape),
+        "prefill_input_ids_sha256": prefill_input_ids_sha256,
+    }
+    for key, value in evidence.items():
+        if key in record and record[key] != value:
+            raise ValueError(f"Task 7 result attempts to replace immutable prefill identity: {key}")
         record[key] = value
 
 
@@ -549,10 +669,67 @@ def _task7_result_score(
     return score["list_em"] == 1.0, score["list_f1"] * 100.0
 
 
+def _validated_task7_run_manifest(
+    path: Path,
+    *,
+    file_sha256: str,
+    fixture_path: Path,
+    fixture_sha256: str,
+    results_path: Path,
+    likelihood_path: Path,
+) -> dict[str, object]:
+    manifest_file = _authenticated_file(path, file_sha256, "Task 7 run manifest")
+    try:
+        value = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("Task 7 run manifest is not valid JSON") from error
+    if not isinstance(value, Mapping):
+        raise ValueError("Task 7 run manifest is not an object")
+    manifest = dict(value)
+    digest = manifest.pop("run_manifest_sha256", None)
+    if not _is_sha256(digest) or digest != _canonical_sha256(manifest):
+        raise ValueError("Task 7 run manifest identity is invalid")
+    if (
+        value.get("schema_version") != 1
+        or value.get("status") != "configured-task7-fixed-grid"
+        or value.get("matrix_kind") != "visual-state-fixed-grid"
+        or value.get("cell_count") != len(task7_intervention_matrix())
+        or value.get("fixture_path") != str(fixture_path)
+        or value.get("fixture_sha256") != fixture_sha256
+        or value.get("output") != str(results_path.parent)
+        or value.get("fixed_page_provenance") is not True
+        or value.get("global_index_loaded") is not False
+        or value.get("task7_likelihood_output") != str(likelihood_path)
+        or value.get("task7_likelihood_arms") != ["btp-qtp-no-ctp", "all-visual-drop-B_input"]
+    ):
+        raise ValueError("Task 7 run manifest does not bind the fixed-grid artifacts")
+    return dict(value)
+
+
+def _validated_result_prefill_identity(record: Mapping[str, object]) -> dict[str, object]:
+    identity = {
+        "assistant_prompt_sha256": record.get("assistant_prompt_sha256"),
+        "prefill_input_ids_shape": record.get("prefill_input_ids_shape"),
+        "prefill_input_ids_sha256": record.get("prefill_input_ids_sha256"),
+    }
+    shape = identity["prefill_input_ids_shape"]
+    if (
+        not _is_sha256(identity["assistant_prompt_sha256"])
+        or not isinstance(shape, list)
+        or len(shape) != 2
+        or any(type(value) is not int or value <= 0 for value in shape)
+        or not _is_sha256(identity["prefill_input_ids_sha256"])
+    ):
+        raise ValueError("Task 7 result has invalid prompt or prefill identity")
+    return identity
+
+
 def assemble_task7_opportunity_row_from_artifacts(
     *,
     fixture_path: Path,
     fixture_sha256: str,
+    run_manifest_path: Path,
+    run_manifest_file_sha256: str,
     results_path: Path,
     results_sha256: str,
     likelihood_path: Path,
@@ -567,6 +744,14 @@ def assemble_task7_opportunity_row_from_artifacts(
     fixture_file = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
     results_file = _authenticated_file(results_path, results_sha256, "results artifact")
     likelihood_file = _authenticated_file(likelihood_path, likelihood_sha256, "likelihood artifact")
+    run_manifest = _validated_task7_run_manifest(
+        run_manifest_path,
+        file_sha256=run_manifest_file_sha256,
+        fixture_path=fixture_file,
+        fixture_sha256=fixture_sha256,
+        results_path=results_file,
+        likelihood_path=likelihood_file,
+    )
     fixture = load_fixed_page_fixture(
         fixture_file,
         expected_sha256=fixture_sha256,
@@ -587,6 +772,8 @@ def assemble_task7_opportunity_row_from_artifacts(
     qid = next(iter(qids))
     if not qid:
         raise ValueError("Task 7 results must contain exactly one nonempty QID")
+    if run_manifest.get("qid") != qid:
+        raise ValueError("Task 7 run manifest QID does not match the results")
     fixture_question = fixture.question(qid)
     sample = fixture.selected_samples((qid,))[0]
     source = _eligible_source_row(fixture.eligible_questions_path, qid)
@@ -605,11 +792,22 @@ def assemble_task7_opportunity_row_from_artifacts(
             production=True,
             expected_policy=expected_policy,
             forbid_policy=expected_policy is None,
-            allowed_extra_fields={"matrix_cell", "matrix_kind", "intervention_name"},
+            allowed_extra_fields={"matrix_cell", "matrix_kind", "intervention_name"}
+            | (
+                {
+                    "assistant_prompt_sha256",
+                    "prefill_input_ids_shape",
+                    "prefill_input_ids_sha256",
+                }
+                if line_number <= 2
+                else set()
+            ),
             allow_zero_post_ctp=True,
         )
         validate_task7_source_identity(record, sample, fixture_question)
         validate_task7_result_record(record, cell, fixture_sha256=fixture_sha256)
+        if line_number <= 2:
+            _validated_result_prefill_identity(record)
         results_by_name[cell.name] = record
 
     likelihood_rows = tuple(
@@ -631,6 +829,26 @@ def assemble_task7_opportunity_row_from_artifacts(
 
     reference_result = results_by_name["btp-qtp-no-ctp"]
     input_result = results_by_name["all-visual-drop-B_input"]
+    for likelihood, result in zip(
+        likelihood_rows,
+        (reference_result, input_result),
+        strict=True,
+    ):
+        if (
+            likelihood["fixture_sha256"] != fixture_sha256
+            or likelihood["run_manifest_sha256"] != run_manifest["run_manifest_sha256"]
+            or likelihood["source_result_sha256"] != _canonical_sha256(result)
+        ):
+            raise ValueError("Task 7 likelihood source result identity does not match")
+        result_input = _validated_result_prefill_identity(result)
+        if (
+            likelihood["assistant_prompt_sha256"] != result_input["assistant_prompt_sha256"]
+            or likelihood["target"]["assistant_prompt_sha256"]
+            != result_input["assistant_prompt_sha256"]
+            or likelihood["prefill_input_ids_shape"] != result_input["prefill_input_ids_shape"]
+            or likelihood["prefill_input_ids_sha256"] != result_input["prefill_input_ids_sha256"]
+        ):
+            raise ValueError("Task 7 likelihood prompt or prefill identity does not match")
     reference_em, reference_f1 = _task7_result_score(reference_result, source)
     input_em, _ = _task7_result_score(input_result, source)
     reference_likelihood, input_likelihood = likelihood_rows

@@ -29,6 +29,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _canonical_sha256(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    ).hexdigest()
+
+
 def _production_all_drop_record() -> dict[str, object]:
     return {
         "question_id": "q-1",
@@ -374,6 +380,29 @@ def test_task7_source_identity_binds_question_answers_and_ordered_fixture_pages(
             task7_runtime.validate_task7_source_identity(mutated, sample, fixture_question)
 
 
+def test_task7_prefill_identity_binding_is_immutable() -> None:
+    """Catch likelihood evidence being attached to a different prompt or tokenized input."""
+
+    record = _production_all_drop_record()
+    task7_runtime.bind_task7_prefill_identity(
+        record,
+        assistant_prompt_sha256="1" * 64,
+        prefill_input_ids_shape=(1, 23),
+        prefill_input_ids_sha256="2" * 64,
+    )
+
+    assert record["assistant_prompt_sha256"] == "1" * 64
+    assert record["prefill_input_ids_shape"] == [1, 23]
+    assert record["prefill_input_ids_sha256"] == "2" * 64
+    with pytest.raises(ValueError, match="replace immutable prefill identity"):
+        task7_runtime.bind_task7_prefill_identity(
+            record,
+            assistant_prompt_sha256="3" * 64,
+            prefill_input_ids_shape=(1, 23),
+            prefill_input_ids_sha256="2" * 64,
+        )
+
+
 def test_fixed_page_matrix_runner_embeds_task7_cells_without_a_task6_policy_gate() -> None:
     """Catch making Task 7 depend on nonexistent Task 6 policy-matrix fields."""
 
@@ -388,6 +417,19 @@ def test_fixed_page_matrix_runner_embeds_task7_cells_without_a_task6_policy_gate
     assert cells == [
         {"cell": index, **cell.to_dict()} for index, cell in enumerate(task7_intervention_matrix())
     ]
+
+    record = _production_all_drop_record()
+    capture = SimpleNamespace(
+        assistant_prompt_sha256="1" * 64,
+        prefill_input_ids_shape=(1, 23),
+        prefill_input_ids_sha256="2" * 64,
+    )
+    with pytest.raises(ValueError, match="target prompt differs"):
+        module._bind_task7_likelihood_capture(
+            record,
+            capture,
+            {"assistant_prompt_sha256": "3" * 64},
+        )
 
 
 def test_fixed_page_launcher_accepts_only_the_eight_cell_task7_grid() -> None:
@@ -418,6 +460,11 @@ def test_task7_likelihood_record_uses_max_normalized_full_answer_adaptation() ->
         intervention_name="btp-qtp-no-ctp",
         target=target,
         per_reference_mean_loglikelihood=(-1.25, -0.5),
+        fixture_sha256="a" * 64,
+        run_manifest_sha256="b" * 64,
+        source_result_sha256="c" * 64,
+        prefill_input_ids_shape=(1, 17),
+        prefill_input_ids_sha256="d" * 64,
     )
 
     assert target["target_name"] == "best-reference-full-gold-sequence"
@@ -433,6 +480,10 @@ def test_task7_likelihood_record_uses_max_normalized_full_answer_adaptation() ->
     )
     assert record["best_reference_index"] == 1
     assert record["best_reference_mean_loglikelihood"] == -0.5
+    assert record["source_result_sha256"] == "c" * 64
+    assert record["assistant_prompt_sha256"] == target["assistant_prompt_sha256"]
+    assert record["prefill_input_ids_shape"] == [1, 17]
+    assert record["prefill_input_ids_sha256"] == "d" * 64
     assert len(target["likelihood_target_sha256"]) == 64
     assert len(record["likelihood_record_sha256"]) == 64
 
@@ -581,8 +632,38 @@ def _task7_result_rows(fixture_sha256: str) -> list[dict[str, object]]:
             cell_index=index,
             fixture_sha256=fixture_sha256,
         )
+        if index < 2:
+            task7_runtime.bind_task7_prefill_identity(
+                record,
+                assistant_prompt_sha256=hashlib.sha256(b"<assistant>\n").hexdigest(),
+                prefill_input_ids_shape=(1, 17),
+                prefill_input_ids_sha256="d" * 64,
+            )
         rows.append(record)
     return rows
+
+
+def _task7_run_manifest(
+    tmp_path: Path, fixture_path: Path, fixture_sha256: str
+) -> tuple[Path, str, str]:
+    path = tmp_path / "run_manifest.json"
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "status": "configured-task7-fixed-grid",
+        "output": str(tmp_path),
+        "matrix_kind": "visual-state-fixed-grid",
+        "qid": "q-1",
+        "cell_count": 8,
+        "fixture_path": str(fixture_path),
+        "fixture_sha256": fixture_sha256,
+        "fixed_page_provenance": True,
+        "global_index_loaded": False,
+        "task7_likelihood_output": str(tmp_path / "likelihood.jsonl"),
+        "task7_likelihood_arms": ["btp-qtp-no-ctp", "all-visual-drop-B_input"],
+    }
+    payload["run_manifest_sha256"] = _canonical_sha256(payload)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path, _sha256(path), payload["run_manifest_sha256"]
 
 
 def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihoods(
@@ -591,6 +672,9 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
     """Catch trusted precomputed strata, support-ID drift, or an unbound likelihood drop."""
 
     fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_manifest_path, run_manifest_file_sha256, run_manifest_sha256 = _task7_run_manifest(
+        tmp_path, fixture_path, fixture_sha256
+    )
     results_path = tmp_path / "results.jsonl"
     results = _task7_result_rows(fixture_sha256)
     results_path.write_text(
@@ -609,12 +693,22 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
             intervention_name="btp-qtp-no-ctp",
             target=target,
             per_reference_mean_loglikelihood=(-0.2, -0.7),
+            fixture_sha256=fixture_sha256,
+            run_manifest_sha256=run_manifest_sha256,
+            source_result_sha256=_canonical_sha256(results[0]),
+            prefill_input_ids_shape=(1, 17),
+            prefill_input_ids_sha256="d" * 64,
         ),
         task7_runtime.build_task7_likelihood_record(
             qid="q-1",
             intervention_name="all-visual-drop-B_input",
             target=target,
             per_reference_mean_loglikelihood=(-0.5, -0.9),
+            fixture_sha256=fixture_sha256,
+            run_manifest_sha256=run_manifest_sha256,
+            source_result_sha256=_canonical_sha256(results[1]),
+            prefill_input_ids_shape=(1, 17),
+            prefill_input_ids_sha256="d" * 64,
         ),
     ]
     likelihood_path.write_text(
@@ -625,6 +719,8 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
     assembled = task7_runtime.assemble_task7_opportunity_row_from_artifacts(
         fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
+        run_manifest_path=run_manifest_path,
+        run_manifest_file_sha256=run_manifest_file_sha256,
         results_path=results_path,
         results_sha256=_sha256(results_path),
         likelihood_path=likelihood_path,
@@ -644,6 +740,70 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
         == target["likelihood_target_sha256"]
     )
 
+    results[2]["assistant_prompt_sha256"] = hashlib.sha256(b"<assistant>\n").hexdigest()
+    results[2]["prefill_input_ids_shape"] = [1, 17]
+    results[2]["prefill_input_ids_sha256"] = "d" * 64
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="unknown fields"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            run_manifest_path=run_manifest_path,
+            run_manifest_file_sha256=run_manifest_file_sha256,
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=likelihood_path,
+            likelihood_sha256=_sha256(likelihood_path),
+        )
+    for key in (
+        "assistant_prompt_sha256",
+        "prefill_input_ids_shape",
+        "prefill_input_ids_sha256",
+    ):
+        results[2].pop(key)
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+
+    substituted_likelihood = tmp_path / "substituted-likelihood.jsonl"
+    substituted_likelihood.write_bytes(likelihood_path.read_bytes())
+    with pytest.raises(ValueError, match="run manifest does not bind"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            run_manifest_path=run_manifest_path,
+            run_manifest_file_sha256=run_manifest_file_sha256,
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=substituted_likelihood,
+            likelihood_sha256=_sha256(substituted_likelihood),
+        )
+
+    bad_manifest_path = tmp_path / "bad-run-manifest.json"
+    bad_manifest = json.loads(run_manifest_path.read_text())
+    bad_manifest["task7_likelihood_arms"] = [
+        "all-visual-drop-B_input",
+        "btp-qtp-no-ctp",
+    ]
+    bad_manifest.pop("run_manifest_sha256")
+    bad_manifest["run_manifest_sha256"] = _canonical_sha256(bad_manifest)
+    bad_manifest_path.write_text(
+        json.dumps(bad_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="run manifest does not bind"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            run_manifest_path=bad_manifest_path,
+            run_manifest_file_sha256=_sha256(bad_manifest_path),
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=likelihood_path,
+            likelihood_sha256=_sha256(likelihood_path),
+        )
+
     likelihood_path.write_text(
         likelihood_path.read_text().replace("-0.5", "-0.4"), encoding="utf-8"
     )
@@ -651,8 +811,122 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
         task7_runtime.assemble_task7_opportunity_row_from_artifacts(
             fixture_path=fixture_path,
             fixture_sha256=fixture_sha256,
+            run_manifest_path=run_manifest_path,
+            run_manifest_file_sha256=run_manifest_file_sha256,
             results_path=results_path,
             results_sha256=_sha256(results_path),
             likelihood_path=likelihood_path,
             likelihood_sha256=likelihood_rows[0]["likelihood_record_sha256"],
+        )
+
+
+def test_task7_opportunity_assembly_rejects_wrong_prompt_and_stale_result(
+    tmp_path: Path,
+) -> None:
+    """Catch a self-hashed likelihood being relabeled onto a different prompt or QA row."""
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_path, run_file_sha, run_sha = _task7_run_manifest(tmp_path, fixture_path, fixture_sha256)
+    results = _task7_result_rows(fixture_sha256)
+    results_path = tmp_path / "results.jsonl"
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+
+    def write_likelihood(prompt: str, source_results: list[dict[str, object]]) -> Path:
+        target = task7_runtime.build_task7_likelihood_target(
+            ("42", "forty two"), ((19, 17), (69, 70)), assistant_prompt=prompt
+        )
+        path = tmp_path / "likelihood.jsonl"
+        rows = [
+            task7_runtime.build_task7_likelihood_record(
+                qid="q-1",
+                intervention_name=name,
+                target=target,
+                per_reference_mean_loglikelihood=values,
+                fixture_sha256=fixture_sha256,
+                run_manifest_sha256=run_sha,
+                source_result_sha256=_canonical_sha256(source_results[index]),
+                prefill_input_ids_shape=(1, 17),
+                prefill_input_ids_sha256="d" * 64,
+            )
+            for index, (name, values) in enumerate(
+                (
+                    ("btp-qtp-no-ctp", (-0.2, -0.7)),
+                    ("all-visual-drop-B_input", (-0.5, -0.9)),
+                )
+            )
+        ]
+        path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
+        )
+        return path
+
+    wrong_prompt = write_likelihood("WRONG PROMPT", results)
+    with pytest.raises(ValueError, match="prompt or prefill identity"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            run_manifest_path=run_path,
+            run_manifest_file_sha256=run_file_sha,
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=wrong_prompt,
+            likelihood_sha256=_sha256(wrong_prompt),
+        )
+
+    valid_likelihood = write_likelihood("<assistant>\n", results)
+    results[1]["predicted_answer"] = "stale result mutation"
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="source result identity"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            run_manifest_path=run_path,
+            run_manifest_file_sha256=run_file_sha,
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=valid_likelihood,
+            likelihood_sha256=_sha256(valid_likelihood),
+        )
+
+
+def test_task7_likelihood_artifact_is_atomic_ordered_and_no_replace(tmp_path: Path) -> None:
+    """Catch exposing a partial pair, swapping arms, or overwriting admitted evidence."""
+
+    target = task7_runtime.build_task7_likelihood_target(
+        ("42",), ((19,),), assistant_prompt="<assistant>\n"
+    )
+    rows = tuple(
+        task7_runtime.build_task7_likelihood_record(
+            qid="q-1",
+            intervention_name=name,
+            target=target,
+            per_reference_mean_loglikelihood=(value,),
+            fixture_sha256="a" * 64,
+            run_manifest_sha256="b" * 64,
+            source_result_sha256=digest * 64,
+            prefill_input_ids_shape=(1, 17),
+            prefill_input_ids_sha256="d" * 64,
+        )
+        for name, value, digest in (
+            ("btp-qtp-no-ctp", -0.2, "1"),
+            ("all-visual-drop-B_input", -0.5, "2"),
+        )
+    )
+    path = (tmp_path / "likelihood.jsonl").resolve()
+
+    digest = task7_runtime.write_task7_likelihood_artifact(path, rows)
+
+    assert digest == _sha256(path)
+    assert tuple(json.loads(line) for line in path.read_text().splitlines()) == rows
+    original = path.read_bytes()
+    with pytest.raises(FileExistsError):
+        task7_runtime.write_task7_likelihood_artifact(path, rows)
+    assert path.read_bytes() == original
+    with pytest.raises(ValueError, match="reference and B_input in order"):
+        task7_runtime.write_task7_likelihood_artifact(
+            (tmp_path / "swapped.jsonl").resolve(), tuple(reversed(rows))
         )

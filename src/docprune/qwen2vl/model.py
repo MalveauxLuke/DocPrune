@@ -60,6 +60,7 @@ class GenerationResult:
     decoder_seconds: float = 0.0
     forced_intervention: ForcedInterventionRecord | None = None
     policy_selection: CTPSelectionRecord | None = None
+    teacher_forced_loglikelihoods: tuple[float, ...] | None = None
 
 
 def _clone_dynamic_cache(cache: object) -> object:
@@ -253,6 +254,7 @@ class DocPruneQwen2VL:
         forced_intervention: ForcedVisualIntervention | None = None,
         ctp_policy: CTPPolicy | None = None,
         selection_context: PolicySelectionContext | None = None,
+        teacher_forced_target_token_ids: tuple[tuple[int, ...], ...] | None = None,
     ) -> GenerationResult:
         if max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be positive")
@@ -314,6 +316,16 @@ class DocPruneQwen2VL:
                 ctp_policy=ctp_policy,
                 selection_context=selection_context,
             )
+            teacher_forced_values = (
+                None
+                if teacher_forced_target_token_ids is None
+                else teacher_forced_sequence_loglikelihoods(
+                    self.model.model,
+                    self.model.lm_head,
+                    prefill,
+                    teacher_forced_target_token_ids,
+                )
+            )
             generated: list[torch.Tensor] = []
             logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
             first_step_logits = logits.detach()
@@ -370,4 +382,5 @@ class DocPruneQwen2VL:
             decoder_seconds,
             prefill.forced,
             prefill.selection,
+            teacher_forced_values,
         )

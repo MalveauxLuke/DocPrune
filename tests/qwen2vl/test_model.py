@@ -85,6 +85,35 @@ def test_tiny_model_generates_with_monotonic_pruning_trace(tiny_qwen2vl) -> None
     assert got.trace.ctp_layer == 0
 
 
+def test_tiny_generation_scores_task7_targets_from_the_same_prefill(tiny_qwen2vl) -> None:
+    """Catch a bounded likelihood request being ignored or replacing normal generation."""
+
+    torch.manual_seed(11)
+    adapter = DocPruneQwen2VL(tiny_qwen2vl)
+    input_ids = torch.tensor([[10, 102, 100, 100, 100, 100, 103, 11]])
+    with torch.no_grad():
+        got = adapter.generate_with_trace(
+            input_ids=input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            pixel_values=torch.randn(16, 24),
+            image_grid_thw=torch.tensor([[1, 4, 4]]),
+            pruning_masks=VisionPruningMasks(
+                background_keep=torch.ones(4, dtype=torch.bool),
+                question_keep=torch.ones(4, dtype=torch.bool),
+            ),
+            comprehension_threshold=1e9,
+            attention_threshold=0.0,
+            max_new_tokens=2,
+            eos_token_ids=(),
+            teacher_forced_target_token_ids=((12, 13), (14,)),
+        )
+
+    assert got.generated_ids.shape == (1, 2)
+    assert got.teacher_forced_loglikelihoods is not None
+    assert len(got.teacher_forced_loglikelihoods) == 2
+    assert all(torch.isfinite(torch.tensor(value)) for value in got.teacher_forced_loglikelihoods)
+
+
 def test_teacher_forced_likelihood_scores_every_answer_token_without_eos(
     tiny_qwen2vl,
 ) -> None:

@@ -73,6 +73,28 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _bind_task7_likelihood_capture(
+    record: dict[str, object], sample_result: object, target: dict[str, object]
+) -> None:
+    """Bind only an internally derived target to its exact processor batch."""
+
+    prompt_sha256 = getattr(sample_result, "assistant_prompt_sha256", None)
+    input_shape = getattr(sample_result, "prefill_input_ids_shape", None)
+    input_sha256 = getattr(sample_result, "prefill_input_ids_sha256", None)
+    if prompt_sha256 is None or input_shape is None or input_sha256 is None:
+        raise ValueError("Task 7 answerer did not return exact prefill identity")
+    if target.get("assistant_prompt_sha256") != prompt_sha256:
+        raise ValueError("Task 7 target prompt differs from the exact processor prompt")
+    from docprune.task7_runtime import bind_task7_prefill_identity
+
+    bind_task7_prefill_identity(
+        record,
+        assistant_prompt_sha256=prompt_sha256,
+        prefill_input_ids_shape=input_shape,
+        prefill_input_ids_sha256=input_sha256,
+    )
+
+
 def _expected_cells(gate: dict[str, object], kind: str) -> list[dict[str, object]]:
     if kind == "visual-state-fixed-grid":
         from docprune.task7_runtime import task7_intervention_matrix
@@ -154,11 +176,16 @@ def _existing_prefix(
                     production=True,
                     expected_policy=expected_policy,
                     forbid_policy=expected_policy is None,
-                    allowed_extra_fields={
-                        "matrix_cell",
-                        "matrix_kind",
-                        "intervention_name",
-                    },
+                    allowed_extra_fields={"matrix_cell", "matrix_kind", "intervention_name"}
+                    | (
+                        {
+                            "assistant_prompt_sha256",
+                            "prefill_input_ids_shape",
+                            "prefill_input_ids_sha256",
+                        }
+                        if count < 2
+                        else set()
+                    ),
                     allow_zero_post_ctp=True,
                 )
                 if sample is None or fixture_question is None:
@@ -327,6 +354,12 @@ def main() -> int:
         "generation": identity["generation"],
         "cells": cells,
     }
+    if args.kind == "visual-state-fixed-grid":
+        run_manifest["task7_likelihood_output"] = str(args.output / "task7-likelihood.jsonl")
+        run_manifest["task7_likelihood_arms"] = [
+            "btp-qtp-no-ctp",
+            "all-visual-drop-B_input",
+        ]
     run_manifest["run_manifest_sha256"] = _manifest_digest(run_manifest)
     if args.validate_only:
         print(
@@ -386,6 +419,10 @@ def main() -> int:
         raise ValueError("Task 6 bootstrap workload selected the wrong QID")
     sample = samples[0]
     fixture_question = fixture.question(qid)
+    base_runner = workload.runner
+    task7_target = None
+    task7_likelihood_records: list[dict[str, object]] = []
+    task7_likelihood_path = args.output / "task7-likelihood.jsonl"
     if args.kind == "visual-state-fixed-grid":
         completed = _existing_prefix(
             results_path,
@@ -396,7 +433,26 @@ def main() -> int:
             sample=sample,
             fixture_question=fixture_question,
         )
-    base_runner = workload.runner
+        if completed == 1:
+            raise ValueError(
+                "Task 7 cannot resume a one-cell prefix without its atomic likelihood pair"
+            )
+        if completed == 0 and (
+            task7_likelihood_path.exists() or task7_likelihood_path.is_symlink()
+        ):
+            raise FileExistsError("Task 7 likelihood destination already exists")
+        if completed >= 2 and (
+            task7_likelihood_path.is_symlink() or not task7_likelihood_path.is_file()
+        ):
+            raise ValueError("Task 7 resume requires the existing likelihood pair")
+        from docprune.answerers import prepare_task7_likelihood_target_for_question
+
+        task7_target = prepare_task7_likelihood_target_for_question(
+            base_runner.answerer.processor,
+            page_count=4,
+            question=sample.question,
+            accepted_references=sample.answers,
+        )
     base_runner.warmup(sample)
     base_answerer = base_runner.answerer
     append_mode = results_path.exists()
@@ -405,9 +461,11 @@ def main() -> int:
         if args.kind == "visual-state-fixed-grid":
             from docprune.task7_runtime import (
                 bind_task7_result_evidence,
+                build_task7_likelihood_record,
                 task7_intervention_matrix,
                 validate_task7_result_record,
                 validate_task7_source_identity,
+                write_task7_likelihood_artifact,
             )
 
             intervention = task7_intervention_matrix()[cell_index]
@@ -416,6 +474,11 @@ def main() -> int:
                 base_answerer.processor,
                 page_config=config.for_pages(4),
                 qa_stage="full",
+                teacher_forced_target_token_ids=(
+                    tuple(tuple(value) for value in task7_target["target_token_ids"])
+                    if cell_index < 2
+                    else None
+                ),
                 **intervention.answerer_kwargs(),
             )
             runner = DocPruneM3DocRAG(
@@ -425,13 +488,16 @@ def main() -> int:
                 top_k=4,
             )
             runner.inherit_warmup_state(base_runner)
-            record = runner.run_sample(sample).to_dict()
+            sample_result = runner.run_sample(sample)
+            record = sample_result.to_dict()
             bind_task7_result_evidence(
                 record,
                 intervention,
                 cell_index=cell_index,
                 fixture_sha256=args.fixture_sha256,
             )
+            if cell_index < 2:
+                _bind_task7_likelihood_capture(record, sample_result, task7_target)
             expected_policy = (
                 None if intervention.ctp_policy is None else intervention.ctp_policy.to_dict()
             )
@@ -442,11 +508,16 @@ def main() -> int:
                 production=True,
                 expected_policy=expected_policy,
                 forbid_policy=expected_policy is None,
-                allowed_extra_fields={
-                    "matrix_cell",
-                    "matrix_kind",
-                    "intervention_name",
-                },
+                allowed_extra_fields={"matrix_cell", "matrix_kind", "intervention_name"}
+                | (
+                    {
+                        "assistant_prompt_sha256",
+                        "prefill_input_ids_shape",
+                        "prefill_input_ids_sha256",
+                    }
+                    if cell_index < 2
+                    else set()
+                ),
                 allow_zero_post_ctp=True,
             )
             validate_task7_source_identity(record, sample, fixture_question)
@@ -455,8 +526,31 @@ def main() -> int:
                 intervention,
                 fixture_sha256=args.fixture_sha256,
             )
+            if cell_index < 2:
+                if sample_result.teacher_forced_loglikelihoods is None:
+                    raise ValueError("Task 7 likelihood arm did not return teacher-forced values")
+                task7_likelihood_records.append(
+                    build_task7_likelihood_record(
+                        qid=qid,
+                        intervention_name=intervention.name,
+                        target=task7_target,
+                        per_reference_mean_loglikelihood=(
+                            sample_result.teacher_forced_loglikelihoods
+                        ),
+                        fixture_sha256=args.fixture_sha256,
+                        run_manifest_sha256=run_manifest["run_manifest_sha256"],
+                        source_result_sha256=_manifest_digest(record),
+                        prefill_input_ids_shape=sample_result.prefill_input_ids_shape,
+                        prefill_input_ids_sha256=sample_result.prefill_input_ids_sha256,
+                    )
+                )
             append_result_jsonl(results_path, record, resume=append_mode)
             append_mode = True
+            if cell_index == 1:
+                write_task7_likelihood_artifact(
+                    task7_likelihood_path,
+                    tuple(task7_likelihood_records),
+                )
             continue
         source_matrix = task6_policy_matrix("native" if args.kind == "smoke" else args.kind)
         if args.kind == "smoke":

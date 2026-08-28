@@ -164,6 +164,103 @@ def test_docprune_answerer_decodes_adapter_suffix_without_prompt(monkeypatch) ->
     assert output.encoder_seconds > 0
     assert output.decoder_seconds > 0
     assert adapter.calls[0]["eos_token_ids"] == (151645, 151643)
+    assert output.assistant_prompt_sha256 is None
+    assert output.prefill_input_ids_shape is None
+    assert output.prefill_input_ids_sha256 is None
+
+
+def test_task7_likelihood_capture_derives_exact_prompt_and_processor_input_internally(
+    monkeypatch,
+) -> None:
+    """Catch accepting a caller-supplied prompt/hash or scoring a different batch."""
+
+    from transformers import Qwen2VLImageProcessor
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def generate_with_trace(self, **kwargs):
+            self.calls.append(kwargs)
+            return GenerationResult(
+                generated_ids=torch.tensor([[55]]),
+                trace=PruningTrace(2, 2, 2, 2, None),
+                teacher_forced_loglikelihoods=(-0.25, -0.75),
+            )
+
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    adapter = FakeAdapter()
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: adapter)
+    monkeypatch.setattr(
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.ones(2, dtype=torch.bool), torch.ones(2, dtype=torch.bool)
+        ),
+    )
+    answerer = DocPruneQwenAnswerer(
+        model=RecordingModel(),
+        processor=processor,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+        teacher_forced_target_token_ids=((12, 13), (14,)),
+    )
+
+    output = answerer.answer(
+        [Image.new("RGB", (112, 56))], "what?", retrieval_output=retrieval_context()
+    )
+
+    exact_prompt = (
+        "<|im_start|>user\nquestion: what?\noutput only answer.<|im_end|>\n<|im_start|>assistant\n"
+    )
+    expected_ids = torch.tensor([[10, 100, 100, 100, 100, 11]], dtype=torch.int64)
+    assert adapter.calls[0]["teacher_forced_target_token_ids"] == ((12, 13), (14,))
+    assert output.teacher_forced_loglikelihoods == (-0.25, -0.75)
+    assert output.assistant_prompt_sha256 == hashlib.sha256(exact_prompt.encode()).hexdigest()
+    assert output.prefill_input_ids_shape == (1, 6)
+    assert (
+        output.prefill_input_ids_sha256
+        == hashlib.sha256(expected_ids.numpy().tobytes()).hexdigest()
+    )
+
+
+def test_task7_target_preparation_has_no_free_form_prompt_boundary() -> None:
+    """Catch a producer accepting a caller-selected prompt or standalone answer tokens."""
+
+    processor = RecordingProcessor()
+    prompt = processor.apply_chat_template(
+        [{"role": "user", "content": [{"type": "image", "image": "dummy_content"}]}],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+
+    class Tokenizer:
+        def encode(self, text: str, *, add_special_tokens: bool) -> list[int]:
+            assert add_special_tokens is False
+            if text == prompt:
+                return [1, 2, 3]
+            if text == prompt + "42":
+                return [1, 2, 3, 19]
+            raise AssertionError(f"unexpected tokenization input: {text!r}")
+
+    processor.tokenizer = Tokenizer()
+
+    target = answerers.prepare_task7_likelihood_target_for_question(
+        processor, page_count=1, question="what?", accepted_references=("42",)
+    )
+
+    assert target["assistant_prompt_sha256"] == hashlib.sha256(prompt.encode()).hexdigest()
+    assert target["target_token_ids"] == [[19]]
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        answerers.prepare_task7_likelihood_target_for_question(
+            processor,
+            page_count=1,
+            question="what?",
+            accepted_references=("42",),
+            assistant_prompt="caller-selected prompt",
+            assistant_prompt_sha256="0" * 64,
+        )
 
 
 def test_docprune_answerer_passes_forced_intervention_only_when_requested(monkeypatch) -> None:
