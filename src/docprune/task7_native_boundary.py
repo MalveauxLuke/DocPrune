@@ -11,16 +11,16 @@ import hashlib
 import json
 import math
 import os
+import secrets
 import stat
 import subprocess
-import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from docprune.cli import _manifest_digest
 from docprune.ctp_policy import CTPPolicy, btp_qtp_no_ctp_policy
-from docprune.experiment_design import _open_directory_nofollow
+from docprune.experiment_design import _open_directory_nofollow, _renameat2_noreplace
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
 from docprune.task6_runtime import task6_policy_matrix
 
@@ -138,6 +138,85 @@ def _authenticated_file_bytes(path: Path, expected_sha256: str, label: str) -> t
 
 def _authenticate_file(path: Path, expected_sha256: str, label: str) -> str:
     return _authenticated_file_bytes(path, expected_sha256, label)[1]
+
+
+def _require_destination_parent_identity(path: Path, descriptor: int) -> None:
+    """Reject replacing the named destination parent after its secure open."""
+
+    opened = os.fstat(descriptor)
+    try:
+        named = os.stat(path, follow_symlinks=False)
+    except OSError as error:
+        raise ValueError("native-boundary destination parent was replaced") from error
+    if (
+        not stat.S_ISDIR(named.st_mode)
+        or named.st_dev != opened.st_dev
+        or named.st_ino != opened.st_ino
+    ):
+        raise ValueError("native-boundary destination parent was replaced")
+
+
+def _publish_new_file(content: bytes, destination: Path) -> None:
+    """Durably publish one new file relative to one retained parent descriptor."""
+
+    target = Path(destination)
+    parent_fd = _open_directory_nofollow(target.parent)
+    temporary_name: str | None = None
+    temporary_fd: int | None = None
+    published = False
+    try:
+        _require_destination_parent_identity(target.parent, parent_fd)
+        try:
+            os.stat(target.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("native-boundary destination must be a new absolute path")
+        for _ in range(128):
+            candidate = f".{target.name}.{secrets.token_hex(16)}"
+            try:
+                temporary_fd = os.open(
+                    candidate,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                    0o600,
+                    dir_fd=parent_fd,
+                )
+            except FileExistsError:
+                continue
+            temporary_name = candidate
+            break
+        if temporary_fd is None or temporary_name is None:
+            raise FileExistsError("could not create a private native-boundary temporary")
+        remaining = memoryview(content)
+        while remaining:
+            written = os.write(temporary_fd, remaining)
+            remaining = remaining[written:]
+        os.fsync(temporary_fd)
+        os.close(temporary_fd)
+        temporary_fd = None
+        _require_destination_parent_identity(target.parent, parent_fd)
+        _renameat2_noreplace(parent_fd, temporary_name, parent_fd, target.name)
+        temporary_name = None
+        published = True
+        os.fsync(parent_fd)
+        _require_destination_parent_identity(target.parent, parent_fd)
+    except BaseException:
+        if published:
+            try:
+                os.unlink(target.name, dir_fd=parent_fd)
+                os.fsync(parent_fd)
+            except FileNotFoundError:
+                pass
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        if temporary_fd is not None:
+            os.close(temporary_fd)
+        os.close(parent_fd)
 
 
 def _load_json_bytes(content: bytes, label: str) -> dict[str, object]:
@@ -637,13 +716,7 @@ def publish_task7_native_boundary_manifest(
     target = Path(destination)
     if not root.is_absolute() or root.is_symlink() or not root.is_dir():
         raise ValueError("Task 6 matrix root must be an absolute real directory")
-    if (
-        not target.is_absolute()
-        or target.exists()
-        or target.is_symlink()
-        or not target.parent.is_dir()
-        or target.parent.is_symlink()
-    ):
+    if not target.is_absolute() or not target.name:
         raise ValueError("native-boundary destination must be a new absolute path")
     ordered_qids = tuple(qids)
     if (
@@ -789,24 +862,7 @@ def publish_task7_native_boundary_manifest(
     }
     content = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
     digest = hashlib.sha256(content).hexdigest()
-    descriptor, raw = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
-    temporary = Path(raw)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        descriptor = -1
-        os.link(temporary, target)
-        directory = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-    finally:
-        if descriptor != -1:
-            os.close(descriptor)
-        temporary.unlink(missing_ok=True)
+    _publish_new_file(content, target)
     return digest
 
 

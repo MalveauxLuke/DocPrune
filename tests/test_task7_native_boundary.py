@@ -434,6 +434,58 @@ def test_native_boundary_authenticated_inputs_reject_symlinked_ancestors(tmp_pat
         )
 
 
+def test_native_boundary_publisher_rejects_destination_with_symlinked_ancestor(
+    tmp_path: Path,
+) -> None:
+    """Catch publication being redirected through a destination ancestor symlink."""
+
+    source = _source_tree(tmp_path / "inputs")
+    real_parent = tmp_path / "real" / "nested"
+    real_parent.mkdir(parents=True)
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    destination = tmp_path / "alias" / "nested" / "native-boundaries.json"
+
+    with pytest.raises(ValueError, match="symlink|non-directory"):
+        _publish(source, destination)
+
+    assert not destination.exists()
+    assert not (real_parent / destination.name).exists()
+
+
+def test_native_boundary_publisher_rejects_replaced_destination_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch publishing into a retained directory after its named parent is replaced."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination_parent = tmp_path / "output"
+    destination_parent.mkdir()
+    moved_parent = tmp_path / "moved-output"
+    destination = destination_parent / "native-boundaries.json"
+    original = native._open_directory_nofollow
+    replaced = False
+
+    def replace_after_open(path: Path) -> int:
+        nonlocal replaced
+        descriptor = original(path)
+        if Path(path) == destination_parent and not replaced:
+            destination_parent.replace(moved_parent)
+            destination_parent.mkdir()
+            replaced = True
+        return descriptor
+
+    monkeypatch.setattr(native, "_open_directory_nofollow", replace_after_open)
+
+    with pytest.raises(ValueError, match="destination parent was replaced"):
+        _publish(source, destination)
+
+    assert replaced is True
+    assert not destination.exists()
+    assert not (moved_parent / destination.name).exists()
+
+
 def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outcomes(
     tmp_path: Path,
 ) -> None:
