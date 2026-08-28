@@ -147,7 +147,7 @@ def main() -> None:
         raise ValueError("Task 9 mask count is outside the canonical split")
     if args.output.exists() or args.output.is_symlink():
         raise FileExistsError(f"Task 9 output already exists: {args.output}")
-    if not args.output.parent.is_dir():
+    if not args.validate_only and not args.output.parent.is_dir():
         raise ValueError("Task 9 output parent must already exist")
     _runtime_identity(args.runtime_dir, args.runtime_commit)
     if _sha256(args.fixture) != args.fixture_sha256:
