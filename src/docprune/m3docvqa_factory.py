@@ -569,6 +569,7 @@ def _validate_result_record(
     expected_policy: Mapping[str, object] | None = None,
     forbid_policy: bool = False,
     allowed_extra_fields: set[str] | frozenset[str] = frozenset(),
+    allow_zero_post_ctp: bool = False,
 ) -> None:
     required = {
         "question_id",
@@ -585,6 +586,8 @@ def _validate_result_record(
         raise ValueError(f"results JSONL record {line_number} is missing {sorted(missing)!r}")
     if any(not isinstance(field, str) for field in allowed_extra_fields):
         raise TypeError("allowed result fields must be strings")
+    if not isinstance(allow_zero_post_ctp, bool):
+        raise TypeError("allow_zero_post_ctp must be a boolean")
     extra = (
         fields
         - required
@@ -675,7 +678,17 @@ def _validate_result_record(
     if set(trace) != trace_fields:
         raise ValueError(f"results JSONL record {line_number} has an invalid trace schema")
     counts = [trace[name] for name in trace_field_order[:4]]
-    if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in counts):
+    early_counts, post_ctp_count = counts[:3], counts[3]
+    if (
+        any(
+            not isinstance(value, int) or isinstance(value, bool) or value <= 0
+            for value in early_counts
+        )
+        or not isinstance(post_ctp_count, int)
+        or isinstance(post_ctp_count, bool)
+        or post_ctp_count < 0
+        or (post_ctp_count == 0 and not allow_zero_post_ctp)
+    ):
         raise ValueError(f"results JSONL record {line_number} has non-positive trace counts")
     if not all(left >= right for left, right in zip(counts, counts[1:])):
         raise ValueError(f"results JSONL record {line_number} trace is not monotonic")

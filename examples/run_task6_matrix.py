@@ -14,7 +14,7 @@ from pathlib import Path
 from docprune.answerers import DocPruneQwenAnswerer
 from docprune.cli import _bind_task6_result_evidence, _manifest_digest
 from docprune.config import load_config
-from docprune.m3docrag import DocPruneM3DocRAG
+from docprune.m3docrag import DocPruneM3DocRAG, SampleInput
 from docprune.m3docvqa_factory import (
     _load_index_manifest,
     _resolve_run_config,
@@ -24,6 +24,7 @@ from docprune.m3docvqa_factory import (
 )
 from docprune.metrics import append_result_jsonl
 from docprune.task6_runtime import (
+    FixedPageQuestion,
     Task6ResultIdentity,
     load_fixed_page_fixture,
     task6_policy_matrix,
@@ -73,6 +74,13 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
 
 
 def _expected_cells(gate: dict[str, object], kind: str) -> list[dict[str, object]]:
+    if kind == "visual-state-fixed-grid":
+        from docprune.task7_runtime import task7_intervention_matrix
+
+        return [
+            {"cell": index, **cell.to_dict()}
+            for index, cell in enumerate(task7_intervention_matrix())
+        ]
     key = f"{kind.replace('-', '_')}_cells"
     cells = gate.get(key)
     if not isinstance(cells, list):
@@ -107,6 +115,8 @@ def _existing_prefix(
     qid: str,
     fixture_sha256: str,
     kind: str,
+    sample: SampleInput | None = None,
+    fixture_question: FixedPageQuestion | None = None,
 ) -> int:
     if not path.exists():
         return 0
@@ -119,6 +129,48 @@ def _existing_prefix(
             if not isinstance(record, dict) or count >= len(cells):
                 raise ValueError("Task 6 resume results are not a valid cell prefix")
             cell = cells[count]
+            if kind == "visual-state-fixed-grid":
+                from docprune.task7_runtime import (
+                    task7_intervention_matrix,
+                    validate_task7_result_record,
+                    validate_task7_source_identity,
+                )
+
+                intervention = task7_intervention_matrix()[count]
+                expected_policy = (
+                    None if intervention.ctp_policy is None else intervention.ctp_policy.to_dict()
+                )
+                if (
+                    record.get("question_id") != qid
+                    or record.get("matrix_cell") != count
+                    or record.get("matrix_kind") != "visual-state-fixed-grid"
+                    or record.get("intervention_name") != intervention.name
+                ):
+                    raise ValueError("Task 7 resume results are not an exact cell prefix")
+                _validate_result_record(
+                    record,
+                    line_number=line_number,
+                    expected_page_count=4,
+                    production=True,
+                    expected_policy=expected_policy,
+                    forbid_policy=expected_policy is None,
+                    allowed_extra_fields={
+                        "matrix_cell",
+                        "matrix_kind",
+                        "intervention_name",
+                    },
+                    allow_zero_post_ctp=True,
+                )
+                if sample is None or fixture_question is None:
+                    raise ValueError("Task 7 resume requires sealed source identity")
+                validate_task7_source_identity(record, sample, fixture_question)
+                validate_task7_result_record(
+                    record,
+                    intervention,
+                    fixture_sha256=fixture_sha256,
+                )
+                count += 1
+                continue
             policy = cell["policy"]
             if (
                 record.get("question_id") != qid
@@ -168,7 +220,9 @@ def main() -> int:
     parser.add_argument("--runtime-commit", required=True)
     parser.add_argument("--shard", type=int, required=True)
     parser.add_argument(
-        "--kind", choices=("smoke", "native", "native-extension", "fixed"), required=True
+        "--kind",
+        choices=("smoke", "native", "native-extension", "fixed", "visual-state-fixed-grid"),
+        required=True,
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume", action="store_true")
@@ -247,7 +301,11 @@ def main() -> int:
 
     run_manifest = {
         "schema_version": 1,
-        "status": "configured-task6-matrix",
+        "status": (
+            "configured-task7-fixed-grid"
+            if args.kind == "visual-state-fixed-grid"
+            else "configured-task6-matrix"
+        ),
         "output": str(args.output),
         "matrix_kind": args.kind,
         "shard": args.shard,
@@ -298,13 +356,15 @@ def main() -> int:
         _atomic_json(manifest_path, run_manifest)
 
     results_path = args.output / "results.jsonl"
-    completed = _existing_prefix(
-        results_path,
-        cells=cells,
-        qid=qid,
-        fixture_sha256=args.fixture_sha256,
-        kind=args.kind,
-    )
+    completed = 0
+    if args.kind != "visual-state-fixed-grid":
+        completed = _existing_prefix(
+            results_path,
+            cells=cells,
+            qid=qid,
+            fixture_sha256=args.fixture_sha256,
+            kind=args.kind,
+        )
     bootstrap_output = args.output / "bootstrap"
     workload = build_workload(
         operation="evaluate",
@@ -325,12 +385,79 @@ def main() -> int:
     if len(samples) != 1 or samples[0].question_id != qid:
         raise ValueError("Task 6 bootstrap workload selected the wrong QID")
     sample = samples[0]
+    fixture_question = fixture.question(qid)
+    if args.kind == "visual-state-fixed-grid":
+        completed = _existing_prefix(
+            results_path,
+            cells=cells,
+            qid=qid,
+            fixture_sha256=args.fixture_sha256,
+            kind=args.kind,
+            sample=sample,
+            fixture_question=fixture_question,
+        )
     base_runner = workload.runner
     base_runner.warmup(sample)
     base_answerer = base_runner.answerer
     append_mode = results_path.exists()
     for cell_index in range(completed, len(cells)):
         cell = cells[cell_index]
+        if args.kind == "visual-state-fixed-grid":
+            from docprune.task7_runtime import (
+                bind_task7_result_evidence,
+                task7_intervention_matrix,
+                validate_task7_result_record,
+                validate_task7_source_identity,
+            )
+
+            intervention = task7_intervention_matrix()[cell_index]
+            answerer = DocPruneQwenAnswerer(
+                base_answerer.model,
+                base_answerer.processor,
+                page_config=config.for_pages(4),
+                qa_stage="full",
+                **intervention.answerer_kwargs(),
+            )
+            runner = DocPruneM3DocRAG(
+                base_runner.retriever,
+                base_runner.page_loader,
+                answerer,
+                top_k=4,
+            )
+            runner.inherit_warmup_state(base_runner)
+            record = runner.run_sample(sample).to_dict()
+            bind_task7_result_evidence(
+                record,
+                intervention,
+                cell_index=cell_index,
+                fixture_sha256=args.fixture_sha256,
+            )
+            expected_policy = (
+                None if intervention.ctp_policy is None else intervention.ctp_policy.to_dict()
+            )
+            _validate_result_record(
+                record,
+                line_number=cell_index + 1,
+                expected_page_count=4,
+                production=True,
+                expected_policy=expected_policy,
+                forbid_policy=expected_policy is None,
+                allowed_extra_fields={
+                    "matrix_cell",
+                    "matrix_kind",
+                    "intervention_name",
+                },
+                allow_zero_post_ctp=True,
+            )
+            validate_task7_source_identity(record, sample, fixture_question)
+            validate_task7_result_record(
+                record,
+                intervention,
+                fixture_sha256=args.fixture_sha256,
+            )
+            append_result_jsonl(results_path, record, resume=append_mode)
+            append_mode = True
+            continue
         source_matrix = task6_policy_matrix("native" if args.kind == "smoke" else args.kind)
         if args.kind == "smoke":
             source_matrix = tuple(source_matrix[index] for index in (0, 1, 2, 3, 4, 5, 15, 25, 35))
