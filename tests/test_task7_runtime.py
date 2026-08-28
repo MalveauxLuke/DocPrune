@@ -730,7 +730,7 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
         likelihood_path=likelihood_path,
         likelihood_sha256=_sha256(likelihood_path),
     )
-    curve = task7_runtime.assemble_task7_curve_row_from_artifacts(
+    analysis_bundle = task7_runtime.assemble_task7_analysis_bundle_from_artifacts(
         fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
         run_manifest_path=run_manifest_path,
@@ -742,7 +742,8 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
     )
 
     assert assembled["qid"] == "q-1"
-    assert curve == {
+    assert analysis_bundle["qid"] == "q-1"
+    assert analysis_bundle["curve"]["row"] == {
         "qid": "q-1",
         "reference_f1": 50.0,
         "all_drop_f1": {
@@ -755,6 +756,21 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
             "B_26": 50.0,
         },
     }
+    assert analysis_bundle["opportunity"]["row"] == assembled
+    assert analysis_bundle["curve"]["provenance"] == analysis_bundle["opportunity"]["provenance"]
+    assert analysis_bundle["curve"]["provenance"] == {
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_file_sha256": run_manifest_file_sha256,
+        "run_manifest_sha256": run_manifest_sha256,
+        "results_file_sha256": _sha256(results_path),
+        "likelihood_file_sha256": _sha256(likelihood_path),
+        "reference_result_sha256": _canonical_sha256(results[0]),
+        "input_all_drop_result_sha256": _canonical_sha256(results[1]),
+    }
+    bundle_without_hash = dict(analysis_bundle)
+    assert bundle_without_hash.pop("analysis_bundle_sha256") == _canonical_sha256(
+        bundle_without_hash
+    )
     assert assembled["supporting_document_ids"] == ["doc-1"]
     assert assembled["retrieved_document_ids"] == ["doc-0", "doc-1", "doc-2", "doc-3"]
     assert assembled["reference"]["em_correct"] is False

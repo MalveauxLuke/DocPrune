@@ -769,25 +769,116 @@ def visual_state_opportunity_strata(
 
 
 def compile_task7_visual_state_report(
-    curve_rows: Sequence[Mapping[str, object]],
-    opportunity_rows: Sequence[Mapping[str, object]],
+    analysis_bundles: Sequence[Mapping[str, object]],
     *,
     draws: int = 100_000,
     seed: int = 20_260_827,
 ) -> dict[str, object]:
-    """Compile the fixed-grid curve and descriptive strata under one QID identity."""
+    """Compile only curve/opportunity rows bound to the same exact artifacts."""
 
-    curves = tuple(dict(row) for row in curve_rows)
-    opportunities = tuple(dict(row) for row in opportunity_rows)
-    curve_qids = tuple(row.get("qid") for row in curves)
-    opportunity_qids = tuple(row.get("qid") for row in opportunities)
-    if (
-        not curves
-        or len(curves) != len(opportunities)
-        or curve_qids != opportunity_qids
-        or any(not isinstance(qid, str) or not qid for qid in curve_qids)
-    ):
-        raise ValueError("Task 7 curve and opportunity rows must contain the same ordered QIDs")
+    bundle_keys = {
+        "schema_version",
+        "qid",
+        "curve",
+        "opportunity",
+        "analysis_bundle_sha256",
+    }
+    arm_keys = {"provenance", "row"}
+    provenance_keys = {
+        "fixture_sha256",
+        "run_manifest_file_sha256",
+        "run_manifest_sha256",
+        "results_file_sha256",
+        "likelihood_file_sha256",
+        "reference_result_sha256",
+        "input_all_drop_result_sha256",
+    }
+    curves: list[dict[str, object]] = []
+    opportunities: list[dict[str, object]] = []
+    bundle_sha256s: list[str] = []
+    for raw_bundle in analysis_bundles:
+        bundle = dict(_require_mapping_keys(raw_bundle, bundle_keys, label="Task 7 bundle"))
+        if bundle["schema_version"] != 1:
+            raise ValueError("Task 7 analysis bundle has an unsupported schema")
+        bundle_sha256 = _require_sha256(
+            bundle["analysis_bundle_sha256"], label="Task 7 analysis bundle"
+        )
+        unsigned_bundle = dict(bundle)
+        unsigned_bundle.pop("analysis_bundle_sha256")
+        if bundle_sha256 != _canonical_json_sha256(unsigned_bundle):
+            raise ValueError("Task 7 analysis bundle identity is invalid")
+        curve_arm = _require_mapping_keys(bundle["curve"], arm_keys, label="Task 7 curve arm")
+        opportunity_arm = _require_mapping_keys(
+            bundle["opportunity"], arm_keys, label="Task 7 opportunity arm"
+        )
+        curve_provenance = dict(
+            _require_mapping_keys(
+                curve_arm["provenance"], provenance_keys, label="Task 7 curve provenance"
+            )
+        )
+        opportunity_provenance = dict(
+            _require_mapping_keys(
+                opportunity_arm["provenance"],
+                provenance_keys,
+                label="Task 7 opportunity provenance",
+            )
+        )
+        for key in provenance_keys:
+            _require_sha256(curve_provenance[key], label=f"Task 7 provenance {key}")
+            _require_sha256(opportunity_provenance[key], label=f"Task 7 provenance {key}")
+        if curve_provenance != opportunity_provenance:
+            raise ValueError("Task 7 rows must have the same exact artifact provenance")
+        curve_row = dict(
+            _require_mapping_keys(
+                curve_arm["row"],
+                {"qid", "reference_f1", "all_drop_f1"},
+                label="Task 7 curve row",
+            )
+        )
+        opportunity_row = dict(
+            _require_mapping_keys(
+                opportunity_arm["row"],
+                {
+                    "qid",
+                    "supporting_document_ids",
+                    "retrieved_document_ids",
+                    "reference",
+                    "input_all_drop",
+                },
+                label="Task 7 opportunity row",
+            )
+        )
+        qid = bundle["qid"]
+        if (
+            not isinstance(qid, str)
+            or not qid
+            or curve_row["qid"] != qid
+            or opportunity_row["qid"] != qid
+        ):
+            raise ValueError("Task 7 bundle and rows must contain the same nonempty QID")
+        reference = opportunity_row["reference"]
+        input_all_drop = opportunity_row["input_all_drop"]
+        if not isinstance(reference, Mapping) or not isinstance(input_all_drop, Mapping):
+            raise ValueError("Task 7 opportunity result identities are invalid")
+        if (
+            reference.get("result_sha256") != curve_provenance["reference_result_sha256"]
+            or input_all_drop.get("result_sha256")
+            != curve_provenance["input_all_drop_result_sha256"]
+        ):
+            raise ValueError("Task 7 result hashes do not match artifact provenance")
+        try:
+            reference_f1 = float(reference["f1"])
+            curve_reference_f1 = float(curve_row["reference_f1"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("Task 7 rows have invalid reference F1") from error
+        if curve_reference_f1 != reference_f1:
+            raise ValueError("Task 7 rows must have the same reference F1")
+        curves.append(curve_row)
+        opportunities.append(opportunity_row)
+        bundle_sha256s.append(bundle_sha256)
+    if not curves:
+        raise ValueError("Task 7 analysis bundles must not be empty")
+    curve_qids = tuple(row["qid"] for row in curves)
     component_records = [
         {
             "qid": row["qid"],
@@ -798,12 +889,12 @@ def compile_task7_visual_state_report(
     support_components = support_document_components(component_records)
     components = tuple(tuple(component["qids"]) for component in support_components["components"])
     curve = visual_state_removal_inference(
-        curves,
+        tuple(curves),
         components=components,
         draws=draws,
         seed=seed,
     )
-    strata = visual_state_opportunity_strata(opportunities)
+    strata = visual_state_opportunity_strata(tuple(opportunities))
     report: dict[str, object] = {
         "schema_version": 1,
         "analysis_name": "explicit-visual-state-removal-dependence-curve",
@@ -811,11 +902,12 @@ def compile_task7_visual_state_report(
             "not-an-information-horizon-without-separate-standalone-token-information"
         ),
         "qids": list(curve_qids),
+        "analysis_bundle_sha256s": bundle_sha256s,
         "support_components": support_components,
         "curve": curve,
         "opportunity_strata": strata,
-        "curve_rows_sha256": _canonical_json_sha256(curves),
-        "opportunity_rows_sha256": _canonical_json_sha256(opportunities),
+        "curve_rows_sha256": _canonical_json_sha256(tuple(curves)),
+        "opportunity_rows_sha256": _canonical_json_sha256(tuple(opportunities)),
     }
     report["report_sha256"] = _canonical_json_sha256(report)
     return report

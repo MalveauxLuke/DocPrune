@@ -1015,7 +1015,7 @@ def assemble_task7_opportunity_row_from_artifacts(
     }
 
 
-def assemble_task7_curve_row_from_artifacts(
+def assemble_task7_analysis_bundle_from_artifacts(
     *,
     fixture_path: Path,
     fixture_sha256: str,
@@ -1026,12 +1026,13 @@ def assemble_task7_curve_row_from_artifacts(
     likelihood_path: Path,
     likelihood_sha256: str,
 ) -> dict[str, object]:
-    """Derive one fixed-grid F1 row only after full artifact admission.
+    """Bind one fixed-grid curve/opportunity pair to the same admitted artifacts.
 
     The opportunity assembler is the single admission gate for the fixture,
     manifest, eight result cells, and the paired likelihood artifact.  This
-    companion then re-authenticates the result bytes and derives every score
-    with the official evaluator rather than accepting precomputed F1 values.
+    companion then re-authenticates the result bytes, derives every score with
+    the official evaluator, and emits duplicated exact provenance so report
+    assembly can reject same-QID rows sourced from different artifacts.
     """
 
     admitted = assemble_task7_opportunity_row_from_artifacts(
@@ -1073,10 +1074,37 @@ def assemble_task7_curve_row_from_artifacts(
         ("B_23", "all-visual-drop-B_23"),
         ("B_26", "all-visual-drop-B_26"),
     )
-    return {
+    curve_row = {
         "qid": qid,
         "reference_f1": scores["btp-qtp-no-ctp"],
         "all_drop_f1": {
             boundary: scores[intervention] for boundary, intervention in boundary_names
         },
     }
+    run_manifest = _validated_task7_run_manifest(
+        run_manifest_path,
+        file_sha256=run_manifest_file_sha256,
+        fixture_path=fixture_file,
+        fixture_sha256=fixture_sha256,
+        results_path=results_file,
+        likelihood_path=_authenticated_file(
+            likelihood_path, likelihood_sha256, "likelihood artifact"
+        ),
+    )
+    provenance = {
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_file_sha256": run_manifest_file_sha256,
+        "run_manifest_sha256": run_manifest["run_manifest_sha256"],
+        "results_file_sha256": results_sha256,
+        "likelihood_file_sha256": likelihood_sha256,
+        "reference_result_sha256": admitted["reference"]["result_sha256"],
+        "input_all_drop_result_sha256": admitted["input_all_drop"]["result_sha256"],
+    }
+    bundle: dict[str, object] = {
+        "schema_version": 1,
+        "qid": qid,
+        "curve": {"provenance": dict(provenance), "row": curve_row},
+        "opportunity": {"provenance": dict(provenance), "row": admitted},
+    }
+    bundle["analysis_bundle_sha256"] = _canonical_sha256(bundle)
+    return bundle

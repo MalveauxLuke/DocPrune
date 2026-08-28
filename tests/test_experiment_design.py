@@ -573,7 +573,7 @@ def test_visual_state_opportunity_strata_require_correct_to_incorrect_or_gold_lo
 
 
 def test_task7_report_derives_components_curve_and_strata_together() -> None:
-    """Catch mismatched QID sets or reporting the curve as an information horizon."""
+    """Catch reporting the artifact-bound curve as an information horizon."""
 
     boundaries = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
     curve_rows = [
@@ -609,12 +609,32 @@ def test_task7_report_derives_components_curve_and_strata_together() -> None:
             },
         }
 
-    report = experiment_design.compile_task7_visual_state_report(
-        curve_rows,
-        [opportunity("q1", "doc-a", True), opportunity("q2", "doc-b", False)],
-        draws=4,
-        seed=3,
-    )
+    def bundle(
+        curve_row: dict[str, object], opportunity_row: dict[str, object], marker: str
+    ) -> dict[str, object]:
+        provenance = {
+            "fixture_sha256": marker * 64,
+            "run_manifest_file_sha256": "d" * 64,
+            "run_manifest_sha256": "e" * 64,
+            "results_file_sha256": "f" * 64,
+            "likelihood_file_sha256": "1" * 64,
+            "reference_result_sha256": opportunity_row["reference"]["result_sha256"],
+            "input_all_drop_result_sha256": opportunity_row["input_all_drop"]["result_sha256"],
+        }
+        value = {
+            "schema_version": 1,
+            "qid": curve_row["qid"],
+            "curve": {"provenance": dict(provenance), "row": curve_row},
+            "opportunity": {"provenance": dict(provenance), "row": opportunity_row},
+        }
+        value["analysis_bundle_sha256"] = experiment_design._canonical_json_sha256(value)
+        return value
+
+    bundles = [
+        bundle(curve_rows[0], opportunity("q1", "doc-a", True), "2"),
+        bundle(curve_rows[1], opportunity("q2", "doc-b", False), "3"),
+    ]
+    report = experiment_design.compile_task7_visual_state_report(bundles, draws=4, seed=3)
 
     assert report["analysis_name"] == "explicit-visual-state-removal-dependence-curve"
     assert report["claim_boundary"] == (
@@ -626,12 +646,26 @@ def test_task7_report_derives_components_curve_and_strata_together() -> None:
     assert len(report["curve_rows_sha256"]) == 64
     assert len(report["opportunity_rows_sha256"]) == 64
 
-    with pytest.raises(ValueError, match="same ordered QIDs"):
+    different_artifact = deepcopy(bundles[0])
+    different_artifact["opportunity"]["provenance"]["results_file_sha256"] = "4" * 64
+    different_artifact.pop("analysis_bundle_sha256")
+    different_artifact["analysis_bundle_sha256"] = experiment_design._canonical_json_sha256(
+        different_artifact
+    )
+    with pytest.raises(ValueError, match="same exact artifact provenance"):
         experiment_design.compile_task7_visual_state_report(
-            curve_rows,
-            [opportunity("q2", "doc-b", False), opportunity("q1", "doc-a", True)],
-            draws=4,
-            seed=3,
+            [different_artifact, bundles[1]], draws=4, seed=3
+        )
+
+    different_reference_f1 = deepcopy(bundles[0])
+    different_reference_f1["opportunity"]["row"]["reference"]["f1"] = 75.0
+    different_reference_f1.pop("analysis_bundle_sha256")
+    different_reference_f1["analysis_bundle_sha256"] = experiment_design._canonical_json_sha256(
+        different_reference_f1
+    )
+    with pytest.raises(ValueError, match="same reference F1"):
+        experiment_design.compile_task7_visual_state_report(
+            [different_reference_f1, bundles[1]], draws=4, seed=3
         )
 
 
