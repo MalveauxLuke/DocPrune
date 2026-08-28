@@ -169,6 +169,7 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
     parent_fd = _open_directory_nofollow(target.parent)
     temporary_name: str | None = None
     temporary_fd: int | None = None
+    published = False
     try:
         _require_destination_parent_identity(target.parent, parent_fd)
         try:
@@ -201,6 +202,7 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
         _require_destination_parent_identity(target.parent, parent_fd)
         _renameat2_noreplace(parent_fd, temporary_name, parent_fd, target.name)
         temporary_name = None
+        published = True
         os.fsync(parent_fd)
         _require_destination_parent_identity(target.parent, parent_fd)
     except BaseException as error:
@@ -209,6 +211,13 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
             raise RuntimeError(
                 "native-boundary publication failed; preserved private temporary: "
                 f"{retained_parent / temporary_name}"
+            ) from error
+        if published:
+            retained_parent = Path(os.readlink(f"/proc/self/fd/{parent_fd}"))
+            raise RuntimeError(
+                "native-boundary publication failed after no-replace rename; "
+                "preserved published destination: "
+                f"{retained_parent / target.name}"
             ) from error
         raise
     finally:

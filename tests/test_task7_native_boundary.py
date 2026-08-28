@@ -512,9 +512,10 @@ def test_native_boundary_cleanup_does_not_delete_replacement_after_publish(
 
     monkeypatch.setattr(native, "_require_destination_parent_identity", fail_after_name_replacement)
 
-    with pytest.raises(ValueError, match="injected post-publication failure"):
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
         _publish(source, destination)
 
+    assert isinstance(captured.value.__cause__, ValueError)
     assert destination.read_bytes() == unrelated
     assert moved_publication.is_file()
 
@@ -544,12 +545,78 @@ def test_native_boundary_post_publish_failure_never_rolls_back_by_name(
     monkeypatch.setattr(native, "_require_destination_parent_identity", fail_after_publish)
     monkeypatch.setattr(native.os, "unlink", forbid_name_unlink)
 
-    with pytest.raises(ValueError, match="injected post-publication failure"):
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
         _publish(source, destination)
 
+    assert str(destination) in str(captured.value)
+    assert isinstance(captured.value.__cause__, ValueError)
     assert json.loads(destination.read_text(encoding="utf-8"))["status"] == (
         "sealed-task7-native-boundaries"
     )
+
+
+def test_native_boundary_post_rename_fsync_failure_reports_preserved_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Report the exact published recovery artifact when durable fsync fails."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native-boundaries.json"
+    content = b'{"recovery":"post-rename-fsync"}\n'
+    original = native.os.fsync
+    fsync_calls = 0
+
+    def fail_post_rename_fsync(descriptor: int) -> None:
+        nonlocal fsync_calls
+        fsync_calls += 1
+        if fsync_calls == 3:
+            raise OSError("injected post-rename fsync failure")
+        original(descriptor)
+
+    monkeypatch.setattr(native.os, "fsync", fail_post_rename_fsync)
+
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+        native._publish_new_file(content, destination)
+
+    assert str(destination) in str(captured.value)
+    assert destination.read_bytes() == content
+
+
+def test_native_boundary_final_parent_replacement_reports_preserved_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Report the moved publication through the retained parent after final drift."""
+
+    import docprune.task7_native_boundary as native
+
+    destination_parent = tmp_path / "output"
+    destination_parent.mkdir()
+    moved_parent = tmp_path / "moved-output"
+    destination = destination_parent / "native-boundaries.json"
+    moved_destination = moved_parent / destination.name
+    content = b'{"recovery":"final-parent-replacement"}\n'
+    original = native._require_destination_parent_identity
+    identity_checks = 0
+
+    def replace_parent_before_final_check(path: Path, descriptor: int) -> None:
+        nonlocal identity_checks
+        identity_checks += 1
+        if identity_checks == 3:
+            destination_parent.rename(moved_parent)
+            destination_parent.mkdir()
+        original(path, descriptor)
+
+    monkeypatch.setattr(
+        native, "_require_destination_parent_identity", replace_parent_before_final_check
+    )
+
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+        native._publish_new_file(content, destination)
+
+    assert str(moved_destination) in str(captured.value)
+    assert moved_destination.read_bytes() == content
+    assert not destination.exists()
 
 
 def test_native_boundary_publisher_stages_in_named_private_temporary(
