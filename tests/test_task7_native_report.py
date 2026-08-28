@@ -42,6 +42,13 @@ def _scheduler_logs(root: Path, job_id: str) -> None:
             )
 
 
+def _bootstrap_manifests(root: Path) -> None:
+    for index in range(64):
+        bootstrap = root / f"shard-{index:04d}" / "bootstrap"
+        bootstrap.mkdir()
+        (bootstrap / "run_manifest.json").write_text("{}\n", encoding="utf-8")
+
+
 def test_native_tree_requires_exact_64_by_two_regular_files(tmp_path: Path) -> None:
     root = _native_tree(tmp_path)
     _require_exact_native_shard_tree(root)
@@ -64,6 +71,7 @@ def test_native_tree_rejects_symlink_member(tmp_path: Path) -> None:
 def test_native_tree_accepts_only_exact_job_bound_scheduler_logs(tmp_path: Path) -> None:
     root = _native_tree(tmp_path)
     _scheduler_logs(root, "62314817")
+    _bootstrap_manifests(root)
 
     _require_exact_native_shard_tree(root, scheduler_job_id="62314817")
 

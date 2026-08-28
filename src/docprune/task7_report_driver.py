@@ -33,6 +33,36 @@ def _scheduler_log_names(scheduler_job_id: str | None) -> set[str]:
     }
 
 
+def _require_bootstrap_manifest(shard_fd: int, label: str) -> None:
+    bootstrap_fd: int | None = None
+    try:
+        bootstrap_fd = os.open(
+            "bootstrap",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=shard_fd,
+        )
+        if (
+            not stat.S_ISDIR(os.fstat(bootstrap_fd).st_mode)
+            or set(os.listdir(bootstrap_fd)) != {"run_manifest.json"}
+        ):
+            raise ValueError(f"{label} bootstrap namespace is invalid")
+        manifest_fd = os.open(
+            "run_manifest.json",
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=bootstrap_fd,
+        )
+        try:
+            if not stat.S_ISREG(os.fstat(manifest_fd).st_mode):
+                raise ValueError(f"{label} bootstrap manifest is not a regular file")
+        finally:
+            os.close(manifest_fd)
+    except OSError as error:
+        raise ValueError(f"{label} bootstrap contains a substituted path") from error
+    finally:
+        if bootstrap_fd is not None:
+            os.close(bootstrap_fd)
+
+
 def _canonical_sha256(value: object) -> str:
     payload = json.dumps(
         value,
@@ -161,8 +191,13 @@ def _require_exact_shard_tree(root: Path, *, scheduler_job_id: str | None = None
                 )
                 if not stat.S_ISDIR(os.fstat(shard_fd).st_mode):
                     raise ValueError("Task 7 shard entry is not a real directory")
-                if set(os.listdir(shard_fd)) != set(_SHARD_MEMBERS):
+                expected_members = set(_SHARD_MEMBERS) | (
+                    {"bootstrap"} if scheduler_job_id is not None else set()
+                )
+                if set(os.listdir(shard_fd)) != expected_members:
                     raise ValueError("Task 7 shard has missing or extra files")
+                if scheduler_job_id is not None:
+                    _require_bootstrap_manifest(shard_fd, "Task 7 shard")
                 for member in _SHARD_MEMBERS:
                     member_fd = os.open(
                         member,

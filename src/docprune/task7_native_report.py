@@ -27,6 +27,7 @@ from docprune.task7_report_driver import (
     _json_mapping,
     _publish_regular_file_noreplace,
     _read_regular_file_bytes,
+    _require_bootstrap_manifest,
     _scheduler_log_names,
     _sealed_qids,
 )
@@ -103,8 +104,13 @@ def _require_exact_native_shard_tree(
                 )
                 if not stat.S_ISDIR(os.fstat(shard_fd).st_mode):
                     raise ValueError("Task 7 native shard is not a real directory")
-                if set(os.listdir(shard_fd)) != set(_SHARD_MEMBERS):
+                expected_members = set(_SHARD_MEMBERS) | (
+                    {"bootstrap"} if scheduler_job_id is not None else set()
+                )
+                if set(os.listdir(shard_fd)) != expected_members:
                     raise ValueError("Task 7 native shard has missing or extra files")
+                if scheduler_job_id is not None:
+                    _require_bootstrap_manifest(shard_fd, "Task 7 native shard")
                 for member in _SHARD_MEMBERS:
                     member_fd = os.open(
                         member,
