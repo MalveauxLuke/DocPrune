@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import io
 import json
@@ -96,7 +97,7 @@ def _rename_directory_noreplace(
     libc = CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
     if renameat2 is None:
-        raise OSError("renameat2 is required for no-replace overlay publication")
+        raise OSError(errno.ENOSYS, "renameat2 is unavailable", destination_name)
     renameat2.argtypes = [c_int, c_char_p, c_int, c_char_p, c_uint]
     renameat2.restype = c_int
     if (
@@ -111,6 +112,57 @@ def _rename_directory_noreplace(
     ):
         error_number = get_errno()
         raise OSError(error_number, os.strerror(error_number), destination_name)
+
+
+def _publish_staged_directory_by_links(
+    parent_descriptor: int,
+    stage_descriptor: int,
+    stage_name: str,
+    destination_name: str,
+    filenames: tuple[str, ...],
+) -> None:
+    """Publish regular files with the completion manifest linked last."""
+
+    os.mkdir(destination_name, mode=0o750, dir_fd=parent_descriptor)
+    destination_descriptor = os.open(
+        destination_name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=parent_descriptor,
+    )
+    linked: list[str] = []
+    complete = False
+    try:
+        for filename in filenames:
+            os.link(
+                filename,
+                filename,
+                src_dir_fd=stage_descriptor,
+                dst_dir_fd=destination_descriptor,
+                follow_symlinks=False,
+            )
+            linked.append(filename)
+        os.fsync(destination_descriptor)
+        complete = True
+    finally:
+        if not complete:
+            for filename in reversed(linked):
+                try:
+                    os.unlink(filename, dir_fd=destination_descriptor)
+                except FileNotFoundError:
+                    pass
+        os.close(destination_descriptor)
+        if not complete:
+            os.rmdir(destination_name, dir_fd=parent_descriptor)
+    os.fsync(parent_descriptor)
+    for filename in filenames:
+        try:
+            os.unlink(filename, dir_fd=stage_descriptor)
+        except FileNotFoundError:
+            pass
+    try:
+        os.rmdir(stage_name, dir_fd=parent_descriptor)
+    except OSError:
+        pass
 
 
 def _write_new(directory_descriptor: int, filename: str, content: bytes) -> None:
@@ -296,7 +348,18 @@ def publish_task8_region_overlays(mapping_path: Path, output_dir: Path) -> dict[
         written_names.append("manifest.json")
         _write_new(stage_descriptor, "manifest.json", manifest_bytes)
         os.fsync(stage_descriptor)
-        _rename_directory_noreplace(parent_descriptor, stage_name, destination_name)
+        try:
+            _rename_directory_noreplace(parent_descriptor, stage_name, destination_name)
+        except OSError as error:
+            if error.errno not in {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}:
+                raise
+            _publish_staged_directory_by_links(
+                parent_descriptor,
+                stage_descriptor,
+                stage_name,
+                destination_name,
+                tuple(written_names),
+            )
         published = True
         os.fsync(parent_descriptor)
     finally:
