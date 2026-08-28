@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import os
+import stat
 import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -19,6 +20,7 @@ from pathlib import Path
 
 from docprune.cli import _manifest_digest
 from docprune.ctp_policy import CTPPolicy, btp_qtp_no_ctp_policy
+from docprune.experiment_design import _open_directory_nofollow
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
 from docprune.task6_runtime import task6_policy_matrix
 
@@ -100,28 +102,47 @@ def _require_commit(value: object, label: str) -> str:
     return value
 
 
-def _hash_file(path: Path, label: str) -> str:
+def _read_regular_file_bytes(path: Path, label: str) -> bytes:
+    """Capture one regular file through a no-symlink descriptor chain."""
+
     target = Path(path)
-    if not target.is_absolute() or target.is_symlink() or not target.is_file():
+    if not target.is_absolute():
         raise ValueError(f"{label} must be an absolute regular file")
-    digest = hashlib.sha256()
-    with target.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    parent_fd = _open_directory_nofollow(target.parent)
+    descriptor: int | None = None
+    try:
+        try:
+            descriptor = os.open(target.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        except OSError as error:
+            raise ValueError(f"{label} must be an absolute regular file") from error
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"{label} must be an absolute regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_fd)
+
+
+def _authenticated_file_bytes(path: Path, expected_sha256: str, label: str) -> tuple[bytes, str]:
+    expected = _require_sha256(expected_sha256, f"{label} checksum")
+    content = _read_regular_file_bytes(path, label)
+    actual = hashlib.sha256(content).hexdigest()
+    if actual != expected:
+        raise ValueError(f"{label} checksum mismatch")
+    return content, actual
 
 
 def _authenticate_file(path: Path, expected_sha256: str, label: str) -> str:
-    expected = _require_sha256(expected_sha256, f"{label} checksum")
-    actual = _hash_file(path, label)
-    if actual != expected:
-        raise ValueError(f"{label} checksum mismatch")
-    return actual
+    return _authenticated_file_bytes(path, expected_sha256, label)[1]
 
 
-def _load_json(path: Path, label: str) -> dict[str, object]:
+def _load_json_bytes(content: bytes, label: str) -> dict[str, object]:
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        value = json.loads(content.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"{label} is not valid JSON") from error
     if not isinstance(value, dict):
@@ -145,18 +166,17 @@ def _native_cells() -> list[dict[str, object]]:
     ]
 
 
-def _ordered_rows(path: Path, *, qid: str) -> tuple[list[dict[str, object]], str]:
-    digest = _hash_file(path, "Task 6 source results")
+def _ordered_rows(content: bytes, *, qid: str) -> tuple[list[dict[str, object]], str]:
+    digest = hashlib.sha256(content).hexdigest()
     rows: list[dict[str, object]] = []
     try:
-        with Path(path).open(encoding="utf-8") as stream:
-            for line in stream:
-                if not line.strip():
-                    continue
-                value = json.loads(line)
-                if not isinstance(value, dict):
-                    raise ValueError("Task 6 source result row must be a JSON object")
-                rows.append(value)
+        for line in content.decode("utf-8").splitlines():
+            if not line.strip():
+                continue
+            value = json.loads(line)
+            if not isinstance(value, dict):
+                raise ValueError("Task 6 source result row must be a JSON object")
+            rows.append(value)
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError("Task 6 source results are not valid JSONL") from error
     expected_count = len(_native_cells())
@@ -216,9 +236,9 @@ def _validate_policy_row(
     return layer, population
 
 
-def _comprehension_threshold(config_path: Path) -> float:
+def _comprehension_threshold(config_content: bytes) -> float:
     try:
-        payload = tomllib.loads(Path(config_path).read_text(encoding="utf-8"))
+        payload = tomllib.loads(config_content.decode("utf-8"))
         value = payload["paper"]["top4"]["comprehension_threshold"]
     except (UnicodeDecodeError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
         raise ValueError("config does not define paper.top4.comprehension_threshold") from error
@@ -238,15 +258,17 @@ def _authenticate_task6_admission(
     fixture_sha256: str,
     gate_sha256: str,
     qid_count: int,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, dict[Path, bytes]]:
     """Authenticate the admitted Task 6 analysis and every ordered source member."""
 
-    file_digest = _authenticate_file(path, expected_sha256, "Task 6 admission analysis")
+    content, file_digest = _authenticated_file_bytes(
+        path, expected_sha256, "Task 6 admission analysis"
+    )
     internal_digest = _require_sha256(
         expected_internal_sha256, "Task 6 admission internal checksum"
     )
     member_digest = _require_sha256(expected_member_digest_sha256, "Task 6 admitted member digest")
-    payload = _load_json(path, "Task 6 admission analysis")
+    payload = _load_json_bytes(content, "Task 6 admission analysis")
     unsigned = dict(payload)
     supplied_internal = unsigned.pop("analysis_sha256", None)
     if supplied_internal != internal_digest or _manifest_digest(unsigned) != internal_digest:
@@ -272,6 +294,7 @@ def _authenticate_task6_admission(
         or len(members) != expected_member_count
     ):
         raise ValueError("Task 6 admission analysis identity is invalid")
+    member_contents: dict[Path, bytes] = {}
     for member_index, member in enumerate(members):
         shard_index, file_index = divmod(member_index, 2)
         name = ("run_manifest.json", "results.jsonl")[file_index]
@@ -285,15 +308,17 @@ def _authenticate_task6_admission(
         expected_member_sha256 = _require_sha256(
             member.get("sha256"), "Task 6 admitted member checksum"
         )
-        if _hash_file(expected_path, "Task 6 admitted member") != expected_member_sha256:
+        content = _read_regular_file_bytes(expected_path, "Task 6 admitted member")
+        if hashlib.sha256(content).hexdigest() != expected_member_sha256:
             raise ValueError("Task 6 admitted member checksum mismatch")
+        member_contents[expected_path] = content
     canonical_members = [(member["path"], member["sha256"]) for member in members]
     computed_member_digest = hashlib.sha256(
         json.dumps(canonical_members, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     if computed_member_digest != member_digest:
         raise ValueError("Task 6 admitted member digest mismatch")
-    return file_digest, internal_digest, member_digest
+    return file_digest, internal_digest, member_digest, member_contents
 
 
 def _authenticate_source_runtime(
@@ -304,7 +329,7 @@ def _authenticate_source_runtime(
     config_sha256: str,
     launcher_path: Path,
     launcher_sha256: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, bytes]:
     """Bind source pins to canonical tracked files in the exact clean Task 6 checkout."""
 
     root = Path(runtime_dir)
@@ -355,10 +380,11 @@ def _authenticate_source_runtime(
         or tracked != [str(_SOURCE_CONFIG_RELATIVE_PATH), str(_SOURCE_LAUNCHER_RELATIVE_PATH)]
     ):
         raise ValueError("source runtime is not the exact clean admitted checkout")
-    return (
-        _authenticate_file(config, config_sha256, "source config"),
-        _authenticate_file(launcher, launcher_sha256, "source launcher"),
+    config_content, config_digest = _authenticated_file_bytes(
+        config, config_sha256, "source config"
     )
+    launcher_digest = _authenticate_file(launcher, launcher_sha256, "source launcher")
+    return config_digest, launcher_digest, config_content
 
 
 @dataclass(frozen=True, slots=True)
@@ -632,7 +658,7 @@ def publish_task7_native_boundary_manifest(
         feature_manifest_path, feature_manifest_sha256, "feature manifest"
     )
     runtime_commit = _require_commit(source_runtime_commit, "source runtime")
-    config_digest, launcher_digest = _authenticate_source_runtime(
+    config_digest, launcher_digest, config_content = _authenticate_source_runtime(
         source_runtime_dir,
         source_runtime_commit=runtime_commit,
         config_path=config_path,
@@ -641,7 +667,12 @@ def publish_task7_native_boundary_manifest(
         launcher_sha256=source_launcher_sha256,
     )
     expected_cells = _native_cells()
-    admission_file_digest, admission_internal_digest, member_digest = _authenticate_task6_admission(
+    (
+        admission_file_digest,
+        admission_internal_digest,
+        member_digest,
+        admitted_member_contents,
+    ) = _authenticate_task6_admission(
         admission_analysis_path,
         expected_sha256=admission_analysis_sha256,
         expected_internal_sha256=admission_analysis_internal_sha256,
@@ -658,8 +689,9 @@ def publish_task7_native_boundary_manifest(
         if shard.is_symlink() or not shard.is_dir():
             raise ValueError("Task 6 source shard order is incomplete")
         manifest_path = shard / "run_manifest.json"
-        manifest_sha256 = _hash_file(manifest_path, "Task 6 source run manifest")
-        manifest = _load_json(manifest_path, "Task 6 source run manifest")
+        manifest_content = admitted_member_contents[manifest_path]
+        manifest_sha256 = hashlib.sha256(manifest_content).hexdigest()
+        manifest = _load_json_bytes(manifest_content, "Task 6 source run manifest")
         unsigned = dict(manifest)
         supplied = unsigned.pop("run_manifest_sha256", None)
         if supplied != _manifest_digest(unsigned):
@@ -693,7 +725,7 @@ def publish_task7_native_boundary_manifest(
         if manifest.get("global_index_loaded") is not False:
             raise ValueError("Task 6 source run manifest permits a global index")
         results_path = shard / "results.jsonl"
-        rows, results_sha256 = _ordered_rows(results_path, qid=qid)
+        rows, results_sha256 = _ordered_rows(admitted_member_contents[results_path], qid=qid)
         literal_layer, literal_population = _validate_policy_row(
             rows[1], policy_index=1, fixture_sha256=fixture_digest
         )
@@ -750,7 +782,7 @@ def publish_task7_native_boundary_manifest(
         "source_admission_sha256": admission_file_digest,
         "source_admission_internal_sha256": admission_internal_digest,
         "source_member_digest_sha256": member_digest,
-        "comprehension_threshold": _comprehension_threshold(config_path),
+        "comprehension_threshold": _comprehension_threshold(config_content),
         "fixed_page_provenance": True,
         "global_index_loaded": False,
         "questions": questions,
@@ -784,9 +816,8 @@ def load_task7_native_boundary_manifest(
     """Load one exact sealed manifest, rejecting schema or identity drift."""
 
     expected = _require_sha256(expected_sha256, "native-boundary manifest checksum")
-    if _hash_file(path, "native-boundary manifest") != expected:
-        raise ValueError("native-boundary manifest checksum mismatch")
-    payload = _load_json(path, "native-boundary manifest")
+    content, _ = _authenticated_file_bytes(path, expected, "native-boundary manifest")
+    payload = _load_json_bytes(content, "native-boundary manifest")
     if set(payload) != _MANIFEST_KEYS:
         raise ValueError("native-boundary manifest has an invalid exact schema")
     if (

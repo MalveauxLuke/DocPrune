@@ -321,6 +321,119 @@ def _resign_admission_for_semantic_test(source: dict[str, object]) -> None:
     source["member_digest_sha256"] = member_digest
 
 
+def _replace_after_authenticated_capture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    target: Path,
+    replacement: bytes,
+    occurrence: int,
+) -> None:
+    """Replace one path only after its requested descriptor capture completes."""
+
+    import docprune.task7_native_boundary as native
+
+    original = native._read_regular_file_bytes
+    observed = 0
+
+    def capture(path: Path, label: str) -> bytes:
+        nonlocal observed
+        content = original(path, label)
+        if Path(path) == target:
+            observed += 1
+            if observed == occurrence:
+                alternate = target.with_name(f".{target.name}.replacement")
+                alternate.write_bytes(replacement)
+                alternate.replace(target)
+        return content
+
+    monkeypatch.setattr(native, "_read_regular_file_bytes", capture)
+
+
+@pytest.mark.parametrize(
+    ("source_name", "occurrence"),
+    (("admission", 1), ("config", 1), ("source_manifest", 1), ("source_results", 1)),
+)
+def test_native_boundary_publisher_parses_the_exact_authenticated_bytes_after_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_name: str,
+    occurrence: int,
+) -> None:
+    """Catch hashing one native input and parsing replacement path bytes."""
+
+    source = _source_tree(tmp_path)
+    shard = source["root"] / "shard-0000"
+    paths = {
+        "admission": source["admission"],
+        "config": source["config"],
+        "source_manifest": shard / "run_manifest.json",
+        "source_results": shard / "results.jsonl",
+    }
+    target = paths[source_name]
+    authenticated_sha256 = _sha256(target)
+    _replace_after_authenticated_capture(
+        monkeypatch,
+        target=target,
+        replacement=b"replacement bytes must never be parsed\n",
+        occurrence=occurrence,
+    )
+
+    output = tmp_path / "native-boundaries.json"
+    _publish(source, output)
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    if source_name == "admission":
+        assert payload["source_admission_sha256"] == authenticated_sha256
+    elif source_name == "config":
+        assert payload["config_sha256"] == authenticated_sha256
+        assert payload["comprehension_threshold"] == 45.0
+    elif source_name == "source_manifest":
+        assert payload["questions"][0]["source_run_manifest_sha256"] == authenticated_sha256
+    else:
+        assert payload["questions"][0]["source_results_sha256"] == authenticated_sha256
+
+
+def test_native_boundary_loader_parses_the_exact_authenticated_bytes_after_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch validating one manifest inode and loading a replacement inode."""
+
+    from docprune.task7_native_boundary import load_task7_native_boundary_manifest
+
+    source = _source_tree(tmp_path)
+    output = tmp_path / "native-boundaries.json"
+    digest = _publish(source, output)
+    _replace_after_authenticated_capture(
+        monkeypatch,
+        target=output,
+        replacement=b"replacement bytes must never be parsed\n",
+        occurrence=1,
+    )
+
+    loaded = load_task7_native_boundary_manifest(output, expected_sha256=digest)
+
+    assert loaded.question("q-1").boundary == "B_14"
+
+
+def test_native_boundary_authenticated_inputs_reject_symlinked_ancestors(tmp_path: Path) -> None:
+    """Catch native inputs being redirected through a non-leaf symlink."""
+
+    from docprune.task7_native_boundary import _authenticate_file
+
+    real = tmp_path / "real" / "nested"
+    real.mkdir(parents=True)
+    source = real / "source.json"
+    source.write_text("sealed bytes\n", encoding="utf-8")
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlink|non-directory"):
+        _authenticate_file(
+            tmp_path / "alias" / "nested" / "source.json",
+            _sha256(source),
+            "native source",
+        )
+
+
 def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outcomes(
     tmp_path: Path,
 ) -> None:
