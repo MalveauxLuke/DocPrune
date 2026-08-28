@@ -19,6 +19,7 @@ from docprune.qwen2vl.decoder import ForcedVisualIntervention
 from docprune.qwen2vl.model import (
     DocPruneQwen2VL,
     PruningTrace,
+    SharedBoundaryLikelihoodResult,
     VisionPruningMasks,
     _begin_synchronized_timer,
     _end_synchronized_timer,
@@ -248,6 +249,17 @@ class BTPQTPGeometryCapture:
     background_keep_sha256: str
     question_keep_sha256: str
     combined_keep_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class RegionalLikelihoodOutput:
+    """Shared-boundary likelihoods bound to the exact production prompt batch."""
+
+    result: SharedBoundaryLikelihoodResult
+    assistant_prompt_sha256: str
+    prefill_input_ids_shape: tuple[int, int]
+    prefill_input_ids_sha256: str
+    peak_allocated_gpu_bytes: int
 
 
 def _prepare_pruning_masks_from_context(
@@ -580,6 +592,59 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             retrieval_output,
             page_config=page_config,
             reconstruction=self.reconstruction,
+        )
+
+    def score_forced_intervention_likelihoods(
+        self,
+        images: Sequence[object],
+        question: str,
+        *,
+        retrieval_output: RetrievalOutput | None,
+        forced_interventions: tuple[ForcedVisualIntervention, ...],
+        teacher_forced_target_token_ids: tuple[tuple[int, ...], ...],
+    ) -> RegionalLikelihoodOutput:
+        """Score Task 9 masks through the exact production BTP+QTP input path."""
+
+        if retrieval_output is None:
+            raise ValueError("Task 9 regional scoring requires retrieval_output")
+        if self.qa_stage != "full":
+            raise ValueError("Task 9 regional scoring requires the full BTP+QTP stage")
+        if self.forced_intervention is not None or (
+            self.ctp_policy is not None and self.ctp_policy.family != "no-ctp"
+        ):
+            raise ValueError("Task 9 regional scoring cannot combine another CTP intervention")
+        prepared = [prepare_qwen_page(self.processor, image) for image in images]
+        qwen_images = [prepared_raster_image(page) for page in prepared]
+        prompt, batch = _prepare_batch_with_prompt(self.processor, qwen_images, question)
+        grid = _grid(batch)
+        _validate_prepared_batch(prepared, batch, self.model, self.processor)
+        moved = _move_batch(batch, _model_device(self.model))
+        input_ids = torch.as_tensor(_value(moved, "input_ids"), dtype=torch.long)
+        input_shape, input_sha256 = _input_ids_identity(input_ids)
+        _validate_placeholder_count(self.model, self.processor, input_ids, grid)
+        masks = self._masks(images, prepared, moved, question, retrieval_output)
+        adapter = (
+            self.model
+            if callable(getattr(self.model, "score_forced_intervention_likelihoods", None))
+            else DocPruneQwen2VL(self.model)
+        )
+        measurement_device = _begin_gpu_measurement(self.model)
+        with torch.no_grad():
+            result = adapter.score_forced_intervention_likelihoods(
+                input_ids=input_ids,
+                attention_mask=torch.as_tensor(_value(moved, "attention_mask"), dtype=torch.long),
+                pixel_values=torch.as_tensor(_value(moved, "pixel_values")),
+                image_grid_thw=grid,
+                pruning_masks=masks,
+                forced_interventions=forced_interventions,
+                teacher_forced_target_token_ids=teacher_forced_target_token_ids,
+            )
+        return RegionalLikelihoodOutput(
+            result=result,
+            assistant_prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            prefill_input_ids_shape=input_shape,
+            prefill_input_ids_sha256=input_sha256,
+            peak_allocated_gpu_bytes=_end_gpu_measurement(measurement_device),
         )
 
     def answer(

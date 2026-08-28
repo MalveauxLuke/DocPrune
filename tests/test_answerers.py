@@ -229,6 +229,65 @@ def test_task7_likelihood_capture_derives_exact_prompt_and_processor_input_inter
     )
 
 
+def test_task9_shared_likelihood_capture_reuses_exact_answerer_preprocessing(monkeypatch) -> None:
+    """Catch regional scoring bypassing the production prompt, BTP, QTP, or input identity."""
+
+    from transformers import Qwen2VLImageProcessor
+
+    sentinel = object()
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def score_forced_intervention_likelihoods(self, **kwargs):
+            self.calls.append(kwargs)
+            return sentinel
+
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    adapter = FakeAdapter()
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: adapter)
+    monkeypatch.setattr(
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.ones(4, dtype=torch.bool), torch.ones(4, dtype=torch.bool)
+        ),
+    )
+    answerer = DocPruneQwenAnswerer(
+        model=RecordingModel(),
+        processor=processor,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+    )
+    interventions = (ForcedVisualIntervention(1, "physical_delete", (0, 2)),)
+
+    output = answerer.score_forced_intervention_likelihoods(
+        [Image.new("RGB", (112, 56))],
+        "what?",
+        retrieval_output=retrieval_context(),
+        forced_interventions=interventions,
+        teacher_forced_target_token_ids=((12, 13),),
+    )
+
+    exact_prompt = (
+        "<|im_start|>user\nquestion: what?\noutput only answer.<|im_end|>\n<|im_start|>assistant\n"
+    )
+    expected_ids = torch.tensor([[10, 100, 100, 100, 100, 11]], dtype=torch.int64)
+    assert output.result is sentinel
+    assert output.assistant_prompt_sha256 == hashlib.sha256(exact_prompt.encode()).hexdigest()
+    assert output.prefill_input_ids_shape == (1, 6)
+    assert (
+        output.prefill_input_ids_sha256
+        == hashlib.sha256(expected_ids.numpy().tobytes()).hexdigest()
+    )
+    assert output.peak_allocated_gpu_bytes >= 0
+    assert adapter.calls[0]["forced_interventions"] is interventions
+    assert adapter.calls[0]["teacher_forced_target_token_ids"] == ((12, 13),)
+    assert adapter.calls[0]["pruning_masks"].combined().tolist() == [True, True, True, True]
+
+
 def test_task7_target_preparation_has_no_free_form_prompt_boundary() -> None:
     """Catch a producer accepting a caller-selected prompt or standalone answer tokens."""
 
