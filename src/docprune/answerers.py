@@ -12,7 +12,7 @@ import torch
 from docprune.benchmark_config import MAX_NEW_TOKENS, SHORT_ANSWER_TEMPLATE
 from docprune.config import DocPruneConfig, PagePruningConfig, ReconstructionDefaults
 from docprune.ctp_controls import VisualTokenGeometry
-from docprune.ctp_policy import CTPPolicy, PolicySelectionContext
+from docprune.ctp_policy import CTPPolicy, PolicySelectionContext, btp_qtp_no_ctp_policy
 from docprune.m3docrag import AnswerOutput, RetrievalOutput
 from docprune.pipeline import prepare_qa_pruning_masks
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
@@ -260,6 +260,11 @@ class RegionalLikelihoodOutput:
     prefill_input_ids_shape: tuple[int, int]
     prefill_input_ids_sha256: str
     peak_allocated_gpu_bytes: int
+    unpruned_generated_response_token_ids: tuple[int, ...] | None = None
+    unpruned_terminal_eos_token_id: int | None = None
+    unpruned_generation_trace: PruningTrace | None = None
+    unpruned_generation_encoder_seconds: float | None = None
+    unpruned_generation_decoder_seconds: float | None = None
 
 
 def _prepare_pruning_masks_from_context(
@@ -602,6 +607,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         retrieval_output: RetrievalOutput | None,
         forced_interventions: tuple[ForcedVisualIntervention, ...],
         teacher_forced_target_token_ids: tuple[tuple[int, ...], ...],
+        include_unpruned_generated_response: bool = False,
     ) -> RegionalLikelihoodOutput:
         """Score Task 9 masks through the exact production BTP+QTP input path."""
 
@@ -629,7 +635,47 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             else DocPruneQwen2VL(self.model)
         )
         measurement_device = _begin_gpu_measurement(self.model)
+        generated_response_token_ids: tuple[int, ...] | None = None
+        terminal_eos_token_id: int | None = None
+        unpruned_generation = None
         with torch.no_grad():
+            if include_unpruned_generated_response:
+                eos = _resolved_eos_token_ids(self.model)
+                unpruned_generation = adapter.generate_with_trace(
+                    input_ids=input_ids,
+                    attention_mask=torch.as_tensor(
+                        _value(moved, "attention_mask"), dtype=torch.long
+                    ),
+                    pixel_values=torch.as_tensor(_value(moved, "pixel_values")),
+                    image_grid_thw=grid,
+                    pruning_masks=masks,
+                    comprehension_threshold=1e9,
+                    attention_threshold=0.0,
+                    max_new_tokens=self.max_new_tokens,
+                    eos_token_ids=eos,
+                    forced_intervention=None,
+                    ctp_policy=btp_qtp_no_ctp_policy(),
+                )
+                generated = torch.as_tensor(unpruned_generation.generated_ids).detach().cpu()
+                if generated.ndim != 2 or generated.shape[0] != 1 or generated.shape[1] == 0:
+                    raise ValueError("Task 9 unpruned generated response IDs are invalid")
+                generated_ids = tuple(int(token) for token in generated[0].tolist())
+                if generated_ids[-1] in set(eos):
+                    terminal_eos_token_id = generated_ids[-1]
+                    generated_ids = generated_ids[:-1]
+                if (
+                    not generated_ids
+                    or unpruned_generation.trace.ctp_layer is not None
+                    or unpruned_generation.trace.post_ctp_visual_tokens
+                    != unpruned_generation.trace.post_qtp_visual_tokens
+                    or unpruned_generation.forced_intervention is not None
+                ):
+                    raise ValueError("Task 9 unpruned generated response is invalid")
+                generated_response_token_ids = generated_ids
+                teacher_forced_target_token_ids = (
+                    *teacher_forced_target_token_ids,
+                    generated_response_token_ids,
+                )
             result = adapter.score_forced_intervention_likelihoods(
                 input_ids=input_ids,
                 attention_mask=torch.as_tensor(_value(moved, "attention_mask"), dtype=torch.long),
@@ -645,6 +691,17 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             prefill_input_ids_shape=input_shape,
             prefill_input_ids_sha256=input_sha256,
             peak_allocated_gpu_bytes=_end_gpu_measurement(measurement_device),
+            unpruned_generated_response_token_ids=generated_response_token_ids,
+            unpruned_terminal_eos_token_id=terminal_eos_token_id,
+            unpruned_generation_trace=(
+                None if unpruned_generation is None else unpruned_generation.trace
+            ),
+            unpruned_generation_encoder_seconds=(
+                None if unpruned_generation is None else unpruned_generation.encoder_seconds
+            ),
+            unpruned_generation_decoder_seconds=(
+                None if unpruned_generation is None else unpruned_generation.decoder_seconds
+            ),
         )
 
     def answer(

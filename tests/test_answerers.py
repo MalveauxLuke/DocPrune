@@ -288,6 +288,137 @@ def test_task9_shared_likelihood_capture_reuses_exact_answerer_preprocessing(mon
     assert adapter.calls[0]["pruning_masks"].combined().tolist() == [True, True, True, True]
 
 
+def test_task9_generated_response_target_uses_exact_unpruned_ids_without_terminal_eos(
+    monkeypatch,
+) -> None:
+    """Catch decoding/retokenizing the response, retaining EOS, or generating with CTP."""
+
+    from transformers import Qwen2VLImageProcessor
+
+    sentinel = object()
+
+    class FakeAdapter:
+        def __init__(self) -> None:
+            self.generation_calls: list[dict[str, object]] = []
+            self.scoring_calls: list[dict[str, object]] = []
+
+        def generate_with_trace(self, **kwargs):
+            self.generation_calls.append(kwargs)
+            return GenerationResult(
+                generated_ids=torch.tensor([[70, 71, 151645]]),
+                trace=PruningTrace(4, 4, 4, 4, None),
+                encoder_seconds=0.25,
+                decoder_seconds=0.5,
+            )
+
+        def score_forced_intervention_likelihoods(self, **kwargs):
+            self.scoring_calls.append(kwargs)
+            return sentinel
+
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    adapter = FakeAdapter()
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+    monkeypatch.setattr(answerers, "DocPruneQwen2VL", lambda _: adapter)
+    monkeypatch.setattr(
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.ones(4, dtype=torch.bool), torch.ones(4, dtype=torch.bool)
+        ),
+    )
+    answerer = DocPruneQwenAnswerer(
+        model=RecordingModel(),
+        processor=processor,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+    )
+    interventions = (ForcedVisualIntervention(1, "physical_delete", (0, 2)),)
+
+    output = answerer.score_forced_intervention_likelihoods(
+        [Image.new("RGB", (112, 56))],
+        "what?",
+        retrieval_output=retrieval_context(),
+        forced_interventions=interventions,
+        teacher_forced_target_token_ids=((12, 13),),
+        include_unpruned_generated_response=True,
+    )
+
+    assert len(adapter.generation_calls) == 1
+    generation_call = adapter.generation_calls[0]
+    assert generation_call["ctp_policy"].family == "no-ctp"
+    assert generation_call["forced_intervention"] is None
+    assert generation_call["eos_token_ids"] == (151645, 151643)
+    assert adapter.scoring_calls[0]["teacher_forced_target_token_ids"] == (
+        (12, 13),
+        (70, 71),
+    )
+    assert output.result is sentinel
+    assert output.unpruned_generated_response_token_ids == (70, 71)
+    assert output.unpruned_terminal_eos_token_id == 151645
+    assert output.unpruned_generation_trace == PruningTrace(4, 4, 4, 4, None)
+    assert output.unpruned_generation_encoder_seconds == pytest.approx(0.25)
+    assert output.unpruned_generation_decoder_seconds == pytest.approx(0.5)
+
+
+def test_task9_generated_response_target_rejects_empty_or_pruned_generation(monkeypatch) -> None:
+    """Catch signing an empty target or a response produced by a pruning policy."""
+
+    from transformers import Qwen2VLImageProcessor
+
+    class FakeAdapter:
+        def __init__(self, result: GenerationResult) -> None:
+            self.result = result
+
+        def generate_with_trace(self, **kwargs):
+            del kwargs
+            return self.result
+
+        def score_forced_intervention_likelihoods(self, **kwargs):
+            del kwargs
+            raise AssertionError("invalid generated target reached mask scoring")
+
+    processor = RecordingProcessor()
+    processor.image_processor = Qwen2VLImageProcessor()
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+    monkeypatch.setattr(
+        DocPruneQwenAnswerer,
+        "_masks",
+        lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
+            torch.ones(4, dtype=torch.bool), torch.ones(4, dtype=torch.bool)
+        ),
+    )
+    answerer = DocPruneQwenAnswerer(
+        model=RecordingModel(),
+        processor=processor,
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+    )
+    intervention = (ForcedVisualIntervention(1, "physical_delete", (0, 2)),)
+
+    invalid_results = (
+        GenerationResult(
+            generated_ids=torch.tensor([[151645]]),
+            trace=PruningTrace(4, 4, 4, 4, None),
+        ),
+        GenerationResult(
+            generated_ids=torch.tensor([[70]]),
+            trace=PruningTrace(4, 4, 4, 2, 1),
+        ),
+    )
+    for result in invalid_results:
+        monkeypatch.setattr(
+            answerers, "DocPruneQwen2VL", lambda _, result=result: FakeAdapter(result)
+        )
+        with pytest.raises(ValueError, match="unpruned generated response"):
+            answerer.score_forced_intervention_likelihoods(
+                [Image.new("RGB", (112, 56))],
+                "what?",
+                retrieval_output=retrieval_context(),
+                forced_interventions=intervention,
+                teacher_forced_target_token_ids=((12, 13),),
+                include_unpruned_generated_response=True,
+            )
+
+
 def test_task7_target_preparation_has_no_free_form_prompt_boundary() -> None:
     """Catch a producer accepting a caller-selected prompt or standalone answer tokens."""
 
