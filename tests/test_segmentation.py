@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from docprune.ctp_controls import VisualTokenGeometry
 from docprune.segmentation import (
@@ -28,6 +29,7 @@ from docprune.task6_runtime import (
     FixedPageQuestion,
     FixedPageRecord,
 )
+from docprune.task8_runtime import seal_task8_smoke_inputs
 
 
 def _middle_bytes() -> bytes:
@@ -62,6 +64,7 @@ def _page(
     fixture_path: Path = Path("/scratch/task8/fixture.json"),
     fixture_sha256: str = "b" * 64,
     page_record_sha256: str = "c" * 64,
+    rendered_rgb_sha256: str = "d" * 64,
 ) -> InputPageIdentity:
     return InputPageIdentity(
         input_page_index,
@@ -77,7 +80,7 @@ def _page(
         page_record_sha256,
         100,
         200,
-        "d" * 64,
+        rendered_rgb_sha256,
         TASK6_RENDERER_CONTRACT,
     )
 
@@ -86,6 +89,10 @@ def _artifact(
     raw: bytes,
     pages: tuple[InputPageIdentity, ...] | None = None,
     path: Path = Path("/scratch/task8/doc-a_middle.json"),
+    smoke_manifest_path: Path = Path("/scratch/task8/smoke-input-manifest.json"),
+    smoke_manifest_sha256: str = "2" * 64,
+    input_path: Path = Path("/scratch/task8/doc-a.png"),
+    input_sha256: str = "1" * 64,
     configuration_path: Path = Path("/scratch/task8/mineru-config.json"),
     tool_manifest_path: Path = Path("/scratch/task8/mineru-tool-manifest.json"),
 ) -> MinerUArtifactIdentity:
@@ -94,6 +101,10 @@ def _artifact(
     return MinerUArtifactIdentity(
         raw_middle_json_path=path,
         raw_middle_json_sha256=hashlib.sha256(raw).hexdigest(),
+        smoke_input_manifest_path=smoke_manifest_path,
+        smoke_input_manifest_sha256=smoke_manifest_sha256,
+        mineru_input_path=input_path,
+        mineru_input_sha256=input_sha256,
         backend="vlm",
         version="3.0.9",
         repository_id="https://github.com/opendatalab/MinerU",
@@ -154,13 +165,13 @@ def test_mineru_parser_rejects_raw_hash_page_coverage_or_bbox_drift() -> None:
 
     missing_page = _artifact(
         raw,
-        pages=(
-            _page(),
-            _page(1, 1, "doc-a", 8),
-        ),
+        pages=(_page(mineru_page_index=1),),
     )
     with pytest.raises(ValueError, match="page coverage"):
         mineru_regions_from_middle_json(raw, missing_page)
+
+    with pytest.raises(ValueError, match="exactly one"):
+        _artifact(raw, pages=(_page(), _page(1, 1, "doc-a", 8)))
 
     payload = json.loads(raw)
     payload["pdf_info"][0]["para_blocks"][0]["bbox"] = [10, 5, 205, 25]
@@ -287,6 +298,8 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
     feature_path = tmp_path / "doc-a.safetensors"
     feature_path.write_bytes(b"fixed-feature-shard")
     feature_sha = hashlib.sha256(feature_path.read_bytes()).hexdigest()
+    rendered_image = Image.new("RGB", (100, 200), color=(7, 8, 9))
+    rendered_rgb_sha = hashlib.sha256(rendered_image.tobytes()).hexdigest()
     page_record = FixedPageRecord(
         rank=0,
         doc_id="doc-a",
@@ -296,7 +309,7 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
         source_pdf_sha256=source_sha,
         rendered_rgb_width=100,
         rendered_rgb_height=200,
-        rendered_rgb_sha256="d" * 64,
+        rendered_rgb_sha256=rendered_rgb_sha,
         renderer_contract=TASK6_RENDERER_CONTRACT,
         feature_shard_path=feature_path,
         feature_shard_sha256=feature_sha,
@@ -332,6 +345,19 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
     fixture_bytes = json.dumps(fixture.to_dict(), sort_keys=True, separators=(",", ":")).encode()
     fixture_path.write_bytes(fixture_bytes)
     fixture_sha = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+    smoke_root = tmp_path / "smoke-inputs"
+    smoke_manifest = seal_task8_smoke_inputs(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha,
+        qid="q-1",
+        output_root=smoke_root,
+        runtime_commit="a" * 40,
+        render_page=lambda _path, _page: rendered_image.copy(),
+    )
+    smoke_manifest_path = smoke_root / "smoke-input-manifest.json"
+    smoke_manifest_sha = hashlib.sha256(smoke_manifest_path.read_bytes()).hexdigest()
+    mineru_input_path = Path(smoke_manifest["pages"][0]["mineru_input_path"])
+    mineru_input_sha = smoke_manifest["pages"][0]["mineru_input_sha256"]
     config_path = tmp_path / "mineru-config.json"
     config_path.write_bytes(b'{"device":"cpu"}\n')
     manifest_path = tmp_path / "mineru-tool-manifest.json"
@@ -354,18 +380,24 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
             separators=(",", ":"),
         ).encode()
     )
+    canonical_tool_manifest_bytes = manifest_path.read_bytes()
     page = _page(
         source_pdf_path=source_path,
         source_pdf_sha256=source_sha,
         fixture_path=fixture_path,
         fixture_sha256=fixture_sha,
         page_record_sha256=page_record_sha,
+        rendered_rgb_sha256=rendered_rgb_sha,
     )
     artifact = replace(
         _artifact(
             raw,
             pages=(page,),
             path=raw_path,
+            smoke_manifest_path=smoke_manifest_path,
+            smoke_manifest_sha256=smoke_manifest_sha,
+            input_path=mineru_input_path,
+            input_sha256=mineru_input_sha,
             configuration_path=config_path,
             tool_manifest_path=manifest_path,
         ),
@@ -400,6 +432,11 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
     assert not unauthenticated_output.exists()
 
     raw_path.write_bytes(raw)
+    canonical_mineru_input = mineru_input_path.read_bytes()
+    mineru_input_path.write_bytes(b"drifted-mineru-input")
+    with pytest.raises(ValueError, match="authentication"):
+        load_region_mapping(output)
+    mineru_input_path.write_bytes(canonical_mineru_input)
     source_path.write_bytes(b"different-source-pdf")
     with pytest.raises(ValueError, match="authentication"):
         load_region_mapping(output)
@@ -475,6 +512,23 @@ def test_mapping_publication_and_load_reauthenticate_raw_mineru_bytes(tmp_path: 
         publish_region_mapping(contradictory_output, contradictory_mapping)
     assert "contradicts" in str(error.value.__cause__)
     assert not contradictory_output.exists()
+
+    manifest_path.write_bytes(canonical_tool_manifest_bytes)
+    wrong_input = tmp_path / "wrong-but-valid.png"
+    Image.new("RGB", (100, 200), color=(10, 11, 12)).save(wrong_input, format="PNG")
+    wrong_artifact = replace(
+        artifact,
+        mineru_input_path=wrong_input,
+        mineru_input_sha256=hashlib.sha256(wrong_input.read_bytes()).hexdigest(),
+    )
+    wrong_mapping = build_region_mapping_from_artifacts(
+        geometry,
+        ((wrong_artifact, raw),),
+    )
+    wrong_output = tmp_path / "mapping-wrong-valid-input.json"
+    with pytest.raises(ValueError, match="authentication"):
+        publish_region_mapping(wrong_output, wrong_mapping)
+    assert not wrong_output.exists()
 
 
 def test_mapping_supports_two_single_page_mineru_outputs_without_page_conflation() -> None:
