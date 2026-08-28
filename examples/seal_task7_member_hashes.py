@@ -18,6 +18,7 @@ def main() -> int:
     parser.add_argument("--gate-manifest", type=Path, required=True)
     parser.add_argument("--gate-manifest-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scheduler-job-id")
     args = parser.parse_args()
     authority, file_sha256 = seal_task7_member_hash_authority(
         shard_root=args.shard_root,
@@ -26,6 +27,7 @@ def main() -> int:
         gate_path=args.gate_manifest,
         gate_sha256=args.gate_manifest_sha256,
         output_path=args.output,
+        scheduler_job_id=args.scheduler_job_id,
     )
     print(
         json.dumps(

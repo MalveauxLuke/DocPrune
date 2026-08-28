@@ -34,6 +34,14 @@ def _native_tree(tmp_path: Path) -> Path:
     return root
 
 
+def _scheduler_logs(root: Path, job_id: str) -> None:
+    for index in range(64):
+        for suffix in ("out", "err"):
+            (root / f"slurm-docprune-task6-l40s-{job_id}_{index}.{suffix}").write_text(
+                "scheduler record\n", encoding="utf-8"
+            )
+
+
 def test_native_tree_requires_exact_64_by_two_regular_files(tmp_path: Path) -> None:
     root = _native_tree(tmp_path)
     _require_exact_native_shard_tree(root)
@@ -51,6 +59,19 @@ def test_native_tree_rejects_symlink_member(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="substituted path|regular file"):
         _require_exact_native_shard_tree(root)
+
+
+def test_native_tree_accepts_only_exact_job_bound_scheduler_logs(tmp_path: Path) -> None:
+    root = _native_tree(tmp_path)
+    _scheduler_logs(root, "62314817")
+
+    _require_exact_native_shard_tree(root, scheduler_job_id="62314817")
+
+    (root / "slurm-docprune-task6-l40s-OTHER_0.out").write_text(
+        "unrelated\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="missing or extra entries"):
+        _require_exact_native_shard_tree(root, scheduler_job_id="62314817")
 
 
 def test_native_run_manifest_is_bound_to_exact_shard_and_cell(tmp_path: Path) -> None:

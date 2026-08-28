@@ -27,6 +27,7 @@ from docprune.task7_report_driver import (
     _json_mapping,
     _publish_regular_file_noreplace,
     _read_regular_file_bytes,
+    _scheduler_log_names,
     _sealed_qids,
 )
 from docprune.task7_runtime import validate_task7_source_identity
@@ -62,7 +63,9 @@ _RUN_MANIFEST_KEYS = {
 }
 
 
-def _require_exact_native_shard_tree(root: Path) -> None:
+def _require_exact_native_shard_tree(
+    root: Path, *, scheduler_job_id: str | None = None
+) -> None:
     """Require exactly 64 real shard directories containing two regular files."""
 
     root = Path(root)
@@ -70,10 +73,27 @@ def _require_exact_native_shard_tree(root: Path) -> None:
         raise ValueError("Task 7 native shard root must be absolute")
     root_fd = _open_directory_nofollow(root)
     try:
-        expected = {f"shard-{index:04d}" for index in range(_SHARD_COUNT)}
-        if set(os.listdir(root_fd)) != expected:
+        expected_shards = {f"shard-{index:04d}" for index in range(_SHARD_COUNT)}
+        expected_logs = _scheduler_log_names(scheduler_job_id)
+        if set(os.listdir(root_fd)) != expected_shards | expected_logs:
             raise ValueError("Task 7 native shard root has missing or extra entries")
-        for shard_name in sorted(expected):
+        for name in sorted(expected_logs):
+            try:
+                log_fd = os.open(
+                    name,
+                    os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                    dir_fd=root_fd,
+                )
+                try:
+                    if not stat.S_ISREG(os.fstat(log_fd).st_mode):
+                        raise ValueError("Task 7 native scheduler log is not a regular file")
+                finally:
+                    os.close(log_fd)
+            except OSError as error:
+                raise ValueError(
+                    "Task 7 native scheduler log contains a substituted path"
+                ) from error
+        for shard_name in sorted(expected_shards):
             shard_fd: int | None = None
             try:
                 shard_fd = os.open(
@@ -268,7 +288,7 @@ def admit_task7_native_boundary_results(
     if boundary_manifest.qids != qids or boundary_manifest.fixture_sha256 != fixture_sha256:
         raise ValueError("Task 7 native-boundary manifest differs from the sealed gate")
 
-    _require_exact_native_shard_tree(shard_root)
+    _require_exact_native_shard_tree(shard_root, scheduler_job_id=scheduler_job_id)
     members: list[dict[str, object]] = []
     records: list[dict[str, object]] = []
     shared_run_identity: dict[str, object] | None = None
@@ -352,7 +372,7 @@ def admit_task7_native_boundary_results(
                 },
             }
         )
-    _require_exact_native_shard_tree(shard_root)
+    _require_exact_native_shard_tree(shard_root, scheduler_job_id=scheduler_job_id)
 
     payload: dict[str, object] = {
         "schema_version": 1,

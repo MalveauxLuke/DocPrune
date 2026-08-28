@@ -21,6 +21,18 @@ _SHARD_COUNT = 64
 _SHARD_MEMBERS = ("run_manifest.json", "results.jsonl", "task7-likelihood.jsonl")
 
 
+def _scheduler_log_names(scheduler_job_id: str | None) -> set[str]:
+    if scheduler_job_id is None:
+        return set()
+    if not scheduler_job_id or any(character not in "0123456789" for character in scheduler_job_id):
+        raise ValueError("Task 7 scheduler job ID must contain only decimal digits")
+    return {
+        f"slurm-docprune-task6-l40s-{scheduler_job_id}_{index}.{suffix}"
+        for index in range(_SHARD_COUNT)
+        for suffix in ("out", "err")
+    }
+
+
 def _canonical_sha256(value: object) -> str:
     payload = json.dumps(
         value,
@@ -118,13 +130,28 @@ def _sealed_qids(
     return tuple(qids)
 
 
-def _require_exact_shard_tree(root: Path) -> None:
+def _require_exact_shard_tree(root: Path, *, scheduler_job_id: str | None = None) -> None:
     root_fd = _open_directory_nofollow(root)
     try:
-        expected = {f"shard-{index:04d}" for index in range(_SHARD_COUNT)}
-        if set(os.listdir(root_fd)) != expected:
+        expected_shards = {f"shard-{index:04d}" for index in range(_SHARD_COUNT)}
+        expected_logs = _scheduler_log_names(scheduler_job_id)
+        if set(os.listdir(root_fd)) != expected_shards | expected_logs:
             raise ValueError("Task 7 shard root has missing or extra entries")
-        for name in sorted(expected):
+        for name in sorted(expected_logs):
+            try:
+                log_fd = os.open(
+                    name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=root_fd,
+                )
+                try:
+                    if not stat.S_ISREG(os.fstat(log_fd).st_mode):
+                        raise ValueError("Task 7 scheduler log is not a regular file")
+                finally:
+                    os.close(log_fd)
+            except OSError as error:
+                raise ValueError("Task 7 scheduler log contains a substituted path") from error
+        for name in sorted(expected_shards):
             shard_fd: int | None = None
             try:
                 shard_fd = os.open(
@@ -529,6 +556,7 @@ def seal_task7_member_hash_authority(
     gate_path: Path,
     gate_sha256: str,
     output_path: Path,
+    scheduler_job_id: str | None = None,
 ) -> tuple[dict[str, object], str]:
     """Outcome-blindly pin the exact 192 Task 7 shard-member byte streams."""
 
@@ -549,7 +577,7 @@ def seal_task7_member_hash_authority(
         fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
     )
-    _require_exact_shard_tree(shard_root)
+    _require_exact_shard_tree(shard_root, scheduler_job_id=scheduler_job_id)
     members: list[dict[str, object]] = []
     for index, qid in enumerate(qids):
         shard = shard_root / f"shard-{index:04d}"
@@ -574,7 +602,7 @@ def seal_task7_member_hash_authority(
                 },
             }
         )
-    _require_exact_shard_tree(shard_root)
+    _require_exact_shard_tree(shard_root, scheduler_job_id=scheduler_job_id)
     authority: dict[str, object] = {
         "schema_version": 1,
         "status": "sealed-task7-member-hashes",
@@ -606,6 +634,7 @@ def compile_task7_report_from_shards(
     draws: int = 100_000,
     seed: int = 20_260_827,
     validate_only: bool = False,
+    scheduler_job_id: str | None = None,
 ) -> dict[str, object]:
     """Build an authenticated snapshot and atomically publish it, or discard it."""
 
@@ -634,7 +663,7 @@ def compile_task7_report_from_shards(
         fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
     )
-    _require_exact_shard_tree(shard_root)
+    _require_exact_shard_tree(shard_root, scheduler_job_id=scheduler_job_id)
     expected_content = _authenticated_file(
         expected_members_path,
         expected_members_sha256,
