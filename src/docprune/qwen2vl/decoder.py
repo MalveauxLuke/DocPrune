@@ -89,6 +89,18 @@ class _ForcedInterventionApplication:
     record: ForcedInterventionRecord
 
 
+@dataclass(frozen=True)
+class ForcedBoundaryCheckpoint:
+    """Reusable unpruned decoder state immediately after one named boundary."""
+
+    boundary: str
+    hidden_states: torch.Tensor
+    cache: object
+    position_ids: torch.Tensor
+    original_keep_indices: torch.Tensor
+    current_visual_indices: torch.Tensor
+
+
 def _causal_mask(sequence_length: int, *, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     minimum = torch.finfo(dtype).min
     future = torch.triu(
@@ -285,6 +297,159 @@ def _apply_forced_visual_intervention(
         compact_original,
         visual_boolean[keep_indices].nonzero(as_tuple=False).flatten(),
         record_for(position_ids[:, :, keep_indices], compact_original),
+    )
+
+
+def _clone_dynamic_cache(cache: object) -> object:
+    """Clone a pinned DynamicCache so one branch cannot mutate another."""
+
+    from transformers.cache_utils import DynamicCache
+
+    if not isinstance(cache, DynamicCache):
+        raise TypeError("forced boundary checkpoint requires a DynamicCache")
+    cloned = DynamicCache()
+    cloned.key_cache = [value.clone() for value in cache.key_cache]
+    cloned.value_cache = [value.clone() for value in cache.value_cache]
+    cloned._seen_tokens = cache._seen_tokens
+    return cloned
+
+
+def capture_forced_boundary_checkpoint(
+    decoder_model: object,
+    inputs_embeds: torch.Tensor,
+    position_ids: torch.Tensor,
+    *,
+    visual_indices: torch.Tensor,
+    boundary: str | int,
+) -> ForcedBoundaryCheckpoint:
+    """Cache the unpruned full-sequence state at ``B_input`` or after block ``K``."""
+
+    from transformers.cache_utils import DynamicCache
+
+    if inputs_embeds.ndim != 3 or inputs_embeds.shape[0] != 1:
+        raise ValueError("decoder boundary capture requires embeddings with batch size one")
+    if position_ids.shape != (3, 1, inputs_embeds.shape[1]):
+        raise ValueError("position_ids must have shape [3, 1, sequence]")
+    current_visual = torch.as_tensor(visual_indices, dtype=torch.long, device=inputs_embeds.device)
+    if current_visual.ndim != 1:
+        raise ValueError("visual_indices must be a rank-one vector")
+    if current_visual.numel() and (
+        current_visual.min() < 0 or current_visual.max() >= inputs_embeds.shape[1]
+    ):
+        raise ValueError("visual_indices must reference the prefill sequence")
+    if current_visual.numel() > 1 and torch.any(current_visual[1:] <= current_visual[:-1]):
+        raise ValueError("visual_indices must be unique and strictly increasing")
+
+    boundary_name = _forced_boundary_name(boundary, layer_count=len(decoder_model.layers))
+    final_layer = -1 if boundary == "input" else int(boundary)
+    cache = DynamicCache()
+    hidden = inputs_embeds
+    for layer_index, decoder_layer in enumerate(decoder_model.layers):
+        if layer_index > final_layer:
+            break
+        embeddings = decoder_model.rotary_emb(hidden, position_ids)
+        attention_mask = _prefill_attention_mask(
+            decoder_model, hidden.shape[1], hidden.dtype, hidden.device
+        )
+        hidden = decoder_layer(
+            hidden,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=cache,
+            output_attentions=False,
+            use_cache=True,
+            cache_position=torch.arange(hidden.shape[1], device=hidden.device),
+            position_embeddings=embeddings,
+        )[0]
+    return ForcedBoundaryCheckpoint(
+        boundary=boundary_name,
+        hidden_states=hidden,
+        cache=cache,
+        position_ids=position_ids,
+        original_keep_indices=torch.arange(hidden.shape[1], device=hidden.device),
+        current_visual_indices=current_visual,
+    )
+
+
+def resume_forced_boundary_checkpoint(
+    decoder_model: object,
+    checkpoint: ForcedBoundaryCheckpoint,
+    intervention: ForcedVisualIntervention,
+) -> PrefillResult:
+    """Apply one physical mask to a cached full state and finish later blocks."""
+
+    if not isinstance(checkpoint, ForcedBoundaryCheckpoint):
+        raise TypeError("forced boundary resume requires a ForcedBoundaryCheckpoint")
+    boundary, retained = _validate_forced_intervention(
+        intervention,
+        layer_count=len(decoder_model.layers),
+        visual_population=checkpoint.current_visual_indices.numel(),
+    )
+    if boundary != checkpoint.boundary:
+        raise ValueError("forced intervention boundary does not match the cached checkpoint")
+    if checkpoint.hidden_states.ndim != 3 or checkpoint.hidden_states.shape[0] != 1:
+        raise ValueError("forced boundary checkpoint hidden state is invalid")
+    sequence_length = checkpoint.hidden_states.shape[1]
+    if checkpoint.position_ids.shape != (
+        3,
+        1,
+        sequence_length,
+    ) or checkpoint.original_keep_indices.shape != (sequence_length,):
+        raise ValueError("forced boundary checkpoint sequence identity is invalid")
+    final_prefix_layer = -1 if boundary == "B_input" else int(boundary.removeprefix("B_"))
+    expected_prefix_layers = final_prefix_layer + 1
+    if (
+        len(checkpoint.cache.key_cache) != expected_prefix_layers
+        or len(checkpoint.cache.value_cache) != expected_prefix_layers
+        or any(item.shape[-2] != sequence_length for item in checkpoint.cache.key_cache)
+        or any(item.shape[-2] != sequence_length for item in checkpoint.cache.value_cache)
+    ):
+        raise ValueError("forced boundary checkpoint cache topology is invalid")
+
+    cache = _clone_dynamic_cache(checkpoint.cache)
+    applied = _apply_forced_visual_intervention(
+        checkpoint.hidden_states,
+        checkpoint.position_ids,
+        checkpoint.original_keep_indices,
+        checkpoint.current_visual_indices,
+        ForcedVisualIntervention(
+            boundary=intervention.boundary,
+            mode=intervention.mode,
+            retained_visual_ids=retained,
+        ),
+    )
+    hidden = applied.hidden_states
+    positions = applied.position_ids
+    for layer_index, decoder_layer in enumerate(decoder_model.layers):
+        if layer_index <= final_prefix_layer:
+            continue
+        embeddings = decoder_model.rotary_emb(hidden, positions)
+        attention_mask = _prefill_attention_mask(
+            decoder_model, hidden.shape[1], hidden.dtype, hidden.device
+        )
+        hidden = decoder_layer(
+            hidden,
+            attention_mask=attention_mask,
+            position_ids=positions,
+            past_key_value=cache,
+            output_attentions=False,
+            use_cache=True,
+            cache_position=torch.arange(hidden.shape[1], device=hidden.device),
+            position_embeddings=embeddings,
+        )[0]
+    hidden = decoder_model.norm(hidden)
+    forced = replace(
+        applied.record,
+        prefill_cache_lengths=tuple(item.shape[-2] for item in cache.key_cache),
+    )
+    return PrefillResult(
+        hidden,
+        cache,
+        positions,
+        applied.original_keep_indices,
+        None,
+        forced,
+        None,
     )
 
 

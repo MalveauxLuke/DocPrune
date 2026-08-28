@@ -114,6 +114,92 @@ def test_tiny_generation_scores_task7_targets_from_the_same_prefill(tiny_qwen2vl
     assert all(torch.isfinite(torch.tensor(value)) for value in got.teacher_forced_loglikelihoods)
 
 
+def test_shared_boundary_likelihoods_match_independent_physical_interventions(
+    tiny_qwen2vl,
+) -> None:
+    """Catch Task 9 cache reuse changing either mask identity or sequence likelihood."""
+
+    torch.manual_seed(17)
+    adapter = DocPruneQwen2VL(tiny_qwen2vl)
+    input_ids = torch.tensor([[10, 102, 100, 100, 100, 100, 103, 11]])
+    attention_mask = torch.ones_like(input_ids)
+    pixel_values = torch.randn(16, 24)
+    grid = torch.tensor([[1, 4, 4]])
+    masks = VisionPruningMasks(
+        background_keep=torch.ones(4, dtype=torch.bool),
+        question_keep=torch.ones(4, dtype=torch.bool),
+    )
+    interventions = (
+        ForcedVisualIntervention(1, "physical_delete", (0, 1)),
+        ForcedVisualIntervention(1, "physical_delete", (1, 3)),
+    )
+    targets = ((12, 13), (14,))
+    with torch.no_grad():
+        shared = adapter.score_forced_intervention_likelihoods(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            pixel_values=pixel_values,
+            image_grid_thw=grid,
+            pruning_masks=masks,
+            forced_interventions=interventions,
+            teacher_forced_target_token_ids=targets,
+        )
+        independent = tuple(
+            adapter.generate_with_trace(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                pixel_values=pixel_values,
+                image_grid_thw=grid,
+                pruning_masks=masks,
+                comprehension_threshold=0.0,
+                attention_threshold=0.0,
+                max_new_tokens=1,
+                eos_token_ids=(),
+                forced_intervention=intervention,
+                teacher_forced_target_token_ids=targets,
+            )
+            for intervention in interventions
+        )
+
+    assert shared.boundary == "B_1"
+    assert shared.checkpoint_cache_lengths == (8, 8)
+    assert len(shared.branches) == 2
+    assert shared.encoder_seconds > 0
+    assert shared.prefix_decoder_seconds > 0
+    assert all(value > 0 for value in shared.branch_decoder_seconds)
+    for branch, expected, intervention in zip(
+        shared.branches, independent, interventions, strict=True
+    ):
+        assert branch.forced_intervention is not None
+        assert branch.forced_intervention.retained_visual_ids == intervention.retained_visual_ids
+        assert branch.teacher_forced_loglikelihoods == pytest.approx(
+            expected.teacher_forced_loglikelihoods, abs=0, rel=0
+        )
+
+
+def test_shared_boundary_likelihoods_reject_mixed_boundaries(tiny_qwen2vl) -> None:
+    """Catch silently recomputing or misapplying masks from more than one B_K."""
+
+    adapter = DocPruneQwen2VL(tiny_qwen2vl)
+    input_ids = torch.tensor([[10, 102, 100, 100, 100, 100, 103, 11]])
+    with pytest.raises(ValueError, match="one boundary"):
+        adapter.score_forced_intervention_likelihoods(
+            input_ids=input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            pixel_values=torch.randn(16, 24),
+            image_grid_thw=torch.tensor([[1, 4, 4]]),
+            pruning_masks=VisionPruningMasks(
+                background_keep=torch.ones(4, dtype=torch.bool),
+                question_keep=torch.ones(4, dtype=torch.bool),
+            ),
+            forced_interventions=(
+                ForcedVisualIntervention(0, "physical_delete", (0,)),
+                ForcedVisualIntervention(1, "physical_delete", (0,)),
+            ),
+            teacher_forced_target_token_ids=((12,),),
+        )
+
+
 def test_teacher_forced_likelihood_scores_every_answer_token_without_eos(
     tiny_qwen2vl,
 ) -> None:

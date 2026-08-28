@@ -13,8 +13,11 @@ from docprune.qwen2vl.decoder import (
     ForcedInterventionRecord,
     ForcedVisualIntervention,
     PrefillResult,
+    _forced_boundary_name,
+    capture_forced_boundary_checkpoint,
     decode_one_token,
     prefill_with_ctp,
+    resume_forced_boundary_checkpoint,
 )
 from docprune.qwen2vl.sequence import compact_multimodal_sequence
 from docprune.qwen2vl.vision import compact_vision_batch
@@ -61,6 +64,27 @@ class GenerationResult:
     forced_intervention: ForcedInterventionRecord | None = None
     policy_selection: CTPSelectionRecord | None = None
     teacher_forced_loglikelihoods: tuple[float, ...] | None = None
+
+
+@dataclass(frozen=True)
+class ForcedInterventionLikelihoodBranch:
+    forced_intervention: ForcedInterventionRecord
+    teacher_forced_loglikelihoods: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class SharedBoundaryLikelihoodResult:
+    """Task 9 likelihoods derived from one vision pass and one full B_K prefix."""
+
+    boundary: str
+    original_visual_tokens: int
+    post_btp_visual_tokens: int
+    post_qtp_visual_tokens: int
+    checkpoint_cache_lengths: tuple[int, ...]
+    branches: tuple[ForcedInterventionLikelihoodBranch, ...]
+    encoder_seconds: float
+    prefix_decoder_seconds: float
+    branch_decoder_seconds: tuple[float, ...]
 
 
 def _clone_dynamic_cache(cache: object) -> object:
@@ -237,6 +261,115 @@ class DocPruneQwen2VL:
     def __init__(self, model: object) -> None:
         self.compatibility = assert_supported_qwen2vl(model)
         self.model = model
+
+    def score_forced_intervention_likelihoods(
+        self,
+        *,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        pixel_values: torch.Tensor,
+        image_grid_thw: torch.Tensor,
+        pruning_masks: VisionPruningMasks,
+        forced_interventions: tuple[ForcedVisualIntervention, ...],
+        teacher_forced_target_token_ids: tuple[tuple[int, ...], ...],
+    ) -> SharedBoundaryLikelihoodResult:
+        """Score multiple physical masks while reusing their common unpruned prefix."""
+
+        interventions = tuple(forced_interventions)
+        if not interventions:
+            raise ValueError("shared likelihood scoring requires at least one intervention")
+        boundaries = {
+            _forced_boundary_name(
+                intervention.boundary,
+                layer_count=len(self.model.model.layers),
+            )
+            for intervention in interventions
+        }
+        if len(boundaries) != 1:
+            raise ValueError("shared likelihood interventions must use one boundary")
+        if any(intervention.mode != "physical_delete" for intervention in interventions):
+            raise ValueError("shared likelihood scoring requires physical-delete interventions")
+        if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("shared likelihood scoring requires batch size one")
+        if attention_mask.shape != input_ids.shape:
+            raise ValueError("attention_mask must match input_ids")
+        if not bool(torch.as_tensor(attention_mask, dtype=torch.bool).all()):
+            raise ValueError("shared likelihood scoring does not support padding")
+
+        full_positions, _ = self.model.get_rope_index(
+            input_ids,
+            image_grid_thw=image_grid_thw,
+            attention_mask=attention_mask,
+        )
+        background = torch.as_tensor(pruning_masks.background_keep, dtype=torch.bool)
+        combined = pruning_masks.combined().to(pixel_values.device)
+        vision_dtype = getattr(self.model.visual, "get_dtype", lambda: pixel_values.dtype)()
+        vision_device = getattr(self.model.visual, "get_device", lambda: pixel_values.device)()
+        encoded_pixels = pixel_values.to(device=vision_device, dtype=vision_dtype)
+        encoder_started, encoder_device = _begin_synchronized_timer(self.model)
+        vision = compact_vision_batch(
+            self.model.visual,
+            encoded_pixels,
+            image_grid_thw,
+            combined,
+        )
+        encoder_seconds = _end_synchronized_timer(encoder_started, encoder_device)
+        compact = compact_multimodal_sequence(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=full_positions,
+            image_token_id=self.model.config.image_token_id,
+            group_keep_mask=combined,
+        )
+        prefix_started, prefix_device = _begin_synchronized_timer(self.model)
+        embeddings = self.model.model.embed_tokens(compact.input_ids)
+        if compact.visual_indices.numel() != vision.image_embeds.shape[0]:
+            raise ValueError("compacted image placeholders and sparse vision features do not match")
+        embeddings = embeddings.clone()
+        embeddings[0, compact.visual_indices] = vision.image_embeds.to(
+            device=embeddings.device,
+            dtype=embeddings.dtype,
+        )
+        first_boundary = interventions[0].boundary
+        checkpoint = capture_forced_boundary_checkpoint(
+            self.model.model,
+            embeddings,
+            compact.position_ids,
+            visual_indices=compact.visual_indices,
+            boundary=first_boundary,
+        )
+        prefix_seconds = _end_synchronized_timer(prefix_started, prefix_device)
+
+        branches: list[ForcedInterventionLikelihoodBranch] = []
+        branch_seconds: list[float] = []
+        for intervention in interventions:
+            branch_started, branch_device = _begin_synchronized_timer(self.model)
+            prefill = resume_forced_boundary_checkpoint(
+                self.model.model,
+                checkpoint,
+                intervention,
+            )
+            likelihoods = teacher_forced_sequence_loglikelihoods(
+                self.model.model,
+                self.model.lm_head,
+                prefill,
+                teacher_forced_target_token_ids,
+            )
+            branch_seconds.append(_end_synchronized_timer(branch_started, branch_device))
+            if prefill.forced is None:  # pragma: no cover - guaranteed by the resume contract
+                raise RuntimeError("shared likelihood branch lost its forced intervention record")
+            branches.append(ForcedInterventionLikelihoodBranch(prefill.forced, likelihoods))
+        return SharedBoundaryLikelihoodResult(
+            boundary=boundaries.pop(),
+            original_visual_tokens=background.numel(),
+            post_btp_visual_tokens=int(background.sum().item()),
+            post_qtp_visual_tokens=int(combined.sum().item()),
+            checkpoint_cache_lengths=tuple(item.shape[-2] for item in checkpoint.cache.key_cache),
+            branches=tuple(branches),
+            encoder_seconds=encoder_seconds,
+            prefix_decoder_seconds=prefix_seconds,
+            branch_decoder_seconds=tuple(branch_seconds),
+        )
 
     def generate_with_trace(
         self,

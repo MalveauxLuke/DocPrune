@@ -9,8 +9,10 @@ from docprune.qwen2vl.decoder import (
     _causal_mask,
     _last_query_attention,
     _prefill_attention_mask,
+    capture_forced_boundary_checkpoint,
     decode_one_token,
     prefill_with_ctp,
+    resume_forced_boundary_checkpoint,
 )
 
 
@@ -19,6 +21,90 @@ def _fixture_inputs(tiny_qwen2vl):
     hidden = tiny_qwen2vl.model.embed_tokens(input_ids)
     positions = torch.arange(6).view(1, 1, 6).expand(3, 1, 6).clone()
     return hidden, positions
+
+
+def test_cached_boundary_resume_matches_independent_forced_prefill(tiny_qwen2vl) -> None:
+    """Catch changing intervention semantics when Task 9 reuses the full B_K state."""
+
+    hidden, positions = _fixture_inputs(tiny_qwen2vl)
+    intervention = ForcedVisualIntervention(1, "physical_delete", (1,))
+    with torch.no_grad():
+        independent = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3]),
+            comprehension_threshold=0.0,
+            attention_threshold=0.0,
+            forced_intervention=intervention,
+        )
+        checkpoint = capture_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3]),
+            boundary=1,
+        )
+        resumed = resume_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            checkpoint,
+            intervention,
+        )
+
+    assert checkpoint.boundary == "B_1"
+    assert tuple(item.shape[-2] for item in checkpoint.cache.key_cache) == (6, 6)
+    assert resumed.forced == independent.forced
+    assert resumed.keep_indices.tolist() == independent.keep_indices.tolist()
+    assert torch.equal(resumed.position_ids, independent.position_ids)
+    assert torch.allclose(resumed.hidden_states, independent.hidden_states, atol=0, rtol=0)
+    assert len(resumed.cache.key_cache) == len(independent.cache.key_cache)
+    for cached, expected in zip(resumed.cache.key_cache, independent.cache.key_cache, strict=True):
+        assert torch.allclose(cached, expected, atol=0, rtol=0)
+
+
+def test_cached_boundary_is_reusable_and_rejects_cross_boundary_intervention(tiny_qwen2vl) -> None:
+    """Catch one regional branch mutating the shared prefix cache or using another B_K."""
+
+    hidden, positions = _fixture_inputs(tiny_qwen2vl)
+    with torch.no_grad():
+        checkpoint = capture_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3]),
+            boundary=1,
+        )
+        prefix = tuple(
+            (key.clone(), value.clone())
+            for key, value in zip(
+                checkpoint.cache.key_cache, checkpoint.cache.value_cache, strict=True
+            )
+        )
+        first = resume_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            checkpoint,
+            ForcedVisualIntervention(1, "physical_delete", (0,)),
+        )
+        second = resume_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            checkpoint,
+            ForcedVisualIntervention(1, "physical_delete", (1,)),
+        )
+
+    assert first.keep_indices.tolist() == [0, 1, 2, 4, 5]
+    assert second.keep_indices.tolist() == [0, 1, 3, 4, 5]
+    assert len(checkpoint.cache.key_cache) == 2
+    for (key, value), expected_key, expected_value in zip(
+        prefix, checkpoint.cache.key_cache, checkpoint.cache.value_cache, strict=True
+    ):
+        assert torch.equal(key, expected_key)
+        assert torch.equal(value, expected_value)
+    with pytest.raises(ValueError, match="boundary"):
+        resume_forced_boundary_checkpoint(
+            tiny_qwen2vl.model,
+            checkpoint,
+            ForcedVisualIntervention(0, "physical_delete", (0,)),
+        )
 
 
 def test_forced_physical_delete_after_boundary_compacts_only_later_caches(tiny_qwen2vl) -> None:
