@@ -938,6 +938,56 @@ def test_native_boundary_verifier_close_failure_cannot_return_success(
             original_close(leaked_descriptor)
 
 
+def test_native_boundary_clean_success_never_opens_third_recovery_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Do not run recovery diagnostics after the two clean success gates."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    content = b"authenticated staged bytes\n"
+    original_open = native.os.open
+    original_close = native.os.close
+    verifier_descriptors: set[int] = set()
+    verifier_close_attempts = 0
+    leaked_descriptor: int | None = None
+
+    def observe_verifier_open(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+        if path == destination.name and flags & os.O_ACCMODE == os.O_RDONLY:
+            verifier_descriptors.add(descriptor)
+        return descriptor
+
+    def fail_before_third_verifier_close(descriptor: int) -> None:
+        nonlocal verifier_close_attempts, leaked_descriptor
+        if descriptor in verifier_descriptors:
+            verifier_close_attempts += 1
+            verifier_descriptors.remove(descriptor)
+            if verifier_close_attempts == 3:
+                leaked_descriptor = descriptor
+                raise OSError("injected third verifier close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(native.os, "open", observe_verifier_open)
+    monkeypatch.setattr(native.os, "close", fail_before_third_verifier_close)
+
+    try:
+        native._publish_new_file(content, destination)
+        assert verifier_close_attempts == 2
+        assert leaked_descriptor is None
+        assert destination.read_bytes() == content
+    finally:
+        if leaked_descriptor is not None:
+            original_close(leaked_descriptor)
+
+
 def test_native_boundary_fifo_source_substitution_is_nonblocking_and_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

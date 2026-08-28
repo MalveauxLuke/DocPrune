@@ -275,20 +275,12 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
     except BaseException as error:
         operation_error = error
 
-    recovery: str | None = None
-    if staged_identity is not None:
-        candidates = (("published destination", target.name),)
-        if temporary_name is not None:
-            candidates += (("private temporary", temporary_name),)
+    recovery_parent: Path | None = None
+    if operation_error is not None and staged_identity is not None:
         try:
-            recovery = _recovery_description(parent_fd, candidates, staged_identity, content)
+            recovery_parent = Path(os.readlink(f"/proc/self/fd/{parent_fd}"))
         except BaseException:
-            digest = hashlib.sha256(content).hexdigest()
-            recovery = (
-                "staged artifact identity "
-                f"dev={staged_identity[0]} ino={staged_identity[1]} sha256={digest}; "
-                "no verified recovery path"
-            )
+            pass
 
     close_error: BaseException | None = None
     for descriptor in (temporary_fd, parent_fd):
@@ -304,8 +296,30 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
         return
     primary_error = operation_error if operation_error is not None else close_error
     assert primary_error is not None
-    if staged_identity is None or recovery is None:
+    if staged_identity is None:
         raise primary_error
+
+    digest = hashlib.sha256(content).hexdigest()
+    recovery = (
+        "staged artifact identity "
+        f"dev={staged_identity[0]} ino={staged_identity[1]} sha256={digest}; "
+        "no verified recovery path"
+    )
+    recovery_parent_fd: int | None = None
+    try:
+        recovery_parent_fd = _open_directory_nofollow(recovery_parent or target.parent)
+        candidates = (("published destination", target.name),)
+        if temporary_name is not None:
+            candidates += (("private temporary", temporary_name),)
+        recovery = _recovery_description(recovery_parent_fd, candidates, staged_identity, content)
+    except BaseException:
+        pass
+    finally:
+        if recovery_parent_fd is not None:
+            try:
+                os.close(recovery_parent_fd)
+            except BaseException:
+                pass
     raise RuntimeError(f"native-boundary publication failed; {recovery}") from primary_error
 
 
