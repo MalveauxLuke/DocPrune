@@ -27,8 +27,20 @@ def _canonical_sha256(value: object) -> str:
 
 
 def _write_authority(tmp_path: Path) -> tuple[Path, str, Path, str, Path, tuple[str, ...]]:
+    eligible_path = tmp_path / "eligible.jsonl"
+    eligible_path.write_text('{"qid":"unused"}\n', encoding="utf-8")
     fixture_path = tmp_path / "fixture.json"
-    fixture_path.write_text("{}\n", encoding="utf-8")
+    fixture_path.write_text(
+        json.dumps(
+            {
+                "eligible_questions_path": str(eligible_path),
+                "eligible_questions_sha256": hashlib.sha256(eligible_path.read_bytes()).hexdigest(),
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     fixture_sha256 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
     qids = tuple(f"q-{index:02d}" for index in range(64))
     gate_path = tmp_path / "gate.json"
@@ -160,13 +172,22 @@ def test_driver_admits_exact_sealed_order_and_publishes_once(
         return _bundle(qids[index], index)
 
     monkeypatch.setattr(task7_report_driver, "assemble_task7_analysis_bundle_from_artifacts", admit)
-    output = tmp_path / "analysis.json"
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    output = tmp_path / "analysis-bundle"
     validated = task7_report_driver.compile_task7_report_from_shards(
         shard_root=root,
         fixture_path=fixture,
         fixture_sha256=fixture_sha,
         gate_path=gate,
         gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
         output_path=output,
         draws=4,
         seed=3,
@@ -181,6 +202,8 @@ def test_driver_admits_exact_sealed_order_and_publishes_once(
         fixture_sha256=fixture_sha,
         gate_path=gate,
         gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
         output_path=output,
         draws=4,
         seed=3,
@@ -202,9 +225,30 @@ def test_driver_admits_exact_sealed_order_and_publishes_once(
     assert report["analysis"]["curve"]["draw_count"] == 4
     assert report["fixed_page_provenance"] is True
     assert report["global_index_loaded"] is False
-    assert output.is_file()
-    stored = json.loads(output.read_text(encoding="utf-8"))
+    assert output.is_dir()
+    stored = json.loads((output / "report.json").read_text(encoding="utf-8"))
     assert stored == report
+    for identity_name in ("fixture", "gate", "eligible_questions"):
+        identity = report[identity_name]
+        assert not Path(identity["path"]).is_absolute()
+        assert (
+            hashlib.sha256((output / identity["path"]).read_bytes()).hexdigest()
+            == identity["sha256"]
+        )
+    member_authority = report["member_hash_authority"]
+    assert not Path(member_authority["path"]).is_absolute()
+    assert (
+        hashlib.sha256((output / member_authority["path"]).read_bytes()).hexdigest()
+        == member_authority["file_sha256"]
+    )
+    for member in report["members"]:
+        assert not Path(member["path"]).is_absolute()
+        for identity in member["files"].values():
+            assert not Path(identity["path"]).is_absolute()
+            assert (
+                hashlib.sha256((output / identity["path"]).read_bytes()).hexdigest()
+                == identity["sha256"]
+            )
     unsigned = dict(stored)
     assert unsigned.pop("canonical_report_sha256") == _canonical_sha256(unsigned)
     with pytest.raises(FileExistsError):
@@ -214,6 +258,8 @@ def test_driver_admits_exact_sealed_order_and_publishes_once(
             fixture_sha256=fixture_sha,
             gate_path=gate,
             gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
             output_path=output,
             draws=4,
             seed=3,
@@ -323,6 +369,52 @@ def test_driver_rejects_a_member_that_differs_from_explicit_hash_authority(
         )
 
 
+def test_report_and_sealer_reject_a_fifo_member_without_a_blocking_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    fifo = root / "shard-0000" / "results.jsonl"
+    fifo.unlink()
+    os.mkfifo(fifo)
+    original_open = task7_report_driver.os.open
+
+    def require_nonblocking_leaf(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        if path == "results.jsonl" and not flags & os.O_NONBLOCK:
+            raise AssertionError("FIFO leaf was opened without O_NONBLOCK")
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(task7_report_driver.os, "open", require_nonblocking_leaf)
+
+    with pytest.raises(ValueError, match="regular file"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=tmp_path / "analysis-bundle",
+            validate_only=True,
+        )
+    with pytest.raises(ValueError, match="regular file"):
+        task7_report_driver.seal_task7_member_hash_authority(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            output_path=tmp_path / "authority.json",
+        )
+
+
 def test_driver_never_publishes_inside_the_sealed_shard_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -330,7 +422,10 @@ def test_driver_never_publishes_inside_the_sealed_shard_root(
     monkeypatch.setattr(
         task7_report_driver,
         "assemble_task7_analysis_bundle_from_artifacts",
-        lambda **kwargs: _bundle(qids[0], 0),
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
     )
     with pytest.raises(ValueError, match="outside the sealed shard root"):
         task7_report_driver.compile_task7_report_from_shards(
@@ -346,7 +441,7 @@ def test_driver_never_publishes_inside_the_sealed_shard_root(
         )
 
 
-def test_driver_reauthenticates_early_members_after_late_shard_admission(
+def test_snapshot_closes_early_members_before_late_shard_admission(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
@@ -367,24 +462,28 @@ def test_driver_reauthenticates_early_members_after_late_shard_admission(
         return _bundle(qids[index], index)
 
     monkeypatch.setattr(task7_report_driver, "assemble_task7_analysis_bundle_from_artifacts", admit)
-    output = tmp_path / "analysis.json"
-    with pytest.raises(ValueError, match="changed after admission"):
-        task7_report_driver.compile_task7_report_from_shards(
-            shard_root=root,
-            fixture_path=fixture,
-            fixture_sha256=fixture_sha,
-            gate_path=gate,
-            gate_sha256=gate_sha,
-            expected_members_path=authority,
-            expected_members_sha256=authority_sha,
-            output_path=output,
-            draws=4,
-            seed=3,
-        )
-    assert not output.exists()
+    output = tmp_path / "analysis-bundle"
+    report = task7_report_driver.compile_task7_report_from_shards(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
+        output_path=output,
+        draws=4,
+        seed=3,
+    )
+    member = report["members"][0]["files"]["results.jsonl"]
+    assert hashlib.sha256((output / member["path"]).read_bytes()).hexdigest() == member["sha256"]
+    assert (
+        hashlib.sha256((root / "shard-0000" / "results.jsonl").read_bytes()).hexdigest()
+        != (member["sha256"])
+    )
 
 
-def test_driver_reauthenticates_members_after_analysis_compilation(
+def test_snapshot_remains_closed_after_analysis_compilation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
@@ -415,8 +514,322 @@ def test_driver_reauthenticates_members_after_analysis_compilation(
     monkeypatch.setattr(
         task7_report_driver, "compile_task7_visual_state_report", compile_then_replace
     )
-    output = tmp_path / "analysis.json"
-    with pytest.raises(ValueError, match="changed after admission"):
+    output = tmp_path / "analysis-bundle"
+    report = task7_report_driver.compile_task7_report_from_shards(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
+        output_path=output,
+        draws=4,
+        seed=3,
+    )
+    member = report["members"][0]["files"]["results.jsonl"]
+    assert hashlib.sha256((output / member["path"]).read_bytes()).hexdigest() == member["sha256"]
+    assert (
+        hashlib.sha256((root / "shard-0000" / "results.jsonl").read_bytes()).hexdigest()
+        != (member["sha256"])
+    )
+
+
+def test_validate_only_builds_and_discards_snapshot_without_reserving_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    output = tmp_path / "analysis-bundle"
+    output.write_text("existing\n", encoding="utf-8")
+    report = task7_report_driver.compile_task7_report_from_shards(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
+        output_path=output,
+        draws=4,
+        seed=3,
+        validate_only=True,
+    )
+    assert report["status"] == "validated-task7-explicit-visual-state-report"
+    assert output.read_text(encoding="utf-8") == "existing\n"
+    assert not list(tmp_path.glob(".analysis-bundle.*"))
+
+
+def test_driver_requires_explicit_member_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="explicit member authority is required"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            output_path=tmp_path / "analysis-bundle",
+            draws=4,
+            seed=3,
+            validate_only=True,
+        )
+
+
+def test_outcome_blind_sealer_creates_the_explicit_authority_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority_path = tmp_path / "sealed-member-hashes.json"
+
+    authority, authority_file_sha256 = task7_report_driver.seal_task7_member_hash_authority(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        output_path=authority_path,
+    )
+
+    assert authority_path.is_file()
+    assert json.loads(authority_path.read_text(encoding="utf-8")) == authority
+    assert hashlib.sha256(authority_path.read_bytes()).hexdigest() == authority_file_sha256
+    assert authority["status"] == "sealed-task7-member-hashes"
+    assert authority["qids"] == list(qids)
+    assert len(authority["members"]) == 64
+    assert authority["member_manifest_sha256"] == _canonical_sha256(
+        {key: value for key, value in authority.items() if key != "member_manifest_sha256"}
+    )
+    for index, member in enumerate(authority["members"]):
+        shard = root / f"shard-{index:04d}"
+        assert member["qid"] == qids[index]
+        assert member["files"] == {
+            name: hashlib.sha256((shard / name).read_bytes()).hexdigest()
+            for name in task7_report_driver._SHARD_MEMBERS
+        }
+    with pytest.raises(FileExistsError):
+        task7_report_driver.seal_task7_member_hash_authority(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            output_path=authority_path,
+        )
+
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    report = task7_report_driver.compile_task7_report_from_shards(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        expected_members_path=authority_path,
+        expected_members_sha256=authority_file_sha256,
+        output_path=tmp_path / "analysis-bundle",
+        draws=4,
+        seed=3,
+        validate_only=True,
+    )
+    assert report["member_hash_authority"]["kind"] == "explicit"
+
+
+def test_member_authority_sealer_reauthenticates_destination_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, _ = _write_authority(tmp_path)
+    output = tmp_path / "sealed-member-hashes.json"
+    original_rename = task7_report_driver._renameat2_noreplace
+
+    def rename_then_mutate(
+        source_parent_fd: int,
+        source_name: str,
+        destination_parent_fd: int,
+        destination_name: str,
+    ) -> None:
+        original_rename(
+            source_parent_fd,
+            source_name,
+            destination_parent_fd,
+            destination_name,
+        )
+        descriptor = os.open(
+            destination_name,
+            os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW,
+            dir_fd=destination_parent_fd,
+        )
+        try:
+            os.write(descriptor, b"substituted\n")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    monkeypatch.setattr(task7_report_driver, "_renameat2_noreplace", rename_then_mutate)
+
+    with pytest.raises(RuntimeError, match="post-publication gate failed; file preserved"):
+        task7_report_driver.seal_task7_member_hash_authority(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            output_path=output,
+        )
+
+    assert output.read_bytes() == b"substituted\n"
+
+
+def test_snapshot_uses_relative_authority_and_survives_source_mutation_at_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    source = root / "shard-0000" / "results.jsonl"
+    source_bytes = source.read_bytes()
+    original_rename = task7_report_driver._renameat2_noreplace
+
+    def mutate_source_then_publish(*args: object) -> None:
+        source.write_text('{"qid":"q-00","changed":"at-publish"}\n', encoding="utf-8")
+        original_rename(*args)
+
+    monkeypatch.setattr(task7_report_driver, "_renameat2_noreplace", mutate_source_then_publish)
+    output = tmp_path / "analysis-bundle"
+    report = task7_report_driver.compile_task7_report_from_shards(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        expected_members_path=authority,
+        expected_members_sha256=authority_sha,
+        output_path=output,
+        draws=4,
+        seed=3,
+    )
+
+    member = report["members"][0]["files"]["results.jsonl"]
+    assert member["path"] == "shards/shard-0000/results.jsonl"
+    assert member["historical_locator"] == str(source)
+    assert (output / member["path"]).read_bytes() == source_bytes
+    assert hashlib.sha256((output / member["path"]).read_bytes()).hexdigest() == member["sha256"]
+    assert report["fixture"]["path"] == "inputs/fixture.json"
+    assert report["fixture"]["historical_locator"] == str(fixture)
+    assert report["member_hash_authority"]["path"] == "inputs/member-authority.json"
+    assert report["locator_semantics"] == {
+        "authoritative": "bundle-relative-paths-with-pinned-sha256",
+        "embedded_absolute_paths": "historical-locators-only",
+    }
+
+
+def test_atomic_publication_never_replaces_a_competing_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    original_rename = task7_report_driver._renameat2_noreplace
+
+    def publish_competitor_then_attempt_rename(
+        source_parent_fd: int,
+        source_name: str,
+        destination_parent_fd: int,
+        destination_name: str,
+    ) -> None:
+        os.mkdir(destination_name, dir_fd=destination_parent_fd)
+        competitor_fd = os.open(
+            destination_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=destination_parent_fd,
+        )
+        try:
+            descriptor = os.open(
+                "owner.txt",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=competitor_fd,
+            )
+            try:
+                os.write(descriptor, b"competitor\n")
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            os.fsync(competitor_fd)
+        finally:
+            os.close(competitor_fd)
+        original_rename(
+            source_parent_fd,
+            source_name,
+            destination_parent_fd,
+            destination_name,
+        )
+
+    monkeypatch.setattr(
+        task7_report_driver,
+        "_renameat2_noreplace",
+        publish_competitor_then_attempt_rename,
+    )
+    output = tmp_path / "analysis-bundle"
+
+    with pytest.raises(FileExistsError):
         task7_report_driver.compile_task7_report_from_shards(
             shard_root=root,
             fixture_path=fixture,
@@ -429,33 +842,258 @@ def test_driver_reauthenticates_members_after_analysis_compilation(
             draws=4,
             seed=3,
         )
-    assert not output.exists()
+
+    assert (output / "owner.txt").read_text(encoding="utf-8") == "competitor\n"
+    assert not (output / "report.json").exists()
+    assert not list(tmp_path.glob(".analysis-bundle.*"))
 
 
-def test_validate_only_is_a_dry_run_of_fresh_publication(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "inputs/gate.json",
+        "inputs/member-authority.json",
+        "shards/shard-0000/results.jsonl",
+    ),
+)
+def test_final_authentication_rejects_any_staged_member_changed_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative_path: str,
 ) -> None:
     fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
     monkeypatch.setattr(
         task7_report_driver,
         "assemble_task7_analysis_bundle_from_artifacts",
-        lambda **kwargs: _bundle(qids[0], 0),
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
     )
-    output = tmp_path / "analysis.json"
-    output.write_text("existing\n", encoding="utf-8")
-    with pytest.raises(FileExistsError, match="canonical report already exists"):
+    compile_report = task7_report_driver.compile_task7_visual_state_report
+
+    def compile_then_mutate(*args: object, **kwargs: object) -> dict[str, object]:
+        report = compile_report(*args, **kwargs)
+        staging = next(tmp_path.glob(".analysis-bundle.*"))
+        (staging / relative_path).write_bytes(b"substituted\n")
+        return report
+
+    monkeypatch.setattr(
+        task7_report_driver,
+        "compile_task7_visual_state_report",
+        compile_then_mutate,
+    )
+
+    with pytest.raises(ValueError, match="snapshot"):
         task7_report_driver.compile_task7_report_from_shards(
             shard_root=root,
             fixture_path=fixture,
             fixture_sha256=fixture_sha,
             gate_path=gate,
             gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=tmp_path / "analysis-bundle",
+            draws=4,
+            seed=3,
+        )
+
+    assert not (tmp_path / "analysis-bundle").exists()
+    assert not list(tmp_path.glob(".analysis-bundle.*"))
+
+
+def test_source_name_swap_is_detected_and_no_unverified_tree_is_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    original_rename = task7_report_driver._renameat2_noreplace
+    preserved_name = ".preserved-authenticated-staging"
+
+    def substitute_source_name(
+        source_parent_fd: int,
+        source_name: str,
+        destination_parent_fd: int,
+        destination_name: str,
+    ) -> None:
+        os.rename(
+            source_name,
+            preserved_name,
+            src_dir_fd=source_parent_fd,
+            dst_dir_fd=source_parent_fd,
+        )
+        os.mkdir(source_name, mode=0o700, dir_fd=source_parent_fd)
+        foreign_fd = os.open(
+            source_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=source_parent_fd,
+        )
+        try:
+            descriptor = os.open(
+                "foreign.txt",
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o600,
+                dir_fd=foreign_fd,
+            )
+            os.close(descriptor)
+        finally:
+            os.close(foreign_fd)
+        original_rename(
+            source_parent_fd,
+            source_name,
+            destination_parent_fd,
+            destination_name,
+        )
+
+    monkeypatch.setattr(
+        task7_report_driver,
+        "_renameat2_noreplace",
+        substitute_source_name,
+    )
+
+    with pytest.raises(RuntimeError, match="identity|preserved"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=tmp_path / "analysis-bundle",
+            draws=4,
+            seed=3,
+        )
+
+    assert (tmp_path / preserved_name / "report.json").is_file()
+    assert (tmp_path / "analysis-bundle" / "foreign.txt").is_file()
+
+
+def test_destination_swap_during_parent_fsync_cannot_return_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    output = tmp_path / "analysis-bundle"
+    preserved = tmp_path / ".preserved-after-fsync-swap"
+    original_fsync = task7_report_driver.os.fsync
+    swapped = False
+
+    def fsync_then_swap(descriptor: int) -> None:
+        nonlocal swapped
+        original_fsync(descriptor)
+        if not swapped and (output / "report.json").is_file():
+            swapped = True
+            output.rename(preserved)
+            output.mkdir(mode=0o700)
+            (output / "foreign.txt").write_text("foreign\n", encoding="utf-8")
+
+    monkeypatch.setattr(task7_report_driver.os, "fsync", fsync_then_swap)
+
+    with pytest.raises(RuntimeError, match="preserved"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
             output_path=output,
             draws=4,
             seed=3,
-            validate_only=True,
         )
-    assert output.read_text(encoding="utf-8") == "existing\n"
+
+    assert (preserved / "report.json").is_file()
+    assert (output / "foreign.txt").read_text(encoding="utf-8") == "foreign\n"
+
+
+def test_failure_cleanup_preserves_an_unverified_replacement_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    preserved = tmp_path / ".preserved-on-failure"
+
+    def swap_then_fail(*args: object, **kwargs: object) -> dict[str, object]:
+        staging = next(tmp_path.glob(".analysis-bundle.*"))
+        staging.rename(preserved)
+        staging.mkdir(mode=0o700)
+        (staging / "foreign.txt").write_text("do not delete\n", encoding="utf-8")
+        raise ValueError("forced analysis failure")
+
+    monkeypatch.setattr(
+        task7_report_driver,
+        "compile_task7_visual_state_report",
+        swap_then_fail,
+    )
+
+    with pytest.raises(RuntimeError, match="identity changed|preserved"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=tmp_path / "analysis-bundle",
+            draws=4,
+            seed=3,
+        )
+
+    replacement = next(tmp_path.glob(".analysis-bundle.*"))
+    assert (replacement / "foreign.txt").read_text(encoding="utf-8") == "do not delete\n"
+    assert (preserved / "inputs" / "fixture.json").is_file()
 
 
 def test_report_driver_import_is_artifact_only() -> None:

@@ -17,15 +17,15 @@ def main() -> int:
     parser.add_argument("--fixture-sha256", required=True)
     parser.add_argument("--gate-manifest", type=Path, required=True)
     parser.add_argument("--gate-manifest-sha256", required=True)
-    parser.add_argument("--expected-members", type=Path)
-    parser.add_argument("--expected-members-sha256")
+    parser.add_argument("--expected-members", type=Path, required=True)
+    parser.add_argument("--expected-members-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--draws", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=20_260_827)
     parser.add_argument(
         "--validate-only",
         action="store_true",
-        help="dry-run a fresh publication; the output path must still not exist",
+        help="build, validate, and discard the same private snapshot without publishing it",
     )
     args = parser.parse_args()
     report = compile_task7_report_from_shards(
@@ -45,7 +45,8 @@ def main() -> int:
         json.dumps(
             {
                 "status": "validated-only" if args.validate_only else "published",
-                "output": str(args.output),
+                "bundle": str(args.output),
+                "report": None if args.validate_only else str(args.output / "report.json"),
                 "qid_count": report["member_count"],
                 "canonical_report_sha256": report["canonical_report_sha256"],
                 "analysis_report_sha256": report["analysis"]["report_sha256"],

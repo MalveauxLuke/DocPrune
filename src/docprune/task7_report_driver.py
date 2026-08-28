@@ -15,6 +15,7 @@ from docprune.experiment_design import (
     _renameat2_noreplace,
     compile_task7_visual_state_report,
 )
+from docprune.task7_artifact_analysis import assemble_task7_analysis_bundle_from_artifacts
 
 _SHARD_COUNT = 64
 _SHARD_MEMBERS = ("run_manifest.json", "results.jsonl", "task7-likelihood.jsonl")
@@ -49,7 +50,7 @@ def _read_regular_file_bytes(path: Path, label: str) -> bytes:
         try:
             descriptor = os.open(
                 file_path.name,
-                os.O_RDONLY | os.O_NOFOLLOW,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                 dir_fd=parent_fd,
             )
         except OSError as error:
@@ -73,14 +74,6 @@ def _authenticated_file(path: Path, expected_sha256: str, label: str) -> bytes:
     if hashlib.sha256(content).hexdigest() != expected_sha256:
         raise ValueError(f"{label} checksum mismatch")
     return content
-
-
-def assemble_task7_analysis_bundle_from_artifacts(**kwargs: object) -> dict[str, object]:
-    """Lazily enter the runtime validator only when report compilation begins."""
-
-    from docprune.task7_runtime import assemble_task7_analysis_bundle_from_artifacts as assemble
-
-    return assemble(**kwargs)
 
 
 def _json_mapping(content: bytes, label: str) -> dict[str, object]:
@@ -144,7 +137,11 @@ def _require_exact_shard_tree(root: Path) -> None:
                 if set(os.listdir(shard_fd)) != set(_SHARD_MEMBERS):
                     raise ValueError("Task 7 shard has missing or extra files")
                 for member in _SHARD_MEMBERS:
-                    member_fd = os.open(member, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=shard_fd)
+                    member_fd = os.open(
+                        member,
+                        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                        dir_fd=shard_fd,
+                    )
                     try:
                         if not stat.S_ISREG(os.fstat(member_fd).st_mode):
                             raise ValueError("Task 7 shard member is not a regular file")
@@ -169,38 +166,6 @@ def _require_fresh_output(path: Path) -> None:
         raise FileExistsError(f"Task 7 canonical report already exists: {path}")
     finally:
         os.close(parent_fd)
-
-
-def _reauthenticate_admitted_members(
-    shard_root: Path,
-    members: list[dict[str, object]],
-) -> None:
-    """Require the live shard tree to retain every byte admitted into the report."""
-
-    _require_exact_shard_tree(shard_root)
-    if len(members) != _SHARD_COUNT:
-        raise ValueError("Task 7 admitted member set is incomplete")
-    for index, member in enumerate(members):
-        expected_shard = shard_root / f"shard-{index:04d}"
-        if member.get("shard") != index or member.get("path") != str(expected_shard):
-            raise ValueError("Task 7 admitted member path changed after admission")
-        files = member.get("files")
-        if not isinstance(files, Mapping) or set(files) != set(_SHARD_MEMBERS):
-            raise ValueError("Task 7 admitted member schema changed after admission")
-        for name in _SHARD_MEMBERS:
-            identity = files[name]
-            expected_path = expected_shard / name
-            if (
-                not isinstance(identity, Mapping)
-                or set(identity) != {"path", "sha256"}
-                or identity.get("path") != str(expected_path)
-                or not _is_sha256(identity.get("sha256"))
-            ):
-                raise ValueError("Task 7 admitted member identity changed after admission")
-            content = _read_regular_file_bytes(expected_path, f"Task 7 admitted {name}")
-            if hashlib.sha256(content).hexdigest() != identity["sha256"]:
-                raise ValueError("Task 7 shard member changed after admission")
-    _require_exact_shard_tree(shard_root)
 
 
 def _explicit_member_hashes(
@@ -256,12 +221,242 @@ def _explicit_member_hashes(
     return tuple(expected)
 
 
-def _publish_report(path: Path, report: Mapping[str, object]) -> None:
-    payload = (json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+def _write_snapshot_file(directory_fd: int, name: str, content: bytes) -> None:
+    descriptor = os.open(
+        name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+        dir_fd=directory_fd,
+    )
+    try:
+        remaining = memoryview(content)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _read_snapshot_file(directory_fd: int, name: str, label: str) -> bytes:
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+        dir_fd=directory_fd,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"{label} snapshot member is not a regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _directory_identity(directory_fd: int) -> tuple[int, int]:
+    metadata = os.fstat(directory_fd)
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ValueError("Task 7 snapshot identity is not a directory")
+    return metadata.st_dev, metadata.st_ino
+
+
+def _open_verified_directory(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    label: str,
+) -> int:
+    try:
+        directory_fd = os.open(
+            name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
+    except OSError as error:
+        raise RuntimeError(f"{label} identity is unavailable; snapshot preserved") from error
+    if _directory_identity(directory_fd) != expected_identity:
+        os.close(directory_fd)
+        raise RuntimeError(f"{label} identity changed; snapshot preserved")
+    return directory_fd
+
+
+def _authenticate_snapshot_tree(
+    staging_fd: int,
+    *,
+    input_hashes: Mapping[str, str],
+    member_hashes: tuple[dict[str, str], ...],
+    report_sha256: str,
+) -> None:
+    """Re-read the exact publication tree through directory descriptors."""
+
+    if set(os.listdir(staging_fd)) != {"inputs", "shards", "report.json"}:
+        raise ValueError("Task 7 snapshot root schema changed")
+    if (
+        hashlib.sha256(_read_snapshot_file(staging_fd, "report.json", "Task 7 report")).hexdigest()
+        != report_sha256
+    ):
+        raise ValueError("Task 7 report snapshot checksum mismatch")
+
+    inputs_fd = os.open(
+        "inputs",
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=staging_fd,
+    )
+    try:
+        if set(os.listdir(inputs_fd)) != set(input_hashes):
+            raise ValueError("Task 7 input snapshot schema changed")
+        for name, expected_sha256 in input_hashes.items():
+            content = _read_snapshot_file(inputs_fd, name, f"Task 7 {name}")
+            if hashlib.sha256(content).hexdigest() != expected_sha256:
+                raise ValueError(f"Task 7 {name} snapshot checksum mismatch")
+    finally:
+        os.close(inputs_fd)
+
+    shards_fd = os.open(
+        "shards",
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        dir_fd=staging_fd,
+    )
+    try:
+        expected_shards = {f"shard-{index:04d}" for index in range(_SHARD_COUNT)}
+        if set(os.listdir(shards_fd)) != expected_shards:
+            raise ValueError("Task 7 shard snapshot schema changed")
+        for index, expected_files in enumerate(member_hashes):
+            shard_name = f"shard-{index:04d}"
+            shard_fd = os.open(
+                shard_name,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=shards_fd,
+            )
+            try:
+                if set(os.listdir(shard_fd)) != set(expected_files):
+                    raise ValueError("Task 7 shard snapshot member schema changed")
+                for name, expected_sha256 in expected_files.items():
+                    content = _read_snapshot_file(shard_fd, name, f"Task 7 {name}")
+                    if hashlib.sha256(content).hexdigest() != expected_sha256:
+                        raise ValueError(f"Task 7 {name} snapshot checksum mismatch")
+            finally:
+                os.close(shard_fd)
+    finally:
+        os.close(shards_fd)
+
+
+def _authenticate_named_snapshot(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    *,
+    input_hashes: Mapping[str, str],
+    member_hashes: tuple[dict[str, str], ...],
+    report_sha256: str,
+) -> None:
+    published_fd = _open_verified_directory(
+        parent_fd,
+        name,
+        expected_identity,
+        "Task 7 published bundle",
+    )
+    try:
+        _authenticate_snapshot_tree(
+            published_fd,
+            input_hashes=input_hashes,
+            member_hashes=member_hashes,
+            report_sha256=report_sha256,
+        )
+    finally:
+        os.close(published_fd)
+    verification_fd = _open_verified_directory(
+        parent_fd,
+        name,
+        expected_identity,
+        "Task 7 published bundle",
+    )
+    os.close(verification_fd)
+
+
+def _require_directory_locator_identity(path: Path, expected_identity: tuple[int, int]) -> None:
+    descriptor = _open_directory_nofollow(path)
+    try:
+        if _directory_identity(descriptor) != expected_identity:
+            raise RuntimeError("Task 7 publication parent identity changed; destination preserved")
+    finally:
+        os.close(descriptor)
+
+
+def _remove_verified_tree_contents(directory_fd: int) -> None:
+    """Delete only entries reached below an already authenticated directory fd."""
+
+    for entry in os.listdir(directory_fd):
+        metadata = os.stat(entry, dir_fd=directory_fd, follow_symlinks=False)
+        identity = metadata.st_dev, metadata.st_ino
+        if stat.S_ISDIR(metadata.st_mode):
+            child_fd = os.open(
+                entry,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=directory_fd,
+            )
+            try:
+                if _directory_identity(child_fd) != identity:
+                    raise RuntimeError("Task 7 snapshot child identity changed; snapshot preserved")
+                _remove_verified_tree_contents(child_fd)
+            finally:
+                os.close(child_fd)
+            current = os.stat(entry, dir_fd=directory_fd, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != identity:
+                raise RuntimeError("Task 7 snapshot child identity changed; snapshot preserved")
+            os.rmdir(entry, dir_fd=directory_fd)
+        else:
+            current = os.stat(entry, dir_fd=directory_fd, follow_symlinks=False)
+            if (current.st_dev, current.st_ino) != identity:
+                raise RuntimeError("Task 7 snapshot member identity changed; snapshot preserved")
+            os.unlink(entry, dir_fd=directory_fd)
+
+
+def _discard_verified_snapshot(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+) -> None:
+    """Discard a private snapshot only while its parent locator retains identity."""
+
+    directory_fd = _open_verified_directory(
+        parent_fd,
+        name,
+        expected_identity,
+        "Task 7 private staging locator",
+    )
+    try:
+        _remove_verified_tree_contents(directory_fd)
+    finally:
+        os.close(directory_fd)
+    verification_fd = _open_verified_directory(
+        parent_fd,
+        name,
+        expected_identity,
+        "Task 7 private staging locator",
+    )
+    os.close(verification_fd)
+    os.rmdir(name, dir_fd=parent_fd)
+
+
+def _eligible_questions_identity(fixture_content: bytes) -> tuple[Path, str]:
+    fixture = _json_mapping(fixture_content, "Task 7 fixture")
+    raw_path = fixture.get("eligible_questions_path")
+    digest = fixture.get("eligible_questions_sha256")
+    if not isinstance(raw_path, str) or not Path(raw_path).is_absolute() or not _is_sha256(digest):
+        raise ValueError("Task 7 fixture has invalid eligible-question authority")
+    return Path(raw_path), digest
+
+
+def _publish_regular_file_noreplace(path: Path, content: bytes, label: str) -> None:
     parent_fd = _open_directory_nofollow(path.parent)
+    parent_identity = _directory_identity(parent_fd)
     temporary_name = f".{path.name}.{secrets.token_hex(16)}"
     descriptor: int | None = None
     temporary_created = False
+    expected_identity: tuple[int, int] | None = None
     try:
         descriptor = os.open(
             temporary_name,
@@ -270,25 +465,145 @@ def _publish_report(path: Path, report: Mapping[str, object]) -> None:
             dir_fd=parent_fd,
         )
         temporary_created = True
-        remaining = memoryview(payload)
+        metadata = os.fstat(descriptor)
+        expected_identity = metadata.st_dev, metadata.st_ino
+        remaining = memoryview(content)
         while remaining:
             written = os.write(descriptor, remaining)
             remaining = remaining[written:]
         os.fsync(descriptor)
-        os.close(descriptor)
-        descriptor = None
+        current = os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != expected_identity:
+            raise RuntimeError(f"{label} staging identity changed; file preserved")
         _renameat2_noreplace(parent_fd, temporary_name, parent_fd, path.name)
         temporary_created = False
-        os.fsync(parent_fd)
+        try:
+            for fsync_parent in (False, True):
+                published_fd = os.open(
+                    path.name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=parent_fd,
+                )
+                try:
+                    published = os.fstat(published_fd)
+                    if (
+                        not stat.S_ISREG(published.st_mode)
+                        or (published.st_dev, published.st_ino) != expected_identity
+                    ):
+                        raise RuntimeError(f"{label} published identity changed")
+                    chunks: list[bytes] = []
+                    while chunk := os.read(published_fd, 1024 * 1024):
+                        chunks.append(chunk)
+                    if b"".join(chunks) != content:
+                        raise RuntimeError(f"{label} published bytes changed")
+                finally:
+                    os.close(published_fd)
+                verification_fd = os.open(
+                    path.name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=parent_fd,
+                )
+                try:
+                    verification = os.fstat(verification_fd)
+                    if (
+                        not stat.S_ISREG(verification.st_mode)
+                        or (verification.st_dev, verification.st_ino) != expected_identity
+                    ):
+                        raise RuntimeError(f"{label} published identity changed")
+                finally:
+                    os.close(verification_fd)
+                if fsync_parent:
+                    _require_directory_locator_identity(path.parent, parent_identity)
+                else:
+                    os.fsync(parent_fd)
+        except (OSError, RuntimeError, ValueError) as error:
+            raise RuntimeError(f"{label} post-publication gate failed; file preserved") from error
     finally:
         if descriptor is not None:
             os.close(descriptor)
-        if temporary_created:
-            try:
+        try:
+            if temporary_created:
+                current = os.stat(temporary_name, dir_fd=parent_fd, follow_symlinks=False)
+                if (
+                    expected_identity is None
+                    or (current.st_dev, current.st_ino) != expected_identity
+                ):
+                    raise RuntimeError(f"{label} staging identity changed; file preserved")
                 os.unlink(temporary_name, dir_fd=parent_fd)
-            except FileNotFoundError:
-                pass
-        os.close(parent_fd)
+        finally:
+            os.close(parent_fd)
+
+
+def seal_task7_member_hash_authority(
+    *,
+    shard_root: Path,
+    fixture_path: Path,
+    fixture_sha256: str,
+    gate_path: Path,
+    gate_sha256: str,
+    output_path: Path,
+) -> tuple[dict[str, object], str]:
+    """Outcome-blindly pin the exact 192 Task 7 shard-member byte streams."""
+
+    supplied_paths = tuple(
+        Path(path) for path in (shard_root, fixture_path, gate_path, output_path)
+    )
+    if any(not path.is_absolute() for path in supplied_paths):
+        raise ValueError("Task 7 member-authority paths must all be absolute")
+    shard_root, fixture_path, gate_path, output_path = tuple(
+        Path(os.path.abspath(path)) for path in supplied_paths
+    )
+    if output_path == shard_root or output_path.is_relative_to(shard_root):
+        raise ValueError("Task 7 member authority must remain outside the sealed shard root")
+    _authenticated_file(fixture_path, fixture_sha256, "Task 7 fixture")
+    gate_content = _authenticated_file(gate_path, gate_sha256, "Task 7 gate manifest")
+    qids = _sealed_qids(
+        gate_content,
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha256,
+    )
+    _require_exact_shard_tree(shard_root)
+    members: list[dict[str, object]] = []
+    for index, qid in enumerate(qids):
+        shard = shard_root / f"shard-{index:04d}"
+        contents = {
+            name: _read_regular_file_bytes(shard / name, f"Task 7 {name}")
+            for name in _SHARD_MEMBERS
+        }
+        manifest = _json_mapping(contents["run_manifest.json"], "Task 7 run manifest")
+        if (
+            manifest.get("shard") != index
+            or manifest.get("qid") != qid
+            or manifest.get("gate_manifest_path") != str(gate_path)
+            or manifest.get("gate_manifest_sha256") != gate_sha256
+        ):
+            raise ValueError("Task 7 run manifest differs from the sealed shard authority")
+        members.append(
+            {
+                "shard": index,
+                "qid": qid,
+                "files": {
+                    name: hashlib.sha256(content).hexdigest() for name, content in contents.items()
+                },
+            }
+        )
+    _require_exact_shard_tree(shard_root)
+    authority: dict[str, object] = {
+        "schema_version": 1,
+        "status": "sealed-task7-member-hashes",
+        "fixture_sha256": fixture_sha256,
+        "gate_sha256": gate_sha256,
+        "shard_root": str(shard_root),
+        "qids": list(qids),
+        "members": members,
+    }
+    authority["member_manifest_sha256"] = _canonical_sha256(authority)
+    content = (json.dumps(authority, sort_keys=True, indent=2, allow_nan=False) + "\n").encode(
+        "utf-8"
+    )
+    file_sha256 = hashlib.sha256(content).hexdigest()
+    _publish_regular_file_noreplace(output_path, content, "Task 7 member authority")
+    return authority, file_sha256
 
 
 def compile_task7_report_from_shards(
@@ -305,7 +620,7 @@ def compile_task7_report_from_shards(
     seed: int = 20_260_827,
     validate_only: bool = False,
 ) -> dict[str, object]:
-    """Admit 64 shards and publish once, or dry-run the same fresh publication."""
+    """Build an authenticated snapshot and atomically publish it, or discard it."""
 
     supplied_paths = tuple(
         Path(path) for path in (shard_root, fixture_path, gate_path, output_path)
@@ -316,8 +631,16 @@ def compile_task7_report_from_shards(
     shard_root, fixture_path, gate_path, output_path = paths
     if output_path == shard_root or output_path.is_relative_to(shard_root):
         raise ValueError("Task 7 canonical report must remain outside the sealed shard root")
-    _require_fresh_output(output_path)
-    _authenticated_file(fixture_path, fixture_sha256, "Task 7 fixture")
+    if expected_members_path is None or expected_members_sha256 is None:
+        raise ValueError("Task 7 explicit member authority is required")
+    expected_members_path = Path(expected_members_path)
+    if not expected_members_path.is_absolute():
+        raise ValueError("Task 7 expected-member manifest path must be absolute")
+    expected_members_path = Path(os.path.abspath(expected_members_path))
+    if not validate_only:
+        _require_fresh_output(output_path)
+
+    fixture_content = _authenticated_file(fixture_path, fixture_sha256, "Task 7 fixture")
     gate_content = _authenticated_file(gate_path, gate_sha256, "Task 7 gate manifest")
     qids = _sealed_qids(
         gate_content,
@@ -325,19 +648,71 @@ def compile_task7_report_from_shards(
         fixture_sha256=fixture_sha256,
     )
     _require_exact_shard_tree(shard_root)
-    if (expected_members_path is None) != (expected_members_sha256 is None):
-        raise ValueError("Task 7 expected-member path and checksum must be supplied together")
-    expected_members: tuple[dict[str, str], ...] | None = None
-    member_authority: dict[str, object] = {"kind": "observed-and-reauthenticated"}
-    if expected_members_path is not None and expected_members_sha256 is not None:
-        expected_members_path = Path(expected_members_path)
-        if not expected_members_path.is_absolute():
-            raise ValueError("Task 7 expected-member manifest path must be absolute")
-        expected_members_path = Path(os.path.abspath(expected_members_path))
-        expected_content = _authenticated_file(
-            expected_members_path,
-            expected_members_sha256,
-            "Task 7 member-hash authority",
+    expected_content = _authenticated_file(
+        expected_members_path,
+        expected_members_sha256,
+        "Task 7 member-hash authority",
+    )
+    expected_members = _explicit_member_hashes(
+        expected_content,
+        shard_root=shard_root,
+        fixture_sha256=fixture_sha256,
+        gate_sha256=gate_sha256,
+        qids=qids,
+    )
+    expected_payload = _json_mapping(expected_content, "Task 7 member-hash authority")
+    eligible_historical_path, eligible_sha256 = _eligible_questions_identity(fixture_content)
+    eligible_content = _authenticated_file(
+        eligible_historical_path,
+        eligible_sha256,
+        "Task 7 eligible questions",
+    )
+
+    parent_fd = _open_directory_nofollow(output_path.parent)
+    parent_identity = _directory_identity(parent_fd)
+    temporary_name = f".{output_path.name}.{secrets.token_hex(16)}"
+    temporary_created = False
+    staging_fd: int | None = None
+    staging_identity: tuple[int, int] | None = None
+    inputs_fd: int | None = None
+    shards_fd: int | None = None
+    try:
+        os.mkdir(temporary_name, mode=0o700, dir_fd=parent_fd)
+        temporary_created = True
+        staging_fd = os.open(
+            temporary_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
+        staging_identity = _directory_identity(staging_fd)
+        os.mkdir("inputs", mode=0o700, dir_fd=staging_fd)
+        os.mkdir("shards", mode=0o700, dir_fd=staging_fd)
+        inputs_fd = os.open(
+            "inputs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=staging_fd
+        )
+        shards_fd = os.open(
+            "shards", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=staging_fd
+        )
+        snapshot_inputs = {
+            "fixture.json": fixture_content,
+            "gate.json": gate_content,
+            "member-authority.json": expected_content,
+            "eligible-questions.jsonl": eligible_content,
+        }
+        for name, content in snapshot_inputs.items():
+            _write_snapshot_file(inputs_fd, name, content)
+        os.fsync(inputs_fd)
+        snapshot_inputs = {
+            name: _read_snapshot_file(inputs_fd, name, f"Task 7 {name}") for name in snapshot_inputs
+        }
+        fixture_content = snapshot_inputs["fixture.json"]
+        gate_content = snapshot_inputs["gate.json"]
+        expected_content = snapshot_inputs["member-authority.json"]
+        eligible_content = snapshot_inputs["eligible-questions.jsonl"]
+        qids = _sealed_qids(
+            gate_content,
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
         )
         expected_members = _explicit_member_hashes(
             expected_content,
@@ -347,83 +722,193 @@ def compile_task7_report_from_shards(
             qids=qids,
         )
         expected_payload = _json_mapping(expected_content, "Task 7 member-hash authority")
-        member_authority = {
-            "kind": "explicit",
-            "path": str(expected_members_path),
-            "file_sha256": expected_members_sha256,
-            "member_manifest_sha256": expected_payload["member_manifest_sha256"],
-        }
 
-    bundles: list[dict[str, object]] = []
-    members: list[dict[str, object]] = []
-    for index, qid in enumerate(qids):
-        shard = shard_root / f"shard-{index:04d}"
-        manifest_path = shard / "run_manifest.json"
-        results_path = shard / "results.jsonl"
-        likelihood_path = shard / "task7-likelihood.jsonl"
-        manifest_content = _read_regular_file_bytes(manifest_path, "Task 7 run manifest")
-        results_content = _read_regular_file_bytes(results_path, "Task 7 results")
-        likelihood_content = _read_regular_file_bytes(likelihood_path, "Task 7 likelihoods")
-        file_hashes = {
-            "run_manifest.json": hashlib.sha256(manifest_content).hexdigest(),
-            "results.jsonl": hashlib.sha256(results_content).hexdigest(),
-            "task7-likelihood.jsonl": hashlib.sha256(likelihood_content).hexdigest(),
-        }
-        if expected_members is not None and file_hashes != expected_members[index]:
-            raise ValueError("Task 7 shard differs from its explicit member hash authority")
-        manifest = _json_mapping(manifest_content, "Task 7 run manifest")
-        if (
-            manifest.get("shard") != index
-            or manifest.get("qid") != qid
-            or manifest.get("gate_manifest_path") != str(gate_path)
-            or manifest.get("gate_manifest_sha256") != gate_sha256
-        ):
-            raise ValueError("Task 7 run manifest differs from the sealed shard authority")
-        bundle = assemble_task7_analysis_bundle_from_artifacts(
-            fixture_path=fixture_path,
-            fixture_sha256=fixture_sha256,
-            run_manifest_path=manifest_path,
-            run_manifest_file_sha256=file_hashes["run_manifest.json"],
-            results_path=results_path,
-            results_sha256=file_hashes["results.jsonl"],
-            likelihood_path=likelihood_path,
-            likelihood_sha256=file_hashes["task7-likelihood.jsonl"],
-        )
-        if bundle.get("qid") != qid:
-            raise ValueError("Task 7 admitted bundle QID differs from sealed order")
-        bundles.append(bundle)
-        members.append(
-            {
-                "shard": index,
-                "qid": qid,
-                "path": str(shard),
-                "files": {
-                    name: {"path": str(shard / name), "sha256": file_hashes[name]}
+        bundles: list[dict[str, object]] = []
+        members: list[dict[str, object]] = []
+        for index, qid in enumerate(qids):
+            shard_name = f"shard-{index:04d}"
+            historical_shard = shard_root / shard_name
+            os.mkdir(shard_name, mode=0o700, dir_fd=shards_fd)
+            shard_fd = os.open(
+                shard_name,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=shards_fd,
+            )
+            try:
+                contents = {
+                    name: _read_regular_file_bytes(historical_shard / name, f"Task 7 {name}")
                     for name in _SHARD_MEMBERS
-                },
-                "analysis_bundle_sha256": bundle["analysis_bundle_sha256"],
-            }
-        )
+                }
+                file_hashes = {
+                    name: hashlib.sha256(content).hexdigest() for name, content in contents.items()
+                }
+                if file_hashes != expected_members[index]:
+                    raise ValueError("Task 7 shard differs from its explicit member hash authority")
+                manifest = _json_mapping(contents["run_manifest.json"], "Task 7 run manifest")
+                if (
+                    manifest.get("shard") != index
+                    or manifest.get("qid") != qid
+                    or manifest.get("gate_manifest_path") != str(gate_path)
+                    or manifest.get("gate_manifest_sha256") != gate_sha256
+                ):
+                    raise ValueError("Task 7 run manifest differs from the sealed shard authority")
+                for name, content in contents.items():
+                    _write_snapshot_file(shard_fd, name, content)
+                os.fsync(shard_fd)
+                staged_contents = {
+                    name: _read_snapshot_file(shard_fd, name, f"Task 7 {name}")
+                    for name in _SHARD_MEMBERS
+                }
+            finally:
+                os.close(shard_fd)
 
-    _reauthenticate_admitted_members(shard_root, members)
-    analysis = compile_task7_visual_state_report(bundles, draws=draws, seed=seed)
-    report: dict[str, object] = {
-        "schema_version": 1,
-        "status": "validated-task7-explicit-visual-state-report",
-        "fixed_page_provenance": True,
-        "global_index_loaded": False,
-        "fixture": {"path": str(fixture_path), "sha256": fixture_sha256},
-        "gate": {"path": str(gate_path), "sha256": gate_sha256},
-        "shard_root": str(shard_root),
-        "member_count": len(members),
-        "qids": list(qids),
-        "members": members,
-        "members_sha256": _canonical_sha256(members),
-        "member_hash_authority": member_authority,
-        "analysis": analysis,
-    }
-    report["canonical_report_sha256"] = _canonical_sha256(report)
-    _reauthenticate_admitted_members(shard_root, members)
-    if not validate_only:
-        _publish_report(output_path, report)
-    return report
+            historical_manifest = historical_shard / "run_manifest.json"
+            historical_results = historical_shard / "results.jsonl"
+            historical_likelihood = historical_shard / "task7-likelihood.jsonl"
+            bundle = assemble_task7_analysis_bundle_from_artifacts(
+                fixture_path=fixture_path,
+                fixture_sha256=fixture_sha256,
+                run_manifest_path=historical_manifest,
+                run_manifest_file_sha256=file_hashes["run_manifest.json"],
+                results_path=historical_results,
+                results_sha256=file_hashes["results.jsonl"],
+                likelihood_path=historical_likelihood,
+                likelihood_sha256=file_hashes["task7-likelihood.jsonl"],
+                fixture_content=fixture_content,
+                run_manifest_content=staged_contents["run_manifest.json"],
+                results_content=staged_contents["results.jsonl"],
+                likelihood_content=staged_contents["task7-likelihood.jsonl"],
+                eligible_questions_content=eligible_content,
+            )
+            if bundle.get("qid") != qid:
+                raise ValueError("Task 7 admitted bundle QID differs from sealed order")
+            bundles.append(bundle)
+            members.append(
+                {
+                    "shard": index,
+                    "qid": qid,
+                    "path": f"shards/{shard_name}",
+                    "historical_locator": str(historical_shard),
+                    "files": {
+                        name: {
+                            "path": f"shards/{shard_name}/{name}",
+                            "historical_locator": str(historical_shard / name),
+                            "sha256": file_hashes[name],
+                        }
+                        for name in _SHARD_MEMBERS
+                    },
+                    "analysis_bundle_sha256": bundle["analysis_bundle_sha256"],
+                }
+            )
+        os.fsync(shards_fd)
+
+        analysis = compile_task7_visual_state_report(bundles, draws=draws, seed=seed)
+        report: dict[str, object] = {
+            "schema_version": 2,
+            "status": "validated-task7-explicit-visual-state-report",
+            "snapshot_kind": "atomic-self-contained-task7-report-bundle",
+            "locator_semantics": {
+                "authoritative": "bundle-relative-paths-with-pinned-sha256",
+                "embedded_absolute_paths": "historical-locators-only",
+            },
+            "fixed_page_provenance": True,
+            "global_index_loaded": False,
+            "fixture": {
+                "path": "inputs/fixture.json",
+                "historical_locator": str(fixture_path),
+                "sha256": fixture_sha256,
+            },
+            "gate": {
+                "path": "inputs/gate.json",
+                "historical_locator": str(gate_path),
+                "sha256": gate_sha256,
+            },
+            "eligible_questions": {
+                "path": "inputs/eligible-questions.jsonl",
+                "historical_locator": str(eligible_historical_path),
+                "sha256": eligible_sha256,
+            },
+            "historical_shard_root": str(shard_root),
+            "member_count": len(members),
+            "qids": list(qids),
+            "members": members,
+            "members_sha256": _canonical_sha256(members),
+            "member_hash_authority": {
+                "kind": "explicit",
+                "path": "inputs/member-authority.json",
+                "historical_locator": str(expected_members_path),
+                "file_sha256": expected_members_sha256,
+                "member_manifest_sha256": expected_payload["member_manifest_sha256"],
+            },
+            "analysis": analysis,
+        }
+        report["canonical_report_sha256"] = _canonical_sha256(report)
+        report_content = (
+            json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n"
+        ).encode("utf-8")
+        report_sha256 = hashlib.sha256(report_content).hexdigest()
+        _write_snapshot_file(staging_fd, "report.json", report_content)
+        os.fsync(staging_fd)
+        input_hashes = {
+            "fixture.json": fixture_sha256,
+            "gate.json": gate_sha256,
+            "member-authority.json": expected_members_sha256,
+            "eligible-questions.jsonl": eligible_sha256,
+        }
+        _authenticate_snapshot_tree(
+            staging_fd,
+            input_hashes=input_hashes,
+            member_hashes=expected_members,
+            report_sha256=report_sha256,
+        )
+        verification_fd = _open_verified_directory(
+            parent_fd,
+            temporary_name,
+            staging_identity,
+            "Task 7 private staging locator",
+        )
+        os.close(verification_fd)
+        if validate_only:
+            return report
+        _renameat2_noreplace(parent_fd, temporary_name, parent_fd, output_path.name)
+        temporary_created = False
+        try:
+            _authenticate_named_snapshot(
+                parent_fd,
+                output_path.name,
+                staging_identity,
+                input_hashes=input_hashes,
+                member_hashes=expected_members,
+                report_sha256=report_sha256,
+            )
+            os.fsync(parent_fd)
+            _require_directory_locator_identity(output_path.parent, parent_identity)
+            _authenticate_named_snapshot(
+                parent_fd,
+                output_path.name,
+                staging_identity,
+                input_hashes=input_hashes,
+                member_hashes=expected_members,
+                report_sha256=report_sha256,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            raise RuntimeError(
+                f"Task 7 post-publication gate failed; destination preserved at {output_path}"
+            ) from error
+        return report
+    finally:
+        if shards_fd is not None:
+            os.close(shards_fd)
+        if inputs_fd is not None:
+            os.close(inputs_fd)
+        try:
+            if temporary_created:
+                if staging_identity is None:
+                    raise RuntimeError(
+                        "Task 7 staging identity was not retained; snapshot preserved"
+                    )
+                _discard_verified_snapshot(parent_fd, temporary_name, staging_identity)
+        finally:
+            if staging_fd is not None:
+                os.close(staging_fd)
+            os.close(parent_fd)

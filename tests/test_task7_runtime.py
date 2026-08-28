@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -1148,3 +1151,199 @@ def test_task7_likelihood_pair_admission_rejects_a_symlinked_input_ancestor(
             results_path=real / "results.jsonl",
             likelihood_path=real / "likelihood.jsonl",
         )
+
+
+def test_pure_task7_artifact_assembler_matches_the_admitted_runtime_assembler(
+    tmp_path: Path,
+) -> None:
+    """Catch scorer or validator drift while removing model-runtime imports."""
+
+    from docprune import task7_artifact_analysis
+
+    fixture_path, fixture_sha256, fixture = _task7_artifact_fixture(tmp_path)
+    run_manifest_path, run_manifest_file_sha256, run_manifest_sha256 = _task7_run_manifest(
+        tmp_path, fixture_path, fixture_sha256
+    )
+    results_path = tmp_path / "results.jsonl"
+    results = _task7_result_rows(fixture_sha256)
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    likelihood_path = tmp_path / "likelihood.jsonl"
+    _write_task7_likelihood_pair(
+        likelihood_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_sha256=run_manifest_sha256,
+        results=results,
+    )
+    arguments = {
+        "fixture_path": fixture_path,
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_path": run_manifest_path,
+        "run_manifest_file_sha256": run_manifest_file_sha256,
+        "results_path": results_path,
+        "results_sha256": _sha256(results_path),
+        "likelihood_path": likelihood_path,
+        "likelihood_sha256": _sha256(likelihood_path),
+    }
+
+    expected = task7_runtime.assemble_task7_analysis_bundle_from_artifacts(**arguments)
+    actual = task7_artifact_analysis.assemble_task7_analysis_bundle_from_artifacts(**arguments)
+    from_snapshot_bytes = task7_artifact_analysis.assemble_task7_analysis_bundle_from_artifacts(
+        **arguments,
+        fixture_content=fixture_path.read_bytes(),
+        run_manifest_content=run_manifest_path.read_bytes(),
+        results_content=results_path.read_bytes(),
+        likelihood_content=likelihood_path.read_bytes(),
+        eligible_questions_content=fixture.eligible_questions_path.read_bytes(),
+    )
+
+    assert actual == expected
+    assert from_snapshot_bytes == expected
+
+
+def test_pure_task7_identities_and_scores_match_the_current_implementation() -> None:
+    """Catch drift in the copied eight-cell identity or official list scoring."""
+
+    from docprune import task7_artifact_analysis
+    from docprune.evaluation import list_em, list_f1
+
+    assert task7_artifact_analysis.task7_intervention_identities() == tuple(
+        cell.to_dict() for cell in task7_intervention_matrix()
+    )
+    cases = (
+        ("forty-two", ["42", "forty two"]),
+        ("The 1,000.", ["1000"]),
+        (["alpha", "beta"], ["beta", "alpha"]),
+        ("alpha gamma", ["alpha beta"]),
+        ("", [""]),
+        ([], []),
+    )
+    for predicted, gold in cases:
+        em, f1 = task7_artifact_analysis._list_scores(predicted, gold)
+        assert em is (list_em(predicted, gold) == 1.0)
+        assert f1 == list_f1(predicted, gold) * 100.0
+
+
+def test_pure_task7_validator_rejects_the_same_result_drift_as_runtime(
+    tmp_path: Path,
+) -> None:
+    """Catch weakening the production validator while splitting CPU analysis."""
+
+    from docprune import task7_artifact_analysis
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_manifest_path, run_manifest_file_sha256, run_manifest_sha256 = _task7_run_manifest(
+        tmp_path, fixture_path, fixture_sha256
+    )
+    results_path = tmp_path / "results.jsonl"
+    results = _task7_result_rows(fixture_sha256)
+    results[2]["retrieved_pages"] = []
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    likelihood_path = tmp_path / "likelihood.jsonl"
+    _write_task7_likelihood_pair(
+        likelihood_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_sha256=run_manifest_sha256,
+        results=results,
+    )
+    arguments = {
+        "fixture_path": fixture_path,
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_path": run_manifest_path,
+        "run_manifest_file_sha256": run_manifest_file_sha256,
+        "results_path": results_path,
+        "results_sha256": _sha256(results_path),
+        "likelihood_path": likelihood_path,
+        "likelihood_sha256": _sha256(likelihood_path),
+    }
+
+    with pytest.raises(ValueError):
+        task7_runtime.assemble_task7_analysis_bundle_from_artifacts(**arguments)
+    with pytest.raises(ValueError):
+        task7_artifact_analysis.assemble_task7_analysis_bundle_from_artifacts(**arguments)
+
+
+def test_actual_pure_task7_artifact_compilation_imports_no_model_or_image_stack(
+    tmp_path: Path,
+) -> None:
+    """Catch hiding prohibited imports behind the first real compilation call."""
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_manifest_path, run_manifest_file_sha256, run_manifest_sha256 = _task7_run_manifest(
+        tmp_path, fixture_path, fixture_sha256
+    )
+    results_path = tmp_path / "results.jsonl"
+    results = _task7_result_rows(fixture_sha256)
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    likelihood_path = tmp_path / "likelihood.jsonl"
+    _write_task7_likelihood_pair(
+        likelihood_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_sha256=run_manifest_sha256,
+        results=results,
+    )
+    arguments = {
+        "fixture_path": str(fixture_path),
+        "fixture_sha256": fixture_sha256,
+        "run_manifest_path": str(run_manifest_path),
+        "run_manifest_file_sha256": run_manifest_file_sha256,
+        "results_path": str(results_path),
+        "results_sha256": _sha256(results_path),
+        "likelihood_path": str(likelihood_path),
+        "likelihood_sha256": _sha256(likelihood_path),
+    }
+    script = """
+import json
+import sys
+from pathlib import Path
+from docprune.task7_report_driver import assemble_task7_analysis_bundle_from_artifacts
+arguments = json.loads(sys.argv[1])
+for key in ('fixture_path', 'run_manifest_path', 'results_path', 'likelihood_path'):
+    arguments[key] = Path(arguments[key])
+bundle = assemble_task7_analysis_bundle_from_artifacts(**arguments)
+prefixes = (
+    'torch', 'transformers', 'PIL', 'numpy', 'docprune.task7_runtime',
+    'docprune.task6_runtime', 'docprune.m3docrag', 'docprune.qwen2vl',
+    'docprune.m3docvqa_factory', 'docprune.indexing',
+)
+print(json.dumps({'qid': bundle['qid'], 'prohibited': sorted(
+    name for name in sys.modules if name.startswith(prefixes)
+)}))
+"""
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(ROOT / "src")
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(arguments, sort_keys=True)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert json.loads(completed.stdout) == {"qid": "q-1", "prohibited": []}
+
+
+def test_pure_artifact_file_reader_rejects_a_fifo_without_a_blocking_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docprune import task7_artifact_analysis
+
+    fifo = tmp_path / "fixture.fifo"
+    os.mkfifo(fifo)
+    original_open = task7_artifact_analysis.os.open
+
+    def require_nonblocking_leaf(path: object, flags: int, *args: object, **kwargs: object) -> int:
+        if path == fifo.name and not flags & os.O_NONBLOCK:
+            raise AssertionError("FIFO leaf was opened without O_NONBLOCK")
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(task7_artifact_analysis.os, "open", require_nonblocking_leaf)
+
+    with pytest.raises(ValueError, match="regular file"):
+        task7_artifact_analysis._read_regular_file_bytes(fifo, "fixture artifact")
