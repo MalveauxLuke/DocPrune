@@ -730,8 +730,31 @@ def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihood
         likelihood_path=likelihood_path,
         likelihood_sha256=_sha256(likelihood_path),
     )
+    curve = task7_runtime.assemble_task7_curve_row_from_artifacts(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_path=run_manifest_path,
+        run_manifest_file_sha256=run_manifest_file_sha256,
+        results_path=results_path,
+        results_sha256=_sha256(results_path),
+        likelihood_path=likelihood_path,
+        likelihood_sha256=_sha256(likelihood_path),
+    )
 
     assert assembled["qid"] == "q-1"
+    assert curve == {
+        "qid": "q-1",
+        "reference_f1": 50.0,
+        "all_drop_f1": {
+            "B_input": 50.0,
+            "B_0": 50.0,
+            "B_6": 50.0,
+            "B_13": 50.0,
+            "B_20": 50.0,
+            "B_23": 50.0,
+            "B_26": 50.0,
+        },
+    }
     assert assembled["supporting_document_ids"] == ["doc-1"]
     assert assembled["retrieved_document_ids"] == ["doc-0", "doc-1", "doc-2", "doc-3"]
     assert assembled["reference"]["em_correct"] is False

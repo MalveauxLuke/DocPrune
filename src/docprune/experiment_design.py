@@ -768,6 +768,59 @@ def visual_state_opportunity_strata(
     }
 
 
+def compile_task7_visual_state_report(
+    curve_rows: Sequence[Mapping[str, object]],
+    opportunity_rows: Sequence[Mapping[str, object]],
+    *,
+    draws: int = 100_000,
+    seed: int = 20_260_827,
+) -> dict[str, object]:
+    """Compile the fixed-grid curve and descriptive strata under one QID identity."""
+
+    curves = tuple(dict(row) for row in curve_rows)
+    opportunities = tuple(dict(row) for row in opportunity_rows)
+    curve_qids = tuple(row.get("qid") for row in curves)
+    opportunity_qids = tuple(row.get("qid") for row in opportunities)
+    if (
+        not curves
+        or len(curves) != len(opportunities)
+        or curve_qids != opportunity_qids
+        or any(not isinstance(qid, str) or not qid for qid in curve_qids)
+    ):
+        raise ValueError("Task 7 curve and opportunity rows must contain the same ordered QIDs")
+    component_records = [
+        {
+            "qid": row["qid"],
+            "supporting_document_ids": row.get("supporting_document_ids"),
+        }
+        for row in opportunities
+    ]
+    support_components = support_document_components(component_records)
+    components = tuple(tuple(component["qids"]) for component in support_components["components"])
+    curve = visual_state_removal_inference(
+        curves,
+        components=components,
+        draws=draws,
+        seed=seed,
+    )
+    strata = visual_state_opportunity_strata(opportunities)
+    report: dict[str, object] = {
+        "schema_version": 1,
+        "analysis_name": "explicit-visual-state-removal-dependence-curve",
+        "claim_boundary": (
+            "not-an-information-horizon-without-separate-standalone-token-information"
+        ),
+        "qids": list(curve_qids),
+        "support_components": support_components,
+        "curve": curve,
+        "opportunity_strata": strata,
+        "curve_rows_sha256": _canonical_json_sha256(curves),
+        "opportunity_rows_sha256": _canonical_json_sha256(opportunities),
+    }
+    report["report_sha256"] = _canonical_json_sha256(report)
+    return report
+
+
 def classify_f1_result(
     *,
     tost_90_interval: Sequence[float],

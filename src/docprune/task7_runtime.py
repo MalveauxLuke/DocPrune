@@ -1013,3 +1013,70 @@ def assemble_task7_opportunity_row_from_artifacts(
             "likelihood_target_sha256": target["likelihood_target_sha256"],
         },
     }
+
+
+def assemble_task7_curve_row_from_artifacts(
+    *,
+    fixture_path: Path,
+    fixture_sha256: str,
+    run_manifest_path: Path,
+    run_manifest_file_sha256: str,
+    results_path: Path,
+    results_sha256: str,
+    likelihood_path: Path,
+    likelihood_sha256: str,
+) -> dict[str, object]:
+    """Derive one fixed-grid F1 row only after full artifact admission.
+
+    The opportunity assembler is the single admission gate for the fixture,
+    manifest, eight result cells, and the paired likelihood artifact.  This
+    companion then re-authenticates the result bytes and derives every score
+    with the official evaluator rather than accepting precomputed F1 values.
+    """
+
+    admitted = assemble_task7_opportunity_row_from_artifacts(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_path=run_manifest_path,
+        run_manifest_file_sha256=run_manifest_file_sha256,
+        results_path=results_path,
+        results_sha256=results_sha256,
+        likelihood_path=likelihood_path,
+        likelihood_sha256=likelihood_sha256,
+    )
+    results_file = _authenticated_file(results_path, results_sha256, "results artifact")
+    fixture_file = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
+    fixture = load_fixed_page_fixture(
+        fixture_file,
+        expected_sha256=fixture_sha256,
+        validate_external_bytes=False,
+    )
+    qid = admitted["qid"]
+    source = _eligible_source_row(fixture.eligible_questions_path, qid)
+    rows = _jsonl_mappings(results_file, "Task 7 results")
+    matrix = task7_intervention_matrix()
+    if len(rows) != len(matrix) or any(
+        row.get("question_id") != qid or row.get("intervention_name") != cell.name
+        for row, cell in zip(rows, matrix, strict=True)
+    ):
+        raise ValueError("Task 7 curve results changed after artifact admission")
+    scores = {
+        cell.name: _task7_result_score(row, source)[1]
+        for row, cell in zip(rows, matrix, strict=True)
+    }
+    boundary_names = (
+        ("B_input", "all-visual-drop-B_input"),
+        ("B_0", "all-visual-drop-B_0"),
+        ("B_6", "all-visual-drop-B_6"),
+        ("B_13", "all-visual-drop-B_13"),
+        ("B_20", "all-visual-drop-B_20"),
+        ("B_23", "all-visual-drop-B_23"),
+        ("B_26", "all-visual-drop-B_26"),
+    )
+    return {
+        "qid": qid,
+        "reference_f1": scores["btp-qtp-no-ctp"],
+        "all_drop_f1": {
+            boundary: scores[intervention] for boundary, intervention in boundary_names
+        },
+    }

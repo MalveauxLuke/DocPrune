@@ -572,6 +572,69 @@ def test_visual_state_opportunity_strata_require_correct_to_incorrect_or_gold_lo
     }
 
 
+def test_task7_report_derives_components_curve_and_strata_together() -> None:
+    """Catch mismatched QID sets or reporting the curve as an information horizon."""
+
+    boundaries = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
+    curve_rows = [
+        {
+            "qid": qid,
+            "reference_f1": 50.0,
+            "all_drop_f1": {boundary: score for boundary in boundaries},
+        }
+        for qid, score in (("q1", 45.0), ("q2", 50.0))
+    ]
+
+    def opportunity(qid: str, support: str, sensitive: bool) -> dict[str, object]:
+        return {
+            "qid": qid,
+            "supporting_document_ids": [support],
+            "retrieved_document_ids": [support, "d2", "d3", "d4"],
+            "reference": {
+                "name": "btp-qtp-no-ctp",
+                "result_sha256": "a" * 64,
+                "em_correct": True,
+                "f1": 50.0,
+            },
+            "input_all_drop": {
+                "name": "all-visual-drop-B_input",
+                "boundary": "B_input",
+                "mode": "physical_delete",
+                "retained_visual_ids": [],
+                "result_sha256": "b" * 64,
+                "em_correct": not sensitive,
+                "best_reference_loglikelihood_drop_per_token": 0.1 if sensitive else 0.0,
+                "likelihood_target": "best-reference-full-gold-sequence",
+                "likelihood_target_sha256": "c" * 64,
+            },
+        }
+
+    report = experiment_design.compile_task7_visual_state_report(
+        curve_rows,
+        [opportunity("q1", "doc-a", True), opportunity("q2", "doc-b", False)],
+        draws=4,
+        seed=3,
+    )
+
+    assert report["analysis_name"] == "explicit-visual-state-removal-dependence-curve"
+    assert report["claim_boundary"] == (
+        "not-an-information-horizon-without-separate-standalone-token-information"
+    )
+    assert report["support_components"]["size_distribution"] == {"1": 2}
+    assert report["curve"]["draw_count"] == 4
+    assert report["opportunity_strata"]["input_visually_sensitive"] == ["q1"]
+    assert len(report["curve_rows_sha256"]) == 64
+    assert len(report["opportunity_rows_sha256"]) == 64
+
+    with pytest.raises(ValueError, match="same ordered QIDs"):
+        experiment_design.compile_task7_visual_state_report(
+            curve_rows,
+            [opportunity("q2", "doc-b", False), opportunity("q1", "doc-a", True)],
+            draws=4,
+            seed=3,
+        )
+
+
 @pytest.mark.parametrize(
     ("tost_90", "superiority_95", "label", "flags"),
     [
