@@ -284,3 +284,190 @@ def test_analysis_cli_authenticates_gate_and_publishes_report(tmp_path: Path) ->
 
     assert completed.returncode == 0, completed.stderr
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == ("admitted-development-r20")
+
+
+def _write_fixed_shard(root: Path, shard: int, qid: str) -> None:
+    _write_shard(root, shard, qid, "fixed")
+    path = root / f"shard-{shard:04d}" / "results.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
+        policy = row["policy_selection"]["policy"]
+        numerator, denominator = map(int, policy["fixed_retention"].split("/"))
+        expected = (10 * numerator + denominator // 2) // denominator
+        row["policy_selection"]["requested_budget"] = expected
+        row["policy_selection"]["achieved_budget"] = expected
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
+    )
+
+
+def _trigger(*, gate_sha256: str = _GATE_SHA) -> dict[str, object]:
+    trigger = {
+        "schema_version": 1,
+        "status": "admitted-development-r20",
+        "job_ids": {"native": "base-job", "extension": "extension-job"},
+        "fixture_sha256": _FIXTURE_SHA,
+        "gate_sha256": gate_sha256,
+        "random_calibrations": {
+            name: {"frozen_repetitions": 20, "mcse_f1": 0.2}
+            for name in (
+                "global-uniform-random",
+                "page-stratified-random",
+                "grid-stratified-random",
+                "coverage-matched-identity-shuffle",
+            )
+        },
+    }
+    trigger["analysis_sha256"] = hashlib.sha256(
+        json.dumps(trigger, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return trigger
+
+
+def test_fixed_sensitivity_authenticates_trigger_and_exact_matched_budgets(tmp_path: Path) -> None:
+    """Catch running the curve before r20 admission or comparing unequal budgets."""
+
+    from docprune.task6_analysis import analyze_task6_fixed_sensitivity
+
+    root = tmp_path / "fixed"
+    qids = ["q0", "q1"]
+    for shard, qid in enumerate(qids):
+        _write_fixed_shard(root, shard, qid)
+    trigger = _trigger()
+
+    report = analyze_task6_fixed_sensitivity(
+        fixed_root=root,
+        gate=_gate(qids),
+        gate_sha256=_GATE_SHA,
+        fixture_sha256=_FIXTURE_SHA,
+        fixed_job_id="fixed-job",
+        trigger_analysis=trigger,
+        trigger_file_sha256="6" * 64,
+    )
+
+    assert report["status"] == "admitted-development-fixed-sensitivity"
+    assert report["job_id"] == "fixed-job"
+    assert report["trigger"] == {
+        "file_sha256": "6" * 64,
+        "analysis_sha256": trigger["analysis_sha256"],
+        "extension_job_id": "extension-job",
+        "frozen_random_repetitions": 20,
+    }
+    assert report["admission"]["shards"] == 2
+    assert report["admission"]["rows"] == 84
+    assert report["budget_audit"] == {
+        "retain-55": {"fraction": "11/20", "matched_all_policies": True},
+        "retain-65": {"fraction": "13/20", "matched_all_policies": True},
+        "retain-80": {"fraction": "4/5", "matched_all_policies": True},
+    }
+    assert report["policy_summary"]["aggregate-score-top-m-retain-65"]["rows"] == 2
+    assert report["policy_summary"]["global-uniform-random-retain-65"]["rows"] == 6
+    assert report["interpretation"] == "descriptive-development-only"
+    assert len(report["analysis_sha256"]) == 64
+
+
+def test_fixed_sensitivity_rejects_trigger_or_budget_drift(tmp_path: Path) -> None:
+    """Catch a forged trigger or one policy silently retaining another token count."""
+
+    from docprune.task6_analysis import analyze_task6_fixed_sensitivity
+
+    root = tmp_path / "fixed"
+    _write_fixed_shard(root, 0, "q0")
+    trigger = _trigger()
+    invalid_trigger = dict(trigger)
+    invalid_trigger["status"] = "draft"
+    with pytest.raises(ValueError, match="trigger"):
+        analyze_task6_fixed_sensitivity(
+            fixed_root=root,
+            gate=_gate(["q0"]),
+            gate_sha256=_GATE_SHA,
+            fixture_sha256=_FIXTURE_SHA,
+            fixed_job_id="fixed-job",
+            trigger_analysis=invalid_trigger,
+            trigger_file_sha256="6" * 64,
+        )
+
+    result_path = root / "shard-0000" / "results.jsonl"
+    rows = [json.loads(line) for line in result_path.read_text().splitlines()]
+    rows[2]["policy_selection"]["achieved_budget"] -= 1
+    result_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    with pytest.raises(ValueError, match="matched budget"):
+        analyze_task6_fixed_sensitivity(
+            fixed_root=root,
+            gate=_gate(["q0"]),
+            gate_sha256=_GATE_SHA,
+            fixture_sha256=_FIXTURE_SHA,
+            fixed_job_id="fixed-job",
+            trigger_analysis=trigger,
+            trigger_file_sha256="6" * 64,
+        )
+
+
+def test_fixed_sensitivity_publication_is_no_replace(tmp_path: Path) -> None:
+    """Catch replacing an admitted development sensitivity report."""
+
+    from docprune.task6_analysis import publish_task6_fixed_analysis
+
+    output = tmp_path / "fixed-analysis.json"
+    report = {"schema_version": 1, "status": "admitted-development-fixed-sensitivity"}
+
+    digest = publish_task6_fixed_analysis(report, output)
+
+    assert digest == hashlib.sha256(output.read_bytes()).hexdigest()
+    with pytest.raises(FileExistsError):
+        publish_task6_fixed_analysis(report, output)
+
+
+def test_fixed_sensitivity_cli_authenticates_trigger_file(tmp_path: Path) -> None:
+    """Catch accepting a sensitivity trigger by content without its sealed file digest."""
+
+    fixed = tmp_path / "fixed"
+    gate_path = tmp_path / "gate.json"
+    gate_path.write_text(json.dumps(_gate(["q0"]), sort_keys=True) + "\n")
+    gate_sha = hashlib.sha256(gate_path.read_bytes()).hexdigest()
+    _write_shard(fixed, 0, "q0", "fixed", gate_sha256=gate_sha)
+    result_path = fixed / "shard-0000" / "results.jsonl"
+    rows = [json.loads(line) for line in result_path.read_text().splitlines()]
+    for row in rows:
+        numerator, denominator = map(
+            int, row["policy_selection"]["policy"]["fixed_retention"].split("/")
+        )
+        expected = (10 * numerator + denominator // 2) // denominator
+        row["policy_selection"]["requested_budget"] = expected
+        row["policy_selection"]["achieved_budget"] = expected
+    result_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    trigger_path = tmp_path / "trigger.json"
+    trigger_path.write_text(json.dumps(_trigger(gate_sha256=gate_sha), sort_keys=True) + "\n")
+    trigger_sha = hashlib.sha256(trigger_path.read_bytes()).hexdigest()
+    output = tmp_path / "fixed-analysis.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/analyze_task6_fixed_sensitivity.py",
+            "--fixed-root",
+            str(fixed),
+            "--gate-manifest",
+            str(gate_path),
+            "--gate-manifest-sha256",
+            gate_sha,
+            "--fixture-sha256",
+            _FIXTURE_SHA,
+            "--trigger-analysis",
+            str(trigger_path),
+            "--trigger-analysis-sha256",
+            trigger_sha,
+            "--fixed-job-id",
+            "fixed-job",
+            "--output",
+            str(output),
+        ],
+        cwd=Path(__file__).parents[1],
+        env={"PYTHONPATH": str(Path(__file__).parents[1] / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(output.read_text())["status"] == ("admitted-development-fixed-sensitivity")

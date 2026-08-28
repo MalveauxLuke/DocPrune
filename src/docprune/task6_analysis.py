@@ -10,6 +10,7 @@ import statistics
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from pathlib import Path
 
 from docprune.evaluation import list_em, list_f1
@@ -362,6 +363,143 @@ def analyze_task6_native_extension(
     return report
 
 
+def _validate_r20_trigger(
+    trigger: Mapping[str, object],
+    *,
+    gate_sha256: str,
+    fixture_sha256: str,
+) -> tuple[str, str, int]:
+    if not isinstance(trigger, Mapping):
+        raise ValueError("Task 6 fixed sensitivity trigger is invalid")
+    unsigned = dict(trigger)
+    observed_sha = unsigned.pop("analysis_sha256", None)
+    jobs = trigger.get("job_ids")
+    calibrations = trigger.get("random_calibrations")
+    expected_calibrations = set(_RANDOM_POLICIES)
+    if (
+        trigger.get("schema_version") != 1
+        or trigger.get("status") != "admitted-development-r20"
+        or trigger.get("gate_sha256") != gate_sha256
+        or trigger.get("fixture_sha256") != fixture_sha256
+        or observed_sha != _canonical_sha256(unsigned)
+        or not isinstance(jobs, Mapping)
+        or not isinstance(jobs.get("extension"), str)
+        or not jobs["extension"]
+        or not isinstance(calibrations, Mapping)
+        or set(calibrations) != expected_calibrations
+        or any(
+            not isinstance(calibrations[name], Mapping)
+            or calibrations[name].get("frozen_repetitions") != 20
+            for name in expected_calibrations
+        )
+    ):
+        raise ValueError("Task 6 fixed sensitivity trigger is invalid")
+    return str(observed_sha), str(jobs["extension"]), 20
+
+
+def analyze_task6_fixed_sensitivity(
+    *,
+    fixed_root: Path,
+    gate: Mapping[str, object],
+    gate_sha256: str,
+    fixture_sha256: str,
+    fixed_job_id: str,
+    trigger_analysis: Mapping[str, object],
+    trigger_file_sha256: str,
+) -> dict[str, object]:
+    """Authenticate and summarize the frozen descriptive retention curve."""
+
+    if not all(
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+        for value in (gate_sha256, fixture_sha256, trigger_file_sha256)
+    ):
+        raise ValueError("Task 6 fixed sensitivity SHA-256 identity is invalid")
+    if not isinstance(fixed_job_id, str) or not fixed_job_id:
+        raise ValueError("Task 6 fixed sensitivity job ID is invalid")
+    trigger_sha, extension_job_id, frozen_repetitions = _validate_r20_trigger(
+        trigger_analysis,
+        gate_sha256=gate_sha256,
+        fixture_sha256=fixture_sha256,
+    )
+    qids = _gate_qids(gate, fixture_sha256)
+    rows, members = _load_root(
+        fixed_root,
+        kind="fixed",
+        qids=qids,
+        fixture_sha256=fixture_sha256,
+        gate_sha256=gate_sha256,
+    )
+
+    retentions = {
+        "retain-55": Fraction(11, 20),
+        "retain-65": Fraction(13, 20),
+        "retain-80": Fraction(4, 5),
+    }
+    for qid in qids:
+        qid_rows = [row for row in rows if row.get("question_id") == qid]
+        for label, fraction in retentions.items():
+            suffix = f"-{label}"
+            candidates = [row for row in qid_rows if _policy_name(row).endswith(suffix)]
+            if len(candidates) != 14:
+                raise ValueError("Task 6 fixed sensitivity cell count drift")
+            observed: set[tuple[int, int, int]] = set()
+            for row in candidates:
+                selection = row["policy_selection"]
+                population = selection.get("visual_population")
+                requested = selection.get("requested_budget")
+                achieved = selection.get("achieved_budget")
+                if any(type(value) is not int for value in (population, requested, achieved)):
+                    raise ValueError("Task 6 fixed sensitivity matched budget is invalid")
+                expected = min(
+                    population,
+                    max(
+                        0,
+                        (fraction.numerator * population + fraction.denominator // 2)
+                        // fraction.denominator,
+                    ),
+                )
+                observed.add((requested, achieved, expected))
+            if len(observed) != 1:
+                raise ValueError("Task 6 fixed sensitivity matched budget drift")
+            requested, achieved, expected = next(iter(observed))
+            if requested != expected or achieved != expected:
+                raise ValueError("Task 6 fixed sensitivity matched budget drift")
+
+    report: dict[str, object] = {
+        "schema_version": 1,
+        "status": "admitted-development-fixed-sensitivity",
+        "interpretation": "descriptive-development-only",
+        "job_id": fixed_job_id,
+        "root": str(Path(fixed_root).resolve()),
+        "fixture_sha256": fixture_sha256,
+        "gate_sha256": gate_sha256,
+        "trigger": {
+            "file_sha256": trigger_file_sha256,
+            "analysis_sha256": trigger_sha,
+            "extension_job_id": extension_job_id,
+            "frozen_random_repetitions": frozen_repetitions,
+        },
+        "admission": {
+            "shards": len(qids),
+            "rows": len(rows),
+            "member_file_count": len(members),
+            "member_digest_sha256": _canonical_sha256(members),
+            "fixed_page_provenance": True,
+            "global_index_loaded": False,
+        },
+        "members": members,
+        "budget_audit": {
+            label: {"fraction": str(fraction), "matched_all_policies": True}
+            for label, fraction in retentions.items()
+        },
+        "policy_summary": _policy_summary(rows),
+    }
+    report["analysis_sha256"] = _canonical_sha256(report)
+    return report
+
+
 def publish_task6_analysis(report: Mapping[str, object], output: Path) -> str:
     """Atomically publish one canonical analysis without replacing any path."""
 
@@ -395,4 +533,45 @@ def publish_task6_analysis(report: Mapping[str, object], output: Path) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-__all__ = ["analyze_task6_native_extension", "publish_task6_analysis"]
+def publish_task6_fixed_analysis(report: Mapping[str, object], output: Path) -> str:
+    """Publish one admitted descriptive sensitivity analysis without replacement."""
+
+    if (
+        report.get("schema_version") != 1
+        or report.get("status") != "admitted-development-fixed-sensitivity"
+    ):
+        raise ValueError("Task 6 fixed sensitivity analysis status is not publishable")
+    output = Path(output)
+    if not output.is_absolute():
+        raise ValueError("Task 6 fixed sensitivity output must be absolute")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.exists() or output.is_symlink():
+        raise FileExistsError(f"Task 6 fixed sensitivity output exists: {output}")
+    payload = (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    descriptor, staging_name = tempfile.mkstemp(prefix=f".{output.name}.", dir=output.parent)
+    staging = Path(staging_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(staging, output, follow_symlinks=False)
+        except FileExistsError as error:
+            raise FileExistsError(f"Task 6 fixed sensitivity output exists: {output}") from error
+        directory = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        staging.unlink(missing_ok=True)
+    return hashlib.sha256(payload).hexdigest()
+
+
+__all__ = [
+    "analyze_task6_fixed_sensitivity",
+    "analyze_task6_native_extension",
+    "publish_task6_analysis",
+    "publish_task6_fixed_analysis",
+]
