@@ -112,4 +112,13 @@ if any(row["matrix_kind"] != kind for row in rows):
     raise SystemExit("Task 6 matrix-kind drift")
 if any(row["fixed_page_provenance"] is not True or row["global_index_loaded"] is not False for row in rows):
     raise SystemExit("Task 6 no-search evidence drift")
+if kind == "visual-state-fixed-grid":
+    from docprune.task7_runtime import admit_task7_likelihood_pair_from_files
+
+    output = Path(sys.argv[1]).parent
+    admit_task7_likelihood_pair_from_files(
+        run_manifest_path=output / "run_manifest.json",
+        results_path=output / "results.jsonl",
+        likelihood_path=output / "task7-likelihood.jsonl",
+    )
 PY

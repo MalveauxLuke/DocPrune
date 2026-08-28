@@ -446,6 +446,7 @@ def main() -> int:
         ):
             raise ValueError("Task 7 resume requires the existing likelihood pair")
         from docprune.answerers import prepare_task7_likelihood_target_for_question
+        from docprune.task7_runtime import admit_task7_likelihood_pair_from_files
 
         task7_target = prepare_task7_likelihood_target_for_question(
             base_runner.answerer.processor,
@@ -453,6 +454,12 @@ def main() -> int:
             question=sample.question,
             accepted_references=sample.answers,
         )
+        if completed >= 2:
+            admit_task7_likelihood_pair_from_files(
+                run_manifest_path=manifest_path,
+                results_path=results_path,
+                likelihood_path=task7_likelihood_path,
+            )
     base_runner.warmup(sample)
     base_answerer = base_runner.answerer
     append_mode = results_path.exists()
@@ -612,6 +619,14 @@ def main() -> int:
         )
         append_result_jsonl(results_path, record, resume=append_mode)
         append_mode = True
+    if args.kind == "visual-state-fixed-grid":
+        from docprune.task7_runtime import admit_task7_likelihood_pair_from_files
+
+        admit_task7_likelihood_pair_from_files(
+            run_manifest_path=manifest_path,
+            results_path=results_path,
+            likelihood_path=task7_likelihood_path,
+        )
     return 0
 
 

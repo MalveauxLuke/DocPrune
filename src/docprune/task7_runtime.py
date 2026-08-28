@@ -6,16 +6,18 @@ import hashlib
 import json
 import math
 import os
-import tempfile
+import secrets
+import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from docprune.ctp_policy import CTPPolicy, btp_qtp_no_ctp_policy
 from docprune.evaluation import evaluate_m3docvqa
+from docprune.experiment_design import _open_directory_nofollow, _renameat2_noreplace
 from docprune.m3docrag import SampleInput
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
-from docprune.task6_runtime import FixedPageQuestion, load_fixed_page_fixture
+from docprune.task6_runtime import FixedPageFixture, FixedPageQuestion
 
 _TASK7_DECODER_LAYER_COUNT = 28
 _TASK7_LIKELIHOOD_TARGET_KEYS = {
@@ -69,32 +71,57 @@ def _is_sha256(value: object) -> bool:
     )
 
 
-def _authenticated_file(path: Path, expected_sha256: str, label: str) -> Path:
+def _read_regular_file_bytes(path: Path, label: str) -> bytes:
+    """Read one file through a no-symlink-component descriptor chain."""
+
     file_path = Path(path)
-    if not file_path.is_absolute() or file_path.is_symlink() or not file_path.is_file():
+    if not file_path.is_absolute():
         raise ValueError(f"{label} must be an absolute regular file")
+    parent_fd = _open_directory_nofollow(file_path.parent)
+    descriptor: int | None = None
+    try:
+        try:
+            descriptor = os.open(
+                file_path.name,
+                os.O_RDONLY | os.O_NOFOLLOW,
+                dir_fd=parent_fd,
+            )
+        except OSError as error:
+            raise ValueError(f"{label} must be an absolute regular file") from error
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"{label} must be an absolute regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_fd)
+
+
+def _authenticated_file(path: Path, expected_sha256: str, label: str) -> bytes:
+    """Return exactly the bytes authenticated through one opened descriptor."""
+
     if not _is_sha256(expected_sha256):
         raise ValueError(f"{label} checksum must be a lowercase SHA-256")
-    digest = hashlib.sha256()
-    with file_path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    if digest.hexdigest() != expected_sha256:
+    content = _read_regular_file_bytes(path, label)
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
         raise ValueError(f"{label} checksum mismatch")
-    return file_path
+    return content
 
 
-def _jsonl_mappings(path: Path, label: str) -> tuple[dict[str, object], ...]:
+def _jsonl_mappings_bytes(content: bytes, label: str) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     try:
-        with path.open(encoding="utf-8") as stream:
-            for line_number, line in enumerate(stream, start=1):
-                if not line.strip():
-                    continue
-                row = json.loads(line)
-                if not isinstance(row, Mapping):
-                    raise ValueError(f"{label} row {line_number} is not an object")
-                rows.append(dict(row))
+        text = content.decode("utf-8")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, Mapping):
+                raise ValueError(f"{label} row {line_number} is not an object")
+            rows.append(dict(row))
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"{label} is not valid JSONL") from error
     if not rows:
@@ -325,11 +352,7 @@ def write_task7_likelihood_artifact(path: Path, rows: Sequence[Mapping[str, obje
     """Atomically publish the exact reference/B_input likelihood pair once."""
 
     destination = Path(path)
-    if (
-        not destination.is_absolute()
-        or destination.parent.is_symlink()
-        or not destination.parent.is_dir()
-    ):
+    if not destination.is_absolute():
         raise ValueError("Task 7 likelihood destination requires an absolute real parent")
     validated = tuple(_validated_likelihood_record(row) for row in rows)
     if (
@@ -351,27 +374,44 @@ def write_task7_likelihood_artifact(path: Path, rows: Sequence[Mapping[str, obje
         )
         for row in validated
     )
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.", dir=destination.parent
-    )
-    temporary = Path(temporary_name)
+    parent_fd = _open_directory_nofollow(destination.parent)
+    temporary_name = f".{destination.name}.{secrets.token_hex(16)}"
+    descriptor: int | None = None
+    temporary_created = False
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            descriptor = -1
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.link(temporary, destination, follow_symlinks=False)
-        directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+            os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise FileExistsError(f"Task 7 likelihood destination already exists: {destination}")
+        descriptor = os.open(
+            temporary_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=parent_fd,
+        )
+        temporary_created = True
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(descriptor, remaining)
+            remaining = remaining[written:]
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = None
+        _renameat2_noreplace(parent_fd, temporary_name, parent_fd, destination.name)
+        temporary_created = False
+        os.fsync(parent_fd)
         return hashlib.sha256(payload).hexdigest()
     finally:
-        if descriptor != -1:
+        if descriptor is not None:
             os.close(descriptor)
-        temporary.unlink(missing_ok=True)
+        if temporary_created:
+            try:
+                os.unlink(temporary_name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+        os.close(parent_fd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -618,12 +658,8 @@ def validate_task7_result_record(
         raise ValueError("Task 7 result has invalid physical all-drop evidence")
 
 
-def _eligible_source_row(path: Path, qid: str) -> dict[str, object]:
-    matches = [
-        row
-        for row in _jsonl_mappings(path, "eligible questions")
-        if row.get("qid", row.get("question_id")) == qid
-    ]
+def _eligible_source_row(rows: Sequence[Mapping[str, object]], qid: str) -> dict[str, object]:
+    matches = [dict(row) for row in rows if row.get("qid", row.get("question_id")) == qid]
     if len(matches) != 1:
         raise ValueError("Task 7 QID must occur exactly once in eligible questions")
     return matches[0]
@@ -670,17 +706,15 @@ def _task7_result_score(
 
 
 def _validated_task7_run_manifest(
-    path: Path,
+    content: bytes,
     *,
-    file_sha256: str,
     fixture_path: Path,
     fixture_sha256: str,
     results_path: Path,
     likelihood_path: Path,
 ) -> dict[str, object]:
-    manifest_file = _authenticated_file(path, file_sha256, "Task 7 run manifest")
     try:
-        value = json.loads(manifest_file.read_text(encoding="utf-8"))
+        value = json.loads(content.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError("Task 7 run manifest is not valid JSON") from error
     if not isinstance(value, Mapping):
@@ -704,6 +738,100 @@ def _validated_task7_run_manifest(
     ):
         raise ValueError("Task 7 run manifest does not bind the fixed-grid artifacts")
     return dict(value)
+
+
+def _validate_task7_likelihood_pair(
+    run_manifest: Mapping[str, object],
+    result_rows: Sequence[Mapping[str, object]],
+    likelihood_rows: Sequence[Mapping[str, object]],
+) -> None:
+    """Bind the exact two likelihood rows to the run and first two QA rows."""
+
+    expected_names = ("btp-qtp-no-ctp", "all-visual-drop-B_input")
+    if len(result_rows) < 2:
+        raise ValueError("Task 7 results must contain the reference and B_input prefix")
+    first_two = tuple(dict(row) for row in result_rows[:2])
+    if (
+        tuple(row.get("intervention_name") for row in first_two) != expected_names
+        or tuple(row.get("matrix_cell") for row in first_two) != (0, 1)
+        or any(row.get("matrix_kind") != "visual-state-fixed-grid" for row in first_two)
+    ):
+        raise ValueError("Task 7 results must begin with reference and B_input in order")
+    qid = run_manifest.get("qid")
+    if (
+        not isinstance(qid, str)
+        or not qid
+        or any(row.get("question_id") != qid for row in first_two)
+    ):
+        raise ValueError("Task 7 likelihood pair QID does not match the run")
+    answers = first_two[0].get("answers")
+    if (
+        not isinstance(answers, list)
+        or not answers
+        or any(not isinstance(answer, str) for answer in answers)
+        or first_two[1].get("answers") != answers
+    ):
+        raise ValueError("Task 7 likelihood pair answers do not match the first two results")
+    validated = tuple(_validated_likelihood_record(row) for row in likelihood_rows)
+    if (
+        len(validated) != 2
+        or tuple(row["intervention_name"] for row in validated) != expected_names
+        or any(row["qid"] != qid for row in validated)
+    ):
+        raise ValueError("Task 7 likelihoods must match reference and B_input in order")
+    target = validated[0]["target"]
+    if validated[1]["target"] != target or target["accepted_references"] != answers:
+        raise ValueError("Task 7 likelihood target does not match the sealed gold answers")
+    for likelihood, result in zip(validated, first_two, strict=True):
+        if (
+            likelihood["fixture_sha256"] != run_manifest.get("fixture_sha256")
+            or likelihood["run_manifest_sha256"] != run_manifest.get("run_manifest_sha256")
+            or likelihood["source_result_sha256"] != _canonical_sha256(result)
+        ):
+            raise ValueError("Task 7 likelihood source result identity does not match")
+        result_input = _validated_result_prefill_identity(result)
+        if (
+            likelihood["assistant_prompt_sha256"] != result_input["assistant_prompt_sha256"]
+            or likelihood["target"]["assistant_prompt_sha256"]
+            != result_input["assistant_prompt_sha256"]
+            or likelihood["prefill_input_ids_shape"] != result_input["prefill_input_ids_shape"]
+            or likelihood["prefill_input_ids_sha256"] != result_input["prefill_input_ids_sha256"]
+        ):
+            raise ValueError("Task 7 likelihood prompt or prefill identity does not match")
+
+
+def admit_task7_likelihood_pair_from_files(
+    *,
+    run_manifest_path: Path,
+    results_path: Path,
+    likelihood_path: Path,
+) -> str:
+    """Admit an exact Task 7 likelihood pair for resume or final postflight."""
+
+    manifest_content = _read_regular_file_bytes(run_manifest_path, "Task 7 run manifest")
+    try:
+        unsigned_manifest = json.loads(manifest_content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("Task 7 run manifest is not valid JSON") from error
+    if not isinstance(unsigned_manifest, Mapping):
+        raise ValueError("Task 7 run manifest is not an object")
+    fixture_path = unsigned_manifest.get("fixture_path")
+    fixture_sha256 = unsigned_manifest.get("fixture_sha256")
+    if not isinstance(fixture_path, str) or not _is_sha256(fixture_sha256):
+        raise ValueError("Task 7 run manifest fixture identity is invalid")
+    results_content = _read_regular_file_bytes(results_path, "Task 7 results")
+    likelihood_content = _read_regular_file_bytes(likelihood_path, "Task 7 likelihoods")
+    run_manifest = _validated_task7_run_manifest(
+        manifest_content,
+        fixture_path=Path(fixture_path),
+        fixture_sha256=fixture_sha256,
+        results_path=Path(results_path),
+        likelihood_path=Path(likelihood_path),
+    )
+    result_rows = _jsonl_mappings_bytes(results_content, "Task 7 results")
+    likelihood_rows = _jsonl_mappings_bytes(likelihood_content, "Task 7 likelihoods")
+    _validate_task7_likelihood_pair(run_manifest, result_rows, likelihood_rows)
+    return hashlib.sha256(likelihood_content).hexdigest()
 
 
 def _validated_result_prefill_identity(record: Mapping[str, object]) -> dict[str, object]:
@@ -741,28 +869,33 @@ def assemble_task7_opportunity_row_from_artifacts(
     from the sealed sources.  It never accepts a precomputed stratum label.
     """
 
-    fixture_file = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
-    results_file = _authenticated_file(results_path, results_sha256, "results artifact")
-    likelihood_file = _authenticated_file(likelihood_path, likelihood_sha256, "likelihood artifact")
+    fixture_content = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
+    results_content = _authenticated_file(results_path, results_sha256, "results artifact")
+    likelihood_content = _authenticated_file(
+        likelihood_path, likelihood_sha256, "likelihood artifact"
+    )
+    manifest_content = _authenticated_file(
+        run_manifest_path, run_manifest_file_sha256, "Task 7 run manifest"
+    )
     run_manifest = _validated_task7_run_manifest(
-        run_manifest_path,
-        file_sha256=run_manifest_file_sha256,
-        fixture_path=fixture_file,
+        manifest_content,
+        fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
-        results_path=results_file,
-        likelihood_path=likelihood_file,
+        results_path=results_path,
+        likelihood_path=likelihood_path,
     )
-    fixture = load_fixed_page_fixture(
-        fixture_file,
-        expected_sha256=fixture_sha256,
-        validate_external_bytes=False,
-    )
-    _authenticated_file(
+    try:
+        fixture_payload = json.loads(fixture_content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("fixed page fixture is not valid JSON") from error
+    fixture = FixedPageFixture.from_dict(fixture_payload)
+    eligible_content = _authenticated_file(
         fixture.eligible_questions_path,
         fixture.eligible_questions_sha256,
         "eligible questions artifact",
     )
-    result_rows = _jsonl_mappings(results_file, "Task 7 results")
+    eligible_rows = _jsonl_mappings_bytes(eligible_content, "eligible questions")
+    result_rows = _jsonl_mappings_bytes(results_content, "Task 7 results")
     matrix = task7_intervention_matrix()
     if len(result_rows) != len(matrix):
         raise ValueError("Task 7 results must contain the exact eight-cell fixed grid")
@@ -775,9 +908,11 @@ def assemble_task7_opportunity_row_from_artifacts(
     if run_manifest.get("qid") != qid:
         raise ValueError("Task 7 run manifest QID does not match the results")
     fixture_question = fixture.question(qid)
-    sample = fixture.selected_samples((qid,))[0]
-    source = _eligible_source_row(fixture.eligible_questions_path, qid)
-    if SampleInput.from_mapping(source) != sample:
+    source = _eligible_source_row(eligible_rows, qid)
+    sample = SampleInput.from_mapping(source)
+    if hashlib.sha256(sample.question.encode("utf-8")).hexdigest() != (
+        fixture_question.question_sha256
+    ):
         raise ValueError("Task 7 eligible source does not match the fixture sample")
 
     from docprune.m3docvqa_factory import _validate_result_record
@@ -812,7 +947,7 @@ def assemble_task7_opportunity_row_from_artifacts(
 
     likelihood_rows = tuple(
         _validated_likelihood_record(row)
-        for row in _jsonl_mappings(likelihood_file, "Task 7 likelihoods")
+        for row in _jsonl_mappings_bytes(likelihood_content, "Task 7 likelihoods")
     )
     expected_likelihood_names = ("btp-qtp-no-ctp", "all-visual-drop-B_input")
     if (
@@ -829,6 +964,7 @@ def assemble_task7_opportunity_row_from_artifacts(
 
     reference_result = results_by_name["btp-qtp-no-ctp"]
     input_result = results_by_name["all-visual-drop-B_input"]
+    _validate_task7_likelihood_pair(run_manifest, result_rows, likelihood_rows)
     for likelihood, result in zip(
         likelihood_rows,
         (reference_result, input_result),

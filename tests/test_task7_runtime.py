@@ -443,8 +443,12 @@ def test_fixed_page_launcher_accepts_only_the_eight_cell_task7_grid() -> None:
     assert 'if [[ "$MATRIX_KIND" == visual-state-fixed-grid ]]; then EXPECTED=8; fi' in launcher
     assert "#SBATCH --constraint=l40s" in launcher
     assert "#SBATCH --no-requeue" in launcher
+    assert "admit_task7_likelihood_pair_from_files" in launcher
     assert "global index" not in launcher.lower()
     assert "retrieve" not in launcher.lower()
+
+    runner = (ROOT / "examples/run_task6_matrix.py").read_text(encoding="utf-8")
+    assert runner.count("admit_task7_likelihood_pair_from_files(") >= 2
 
 
 def test_task7_likelihood_record_uses_max_normalized_full_answer_adaptation() -> None:
@@ -929,4 +933,179 @@ def test_task7_likelihood_artifact_is_atomic_ordered_and_no_replace(tmp_path: Pa
     with pytest.raises(ValueError, match="reference and B_input in order"):
         task7_runtime.write_task7_likelihood_artifact(
             (tmp_path / "swapped.jsonl").resolve(), tuple(reversed(rows))
+        )
+
+
+def test_task7_likelihood_artifact_rejects_a_symlinked_ancestor(tmp_path: Path) -> None:
+    """Catch output publication being redirected through an ancestor symlink."""
+
+    real_parent = tmp_path / "real" / "nested"
+    real_parent.mkdir(parents=True)
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+    target = task7_runtime.build_task7_likelihood_target(
+        ("42",), ((19,),), assistant_prompt="<assistant>\n"
+    )
+    rows = tuple(
+        task7_runtime.build_task7_likelihood_record(
+            qid="q-1",
+            intervention_name=name,
+            target=target,
+            per_reference_mean_loglikelihood=(value,),
+            fixture_sha256="a" * 64,
+            run_manifest_sha256="b" * 64,
+            source_result_sha256=digest * 64,
+            prefill_input_ids_shape=(1, 17),
+            prefill_input_ids_sha256="d" * 64,
+        )
+        for name, value, digest in (
+            ("btp-qtp-no-ctp", -0.2, "1"),
+            ("all-visual-drop-B_input", -0.5, "2"),
+        )
+    )
+
+    with pytest.raises(ValueError, match="symlink|non-directory"):
+        task7_runtime.write_task7_likelihood_artifact(
+            tmp_path / "alias" / "nested" / "likelihood.jsonl", rows
+        )
+    assert not (real_parent / "likelihood.jsonl").exists()
+
+
+def test_task7_authenticated_parse_uses_the_exact_hashed_bytes(tmp_path: Path) -> None:
+    """Catch authenticating one inode and then parsing replacement path bytes."""
+
+    path = (tmp_path / "rows.jsonl").resolve()
+    path.write_text('{"value":"authenticated"}\n', encoding="utf-8")
+    authenticated = task7_runtime._authenticated_file(path, _sha256(path), "test rows")
+
+    replacement = tmp_path / "replacement.jsonl"
+    replacement.write_text('{"value":"replacement"}\n', encoding="utf-8")
+    replacement.replace(path)
+
+    assert task7_runtime._jsonl_mappings_bytes(authenticated, "test rows") == (
+        {"value": "authenticated"},
+    )
+
+
+def _write_task7_likelihood_pair(
+    path: Path,
+    *,
+    fixture_sha256: str,
+    run_manifest_sha256: str,
+    results: list[dict[str, object]],
+) -> None:
+    target = task7_runtime.build_task7_likelihood_target(
+        ("42", "forty two"),
+        ((19, 17), (69, 70)),
+        assistant_prompt="<assistant>\n",
+    )
+    rows = tuple(
+        task7_runtime.build_task7_likelihood_record(
+            qid="q-1",
+            intervention_name=name,
+            target=target,
+            per_reference_mean_loglikelihood=values,
+            fixture_sha256=fixture_sha256,
+            run_manifest_sha256=run_manifest_sha256,
+            source_result_sha256=_canonical_sha256(results[index]),
+            prefill_input_ids_shape=(1, 17),
+            prefill_input_ids_sha256="d" * 64,
+        )
+        for index, (name, values) in enumerate(
+            (
+                ("btp-qtp-no-ctp", (-0.2, -0.7)),
+                ("all-visual-drop-B_input", (-0.5, -0.9)),
+            )
+        )
+    )
+    path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+
+def test_task7_likelihood_pair_admission_binds_manifest_and_first_two_results(
+    tmp_path: Path,
+) -> None:
+    """Catch a final/resumed run exiting successfully with unbound likelihood evidence."""
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_path, _, run_sha = _task7_run_manifest(tmp_path, fixture_path, fixture_sha256)
+    results = _task7_result_rows(fixture_sha256)
+    results_path = (tmp_path / "results.jsonl").resolve()
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    likelihood_path = (tmp_path / "likelihood.jsonl").resolve()
+    _write_task7_likelihood_pair(
+        likelihood_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_sha256=run_sha,
+        results=results,
+    )
+
+    digest = task7_runtime.admit_task7_likelihood_pair_from_files(
+        run_manifest_path=run_path,
+        results_path=results_path,
+        likelihood_path=likelihood_path,
+    )
+
+    assert digest == _sha256(likelihood_path)
+
+
+@pytest.mark.parametrize("attack", ["stale", "swapped", "malformed"])
+def test_task7_likelihood_pair_admission_rejects_invalid_evidence(
+    tmp_path: Path, attack: str
+) -> None:
+    """Catch stale, swapped, or malformed likelihood evidence on resume/postflight."""
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    run_path, _, run_sha = _task7_run_manifest(tmp_path, fixture_path, fixture_sha256)
+    results = _task7_result_rows(fixture_sha256)
+    results_path = (tmp_path / "results.jsonl").resolve()
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results), encoding="utf-8"
+    )
+    likelihood_path = (tmp_path / "likelihood.jsonl").resolve()
+    _write_task7_likelihood_pair(
+        likelihood_path,
+        fixture_sha256=fixture_sha256,
+        run_manifest_sha256=run_sha,
+        results=results,
+    )
+    if attack == "stale":
+        results[1]["predicted_answer"] = "stale mutation"
+        results_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in results),
+            encoding="utf-8",
+        )
+    elif attack == "swapped":
+        lines = likelihood_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        likelihood_path.write_text("".join(reversed(lines)), encoding="utf-8")
+    else:
+        likelihood_path.write_text("{not-json}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="source result|in order|valid JSONL"):
+        task7_runtime.admit_task7_likelihood_pair_from_files(
+            run_manifest_path=run_path,
+            results_path=results_path,
+            likelihood_path=likelihood_path,
+        )
+
+
+def test_task7_likelihood_pair_admission_rejects_a_symlinked_input_ancestor(
+    tmp_path: Path,
+) -> None:
+    """Catch postflight admission following a redirected ancestor component."""
+
+    real = tmp_path / "real" / "nested"
+    real.mkdir(parents=True)
+    run_path = real / "run_manifest.json"
+    run_path.write_text("{}\n", encoding="utf-8")
+    (tmp_path / "alias").symlink_to(tmp_path / "real", target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlink|non-directory"):
+        task7_runtime.admit_task7_likelihood_pair_from_files(
+            run_manifest_path=tmp_path / "alias" / "nested" / "run_manifest.json",
+            results_path=real / "results.jsonl",
+            likelihood_path=real / "likelihood.jsonl",
         )
