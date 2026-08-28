@@ -138,6 +138,60 @@ def _atomic_rename_noreplace(source: Path, destination: Path) -> None:
         os.close(parent_fd)
 
 
+def _link_directory_manifest_last_noreplace(
+    *,
+    parent_fd: int,
+    temporary_fd: int,
+    temporary_name: str,
+    destination_name: str,
+    member_names: Sequence[str],
+) -> None:
+    """Commit a directory on filesystems lacking renameat2, with manifest.json last."""
+
+    os.mkdir(destination_name, mode=0o700, dir_fd=parent_fd)
+    destination_fd: int | None = None
+    linked: list[str] = []
+    try:
+        destination_fd = os.open(
+            destination_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
+        order = [name for name in member_names if name != "manifest.json"]
+        if "manifest.json" not in member_names:
+            raise ValueError("directory commit requires manifest.json as its commit marker")
+        order.append("manifest.json")
+        for name in order:
+            os.link(
+                name,
+                name,
+                src_dir_fd=temporary_fd,
+                dst_dir_fd=destination_fd,
+                follow_symlinks=False,
+            )
+            linked.append(name)
+        os.fsync(destination_fd)
+        os.fsync(parent_fd)
+    except BaseException:
+        if destination_fd is not None:
+            for name in reversed(linked):
+                try:
+                    os.unlink(name, dir_fd=destination_fd)
+                except FileNotFoundError:
+                    pass
+        try:
+            os.rmdir(destination_name, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+        raise
+    finally:
+        if destination_fd is not None:
+            os.close(destination_fd)
+    for name in member_names:
+        os.unlink(name, dir_fd=temporary_fd)
+    os.rmdir(temporary_name, dir_fd=parent_fd)
+
+
 def _require_mapping_keys(value: object, allowed: set[str], *, label: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} must be a mapping")
@@ -1484,7 +1538,18 @@ def seal_holdout(
             finally:
                 os.close(member_fd)
         os.fsync(temporary_fd)
-        _renameat2_noreplace(parent_fd, temporary_name, parent_fd, destination.name)
+        try:
+            _renameat2_noreplace(parent_fd, temporary_name, parent_fd, destination.name)
+        except OSError as error:
+            if error.errno not in {errno.EINVAL, errno.ENOSYS, errno.EOPNOTSUPP}:
+                raise
+            _link_directory_manifest_last_noreplace(
+                parent_fd=parent_fd,
+                temporary_fd=temporary_fd,
+                temporary_name=temporary_name,
+                destination_name=destination.name,
+                member_names=member_names,
+            )
         temporary_created = False
         os.fsync(parent_fd)
     except BaseException:

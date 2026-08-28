@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.util
 import json
@@ -905,6 +906,50 @@ def test_holdout_seal_accepts_authenticated_maximum_available_amendment(tmp_path
     )
     assert validated == sealed
     assert validated["power"]["planned_required_n"] > validated["required_n"] == 2
+
+
+def test_holdout_seal_uses_manifest_last_commit_on_filesystem_without_renameat2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch BeeGFS/NFS EINVAL leaving a valid holdout impossible or partially admitted."""
+
+    registry_path, labels, _ = _seal_prerequisites(tmp_path, eligible_pool_size=2)
+    power = experiment_design.plan_equivalence_power(
+        developmental_mean_f1=0.0,
+        developmental_sd_f1=0.01,
+        cluster_design_effect=1.0,
+        eligible_pool_size=2,
+    )
+    rows, input_hashes = _authenticated_eligible_rows(
+        tmp_path / "fallback-inputs", ("holdout-a", "holdout-b")
+    )
+    rows[0]["metadata"]["supporting_document_ids"] = ["support-a"]
+    rows[1]["metadata"]["supporting_document_ids"] = ["support-b"]
+    destination = tmp_path / "method-holdout"
+
+    def unsupported(*args: object) -> None:
+        raise OSError(errno.EINVAL, "renameat2 unsupported")
+
+    monkeypatch.setattr(experiment_design, "_renameat2_noreplace", unsupported)
+    sealed = experiment_design.seal_holdout(
+        rows,
+        development_registry_path=registry_path,
+        required_registry_labels=labels,
+        power=power,
+        calibration=experiment_design.calibrate_random_repetitions(
+            {"dev-qid": [1.0] * 10}
+        ),
+        runtime_pins={"runtime_commit": "d" * 40},
+        input_file_hashes=input_hashes,
+        destination=destination,
+    )
+
+    assert experiment_design.validate_holdout_for_launch(
+        destination,
+        required_registry_path=registry_path,
+        required_registry_labels=labels,
+    ) == sealed
+    assert not list(tmp_path.glob(".method-holdout-*"))
 
 
 def test_holdout_seal_is_atomic_no_replace_and_launch_validated(tmp_path: Path) -> None:
