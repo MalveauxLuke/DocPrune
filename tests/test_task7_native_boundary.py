@@ -519,6 +519,76 @@ def test_native_boundary_cleanup_does_not_delete_replacement_after_publish(
     assert moved_publication.is_file()
 
 
+def test_native_boundary_post_publish_failure_never_rolls_back_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch restoring a stat-then-unlink rollback race after atomic publication."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination = tmp_path / "native-boundaries.json"
+    original = native._require_destination_parent_identity
+    identity_checks = 0
+
+    def fail_after_publish(path: Path, descriptor: int) -> None:
+        nonlocal identity_checks
+        original(path, descriptor)
+        identity_checks += 1
+        if identity_checks == 3:
+            raise ValueError("injected post-publication failure")
+
+    def forbid_name_unlink(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("post-publication cleanup must never unlink by name")
+
+    monkeypatch.setattr(native, "_require_destination_parent_identity", fail_after_publish)
+    monkeypatch.setattr(native.os, "unlink", forbid_name_unlink)
+
+    with pytest.raises(ValueError, match="injected post-publication failure"):
+        _publish(source, destination)
+
+    assert json.loads(destination.read_text(encoding="utf-8"))["status"] == (
+        "sealed-task7-native-boundaries"
+    )
+
+
+def test_native_boundary_publisher_stages_in_named_private_temporary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch using unsupported anonymous staging instead of a private recovery name."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination = tmp_path / "native-boundaries.json"
+    original = native.os.open
+    observed_temporary: str | None = None
+
+    def observe_open(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal observed_temporary
+        if (
+            isinstance(path, str)
+            and path.startswith(f".{destination.name}.")
+            and flags & os.O_CREAT
+            and flags & os.O_EXCL
+        ):
+            observed_temporary = path
+        return original(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(native.os, "open", observe_open)
+
+    _publish(source, destination)
+
+    assert observed_temporary is not None
+    assert not list(tmp_path.glob(f".{destination.name}.*"))
+
+
 def test_native_boundary_cleanup_does_not_delete_replaced_temporary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -560,7 +630,7 @@ def test_native_boundary_cleanup_does_not_delete_replaced_temporary(
 
     monkeypatch.setattr(native, "_renameat2_noreplace", replace_temporary_then_fail)
 
-    with pytest.raises(OSError, match="injected rename failure"):
+    with pytest.raises(RuntimeError, match="preserved private temporary"):
         _publish(source, destination)
 
     assert observed_temporary is not None
@@ -568,10 +638,10 @@ def test_native_boundary_cleanup_does_not_delete_replaced_temporary(
     assert not destination.exists()
 
 
-def test_native_boundary_failed_temporary_cleanup_fsyncs_parent(
+def test_native_boundary_failed_rename_preserves_exact_fsynced_temporary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Catch a removed failed-publication temporary surviving crash recovery."""
+    """Catch deleting or failing to report the exact pre-rename recovery artifact."""
 
     import docprune.task7_native_boundary as native
 
@@ -592,11 +662,16 @@ def test_native_boundary_failed_temporary_cleanup_fsyncs_parent(
     monkeypatch.setattr(native.os, "fsync", record_fsync)
     monkeypatch.setattr(native, "_renameat2_noreplace", fail_rename)
 
-    with pytest.raises(OSError, match="injected rename failure"):
+    with pytest.raises(RuntimeError, match="preserved private temporary"):
         _publish(source, destination)
 
     assert directory_fsyncs == 1
-    assert not list(tmp_path.glob(f".{destination.name}.*"))
+    temporaries = list(tmp_path.glob(f".{destination.name}.*"))
+    assert len(temporaries) == 1
+    assert json.loads(temporaries[0].read_text(encoding="utf-8"))["status"] == (
+        "sealed-task7-native-boundaries"
+    )
+    assert not destination.exists()
 
 
 def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outcomes(
