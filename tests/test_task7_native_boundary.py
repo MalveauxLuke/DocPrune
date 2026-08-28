@@ -512,9 +512,10 @@ def test_native_boundary_cleanup_does_not_delete_replacement_after_publish(
 
     monkeypatch.setattr(native, "_require_destination_parent_identity", fail_after_name_replacement)
 
-    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+    with pytest.raises(RuntimeError, match="no verified recovery path") as captured:
         _publish(source, destination)
 
+    assert str(destination) not in str(captured.value)
     assert isinstance(captured.value.__cause__, ValueError)
     assert destination.read_bytes() == unrelated
     assert moved_publication.is_file()
@@ -697,12 +698,229 @@ def test_native_boundary_cleanup_does_not_delete_replaced_temporary(
 
     monkeypatch.setattr(native, "_renameat2_noreplace", replace_temporary_then_fail)
 
-    with pytest.raises(RuntimeError, match="preserved private temporary"):
+    with pytest.raises(RuntimeError, match="no verified recovery path"):
         _publish(source, destination)
 
     assert observed_temporary is not None
     assert (tmp_path / observed_temporary).read_bytes() == unrelated
     assert not destination.exists()
+
+
+def test_native_boundary_rejects_foreign_source_swapped_inside_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful helper return is not proof that staged bytes were published."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    displaced = tmp_path / "displaced-stage"
+    content = b"authenticated staged bytes\n"
+    foreign = b"foreign source bytes\n"
+    original = native._renameat2_noreplace
+
+    def substitute_source_then_rename(
+        old_directory_fd: int,
+        old_name: str,
+        new_directory_fd: int,
+        new_name: str,
+    ) -> None:
+        os.rename(
+            old_name, displaced.name, src_dir_fd=old_directory_fd, dst_dir_fd=old_directory_fd
+        )
+        replacement = os.open(
+            old_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=old_directory_fd
+        )
+        try:
+            os.write(replacement, foreign)
+        finally:
+            os.close(replacement)
+        original(old_directory_fd, old_name, new_directory_fd, new_name)
+
+    monkeypatch.setattr(native, "_renameat2_noreplace", substitute_source_then_rename)
+
+    with pytest.raises(RuntimeError, match="no verified recovery path"):
+        native._publish_new_file(content, destination)
+
+    assert destination.read_bytes() == foreign
+    assert displaced.read_bytes() == content
+
+
+def test_native_boundary_destination_leaf_swap_is_not_reported_as_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never identify replacement destination bytes as the staged recovery artifact."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    displaced = tmp_path / "displaced-publication"
+    content = b"authenticated staged bytes\n"
+    foreign = b"foreign destination bytes\n"
+    original = native.os.fsync
+    calls = 0
+
+    def replace_leaf_then_fail(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            destination.rename(displaced)
+            destination.write_bytes(foreign)
+            raise OSError("injected post-rename failure")
+        original(descriptor)
+
+    monkeypatch.setattr(native.os, "fsync", replace_leaf_then_fail)
+
+    with pytest.raises(RuntimeError, match="no verified recovery path") as captured:
+        native._publish_new_file(content, destination)
+
+    assert str(destination) not in str(captured.value)
+    assert destination.read_bytes() == foreign
+    assert displaced.read_bytes() == content
+
+
+def test_native_boundary_final_gate_rejects_destination_leaf_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final success gate authenticates the leaf after checking the parent."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    displaced = tmp_path / "displaced-publication"
+    content = b"authenticated staged bytes\n"
+    foreign = b"foreign destination bytes\n"
+    original = native._require_destination_parent_identity
+    calls = 0
+
+    def swap_leaf_during_final_parent_check(path: Path, descriptor: int) -> None:
+        nonlocal calls
+        original(path, descriptor)
+        calls += 1
+        if calls == 3:
+            destination.rename(displaced)
+            destination.write_bytes(foreign)
+
+    monkeypatch.setattr(
+        native, "_require_destination_parent_identity", swap_leaf_during_final_parent_check
+    )
+
+    with pytest.raises(RuntimeError, match="no verified recovery path"):
+        native._publish_new_file(content, destination)
+
+    assert destination.read_bytes() == foreign
+    assert displaced.read_bytes() == content
+
+
+def test_native_boundary_rename_success_then_raise_reports_verified_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Infer completed publication from inode identity even when the helper raises."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    content = b"authenticated staged bytes\n"
+    original = native._renameat2_noreplace
+
+    def rename_then_raise(*args: object) -> None:
+        original(*args)
+        raise OSError("injected error after successful rename")
+
+    monkeypatch.setattr(native, "_renameat2_noreplace", rename_then_raise)
+
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+        native._publish_new_file(content, destination)
+
+    assert str(destination) in str(captured.value)
+    assert destination.read_bytes() == content
+
+
+def test_native_boundary_close_failure_does_not_leak_other_descriptor_or_mask_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Close every retained fd and report verified publication when one close raises."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    content = b"authenticated staged bytes\n"
+    original = native.os.close
+    original_open = native.os.open
+    staged_descriptor: int | None = None
+    regular_close_failed = False
+    directory_close_attempted = False
+
+    def observe_staged_open(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal staged_descriptor
+        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+        if (
+            isinstance(path, str)
+            and path.startswith(f".{destination.name}.")
+            and flags & os.O_CREAT
+        ):
+            staged_descriptor = descriptor
+        return descriptor
+
+    def close_then_fail_once(descriptor: int) -> None:
+        nonlocal regular_close_failed, directory_close_attempted
+        mode = os.fstat(descriptor).st_mode
+        original(descriptor)
+        if descriptor == staged_descriptor and not regular_close_failed:
+            regular_close_failed = True
+            raise OSError("injected staged close failure")
+        if stat.S_ISDIR(mode):
+            directory_close_attempted = True
+
+    monkeypatch.setattr(native.os, "open", observe_staged_open)
+    monkeypatch.setattr(native.os, "close", close_then_fail_once)
+
+    with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+        native._publish_new_file(content, destination)
+
+    assert isinstance(captured.value.__cause__, OSError)
+    assert regular_close_failed is True
+    assert directory_close_attempted is True
+    assert destination.read_bytes() == content
+
+
+def test_native_boundary_readlink_failure_does_not_mask_publication_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A recovery-path rendering failure must retain the primary publication cause."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    content = b"authenticated staged bytes\n"
+    original_fsync = native.os.fsync
+    calls = 0
+
+    def fail_post_rename_fsync(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("primary post-rename failure")
+        original_fsync(descriptor)
+
+    def fail_readlink(_path: object) -> str:
+        raise OSError("secondary readlink failure")
+
+    monkeypatch.setattr(native.os, "fsync", fail_post_rename_fsync)
+    monkeypatch.setattr(native.os, "readlink", fail_readlink)
+
+    with pytest.raises(RuntimeError, match="no verified recovery path") as captured:
+        native._publish_new_file(content, destination)
+
+    assert isinstance(captured.value.__cause__, OSError)
+    assert str(captured.value.__cause__) == "primary post-rename failure"
+    assert destination.read_bytes() == content
 
 
 def test_native_boundary_failed_rename_preserves_exact_fsynced_temporary(

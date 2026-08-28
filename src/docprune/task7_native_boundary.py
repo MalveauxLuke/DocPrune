@@ -156,6 +156,64 @@ def _require_destination_parent_identity(path: Path, descriptor: int) -> None:
         raise ValueError("native-boundary destination parent was replaced")
 
 
+def _regular_file_identity(descriptor: int) -> tuple[int, int]:
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError("native-boundary staged artifact must be a regular file")
+    return metadata.st_dev, metadata.st_ino
+
+
+def _name_matches_staged_artifact(
+    parent_fd: int,
+    name: str,
+    staged_identity: tuple[int, int],
+    content: bytes,
+) -> bool:
+    """Authenticate one recovery name without trusting its namespace identity."""
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        if _regular_file_identity(descriptor) != staged_identity:
+            return False
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks) == content
+    except (OSError, ValueError):
+        return False
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _recovery_description(
+    parent_fd: int,
+    candidates: Sequence[tuple[str, str]],
+    staged_identity: tuple[int, int],
+    content: bytes,
+) -> str:
+    """Name only a path reauthenticated as the exact staged inode and bytes."""
+
+    for label, name in candidates:
+        if not _name_matches_staged_artifact(parent_fd, name, staged_identity, content):
+            continue
+        try:
+            retained_parent = Path(os.readlink(f"/proc/self/fd/{parent_fd}"))
+        except OSError:
+            break
+        return f"preserved {label}: {retained_parent / name}"
+    digest = hashlib.sha256(content).hexdigest()
+    return (
+        "staged artifact identity "
+        f"dev={staged_identity[0]} ino={staged_identity[1]} sha256={digest}; "
+        "no verified recovery path"
+    )
+
+
 def _publish_new_file(content: bytes, destination: Path) -> None:
     """Durably publish one private staged file through one retained parent FD.
 
@@ -169,7 +227,8 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
     parent_fd = _open_directory_nofollow(target.parent)
     temporary_name: str | None = None
     temporary_fd: int | None = None
-    published = False
+    staged_identity: tuple[int, int] | None = None
+    operation_error: BaseException | None = None
     try:
         _require_destination_parent_identity(target.parent, parent_fd)
         try:
@@ -193,6 +252,7 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
             break
         if temporary_fd is None or temporary_name is None:
             raise FileExistsError("could not create a private native-boundary temporary")
+        staged_identity = _regular_file_identity(temporary_fd)
         remaining = memoryview(content)
         while remaining:
             written = os.write(temporary_fd, remaining)
@@ -201,29 +261,51 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
         os.fsync(parent_fd)
         _require_destination_parent_identity(target.parent, parent_fd)
         _renameat2_noreplace(parent_fd, temporary_name, parent_fd, target.name)
-        temporary_name = None
-        published = True
+        if not _name_matches_staged_artifact(parent_fd, target.name, staged_identity, content):
+            raise RuntimeError(
+                "native-boundary no-replace rename did not publish the staged artifact"
+            )
         os.fsync(parent_fd)
         _require_destination_parent_identity(target.parent, parent_fd)
+        if not _name_matches_staged_artifact(parent_fd, target.name, staged_identity, content):
+            raise RuntimeError(
+                "native-boundary final gate did not find the staged artifact at destination"
+            )
     except BaseException as error:
+        operation_error = error
+
+    recovery: str | None = None
+    if staged_identity is not None:
+        candidates = (("published destination", target.name),)
         if temporary_name is not None:
-            retained_parent = Path(os.readlink(f"/proc/self/fd/{parent_fd}"))
-            raise RuntimeError(
-                "native-boundary publication failed; preserved private temporary: "
-                f"{retained_parent / temporary_name}"
-            ) from error
-        if published:
-            retained_parent = Path(os.readlink(f"/proc/self/fd/{parent_fd}"))
-            raise RuntimeError(
-                "native-boundary publication failed after no-replace rename; "
-                "preserved published destination: "
-                f"{retained_parent / target.name}"
-            ) from error
-        raise
-    finally:
-        if temporary_fd is not None:
-            os.close(temporary_fd)
-        os.close(parent_fd)
+            candidates += (("private temporary", temporary_name),)
+        try:
+            recovery = _recovery_description(parent_fd, candidates, staged_identity, content)
+        except BaseException:
+            digest = hashlib.sha256(content).hexdigest()
+            recovery = (
+                "staged artifact identity "
+                f"dev={staged_identity[0]} ino={staged_identity[1]} sha256={digest}; "
+                "no verified recovery path"
+            )
+
+    close_error: BaseException | None = None
+    for descriptor in (temporary_fd, parent_fd):
+        if descriptor is None:
+            continue
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            if close_error is None:
+                close_error = error
+
+    if operation_error is None and close_error is None:
+        return
+    primary_error = operation_error if operation_error is not None else close_error
+    assert primary_error is not None
+    if staged_identity is None or recovery is None:
+        raise primary_error
+    raise RuntimeError(f"native-boundary publication failed; {recovery}") from primary_error
 
 
 def _load_json_bytes(content: bytes, label: str) -> dict[str, object]:
