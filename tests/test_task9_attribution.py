@@ -203,6 +203,33 @@ def test_region_mask_design_rejects_cross_target_or_input_identity() -> None:
             build_region_mask_design(_regions(), **identity)
 
 
+def test_region_mask_design_uses_qwen_decoder_boundary_range() -> None:
+    """Catch signing a boundary the frozen 28-block decoder cannot execute."""
+
+    assert _design(forced_boundary="B_input")["attribution_identity"]["forced_boundary"] == (
+        "B_input"
+    )
+    assert _design(forced_boundary="B_27")["attribution_identity"]["forced_boundary"] == "B_27"
+    for invalid_boundary in ("B_28", "B_999"):
+        with pytest.raises(ValueError, match="identity"):
+            _design(forced_boundary=invalid_boundary)
+
+
+def test_contextcite_mask_design_rejects_rehashed_nonboolean_vectors() -> None:
+    """Catch Python bool/int equality admitting a noncanonical mask schedule."""
+
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    altered = deepcopy(design)
+    altered["fit_masks"][0]["vector"][0] = 1
+    unsigned = dict(altered)
+    unsigned.pop("design_sha256")
+    altered["design_sha256"] = _sha256(unsigned)
+    outcomes = _fit_outcomes(altered)
+
+    with pytest.raises(ValueError, match="canonical seed schedule"):
+        fit_contextcite_lasso(altered, outcomes)
+
+
 def test_whole_region_knapsack_uses_max_attainable_cost_before_coefficient() -> None:
     """Catch greedy ranking, region splitting, or unequal top/reverse budgets."""
 
@@ -467,6 +494,46 @@ def test_contextcite_holdout_fidelity_fails_closed_on_identity_or_order_drift() 
                 candidate_fit,
                 candidate_surrogate,
                 candidate_outcomes,
+            )
+
+
+def test_contextcite_holdout_rejects_python_equal_noncanonical_surrogates() -> None:
+    """Catch stale digests hidden by bool/int and signed-zero equality."""
+
+    pytest.importorskip("sklearn")
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    fit_outcomes = _fit_outcomes(design, constant=0.5)
+    holdout_outcomes = [
+        {
+            "split": "holdout",
+            "seed": mask["seed"],
+            "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "normalized_target": 0.0,
+        }
+        for mask in design["holdout_masks"]
+    ]
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+
+    altered_surrogates = []
+    altered = deepcopy(surrogate)
+    altered["random_state"] = False
+    altered_surrogates.append(altered)
+    altered = deepcopy(surrogate)
+    altered["fit_intercept"] = 1
+    altered_surrogates.append(altered)
+    altered = deepcopy(surrogate)
+    altered["coefficients"]["region-a"] = -0.0
+    altered_surrogates.append(altered)
+
+    for altered in altered_surrogates:
+        assert altered == surrogate
+        with pytest.raises(ValueError, match="canonical fit outcomes|identity"):
+            evaluate_contextcite_holdout(
+                design,
+                fit_outcomes,
+                altered,
+                holdout_outcomes,
             )
 
 

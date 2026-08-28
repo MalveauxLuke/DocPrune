@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 
 import numpy as np
 
+from docprune.qwen2vl.decoder import _forced_boundary_name
+
 _CONTEXTCITE_REPOSITORY = "https://github.com/MadryLab/context-cite"
 _CONTEXTCITE_COMMIT = "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4"
 _CONTEXTCITE_UTILS_SHA256 = "d3825dc3292886e0fc9e4c4f0d397f45a84ce1a1ee387ce6985d3006e1c28a4b"
@@ -23,16 +25,35 @@ _PRIMARY_TARGET_KIND = "max-accepted-reference-mean-loglikelihood"
 _SECONDARY_TARGET_KIND = "unpruned-generated-response-mean-loglikelihood"
 _TARGET_KINDS = {_PRIMARY_TARGET_KIND, _SECONDARY_TARGET_KIND}
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
-_BOUNDARY_PATTERN = re.compile(r"B_(?:input|0|[1-9][0-9]*)")
+_BOUNDARY_PATTERN = re.compile(r"B_(?:0|[1-9][0-9]*)")
+_QWEN_DECODER_LAYER_COUNT = 28
+
+
+def _canonical_bytes(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def _canonical_sha256(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return hashlib.sha256(_canonical_bytes(value)).hexdigest()
 
 
 def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and _SHA256_PATTERN.fullmatch(value) is not None
+
+
+def _is_forced_boundary(value: object) -> bool:
+    if value == "B_input":
+        decoder_boundary: str | int = "input"
+    elif isinstance(value, str) and _BOUNDARY_PATTERN.fullmatch(value) is not None:
+        decoder_boundary = int(value.removeprefix("B_"))
+    else:
+        return False
+    try:
+        return (
+            _forced_boundary_name(decoder_boundary, layer_count=_QWEN_DECODER_LAYER_COUNT) == value
+        )
+    except ValueError:
+        return False
 
 
 def _build_attribution_identity(
@@ -49,8 +70,7 @@ def _build_attribution_identity(
         not isinstance(question_id, str)
         or not question_id
         or question_id != question_id.strip()
-        or not isinstance(forced_boundary, str)
-        or _BOUNDARY_PATTERN.fullmatch(forced_boundary) is None
+        or not _is_forced_boundary(forced_boundary)
         or not _is_sha256(mapping_artifact_sha256)
         or not _is_sha256(prompt_input_sha256)
         or not isinstance(target_kind, str)
@@ -264,7 +284,9 @@ def _validated_mask_design(
     expected_holdout = [
         _mask_record(source_ids, split="holdout", seed=seed) for seed in range(64, 96)
     ]
-    if design["fit_masks"] != expected_fit or design["holdout_masks"] != expected_holdout:
+    if _canonical_bytes(design["fit_masks"]) != _canonical_bytes(expected_fit) or _canonical_bytes(
+        design["holdout_masks"]
+    ) != _canonical_bytes(expected_holdout):
         raise ValueError("ContextCite mask design is not the canonical seed schedule")
     return source_ids, expected_fit, expected_holdout
 
@@ -517,14 +539,14 @@ def evaluate_contextcite_holdout(
 
     source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
     expected_surrogate = fit_contextcite_lasso(design, fit_outcomes)
-    if surrogate != expected_surrogate:
-        raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
     coefficients, intercept, fit_target_mean = _validated_surrogate(
-        expected_surrogate,
+        surrogate,
         design=design,
         source_ids=source_ids,
         fit_masks=fit_masks,
     )
+    if _canonical_bytes(surrogate) != _canonical_bytes(expected_surrogate):
+        raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
     if (
         not isinstance(holdout_outcomes, Sequence)
         or isinstance(holdout_outcomes, str | bytes)
