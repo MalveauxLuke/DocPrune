@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -610,3 +611,103 @@ def test_fixed_page_runner_exposes_native_boundary_as_a_separate_one_cell_kind(
     assert "visual-state-native-boundary" in launcher
     assert "EXPECTED=1" in launcher
     assert "NATIVE_BOUNDARY_ARGS=(" in launcher
+
+
+def _write_fake_torch(
+    root: Path,
+    *,
+    available: bool = True,
+    count: int = 1,
+    current: int = 0,
+    name: str = "NVIDIA L40S",
+) -> Path:
+    modules = root / "modules"
+    modules.mkdir()
+    (modules / "torch.py").write_text(
+        "class Properties:\n"
+        f"    name = {name!r}\n"
+        "class Cuda:\n"
+        "    @staticmethod\n"
+        f"    def is_available(): return {available!r}\n"
+        "    @staticmethod\n"
+        f"    def device_count(): return {count!r}\n"
+        "    @staticmethod\n"
+        f"    def current_device(): return {current!r}\n"
+        "    @staticmethod\n"
+        "    def get_device_properties(index): return Properties()\n"
+        "cuda = Cuda()\n",
+        encoding="utf-8",
+    )
+    return modules
+
+
+def test_task7_l40s_probe_uses_exactly_one_cuda_visible_device_without_sigpipe(
+    tmp_path: Path,
+) -> None:
+    """Catch restoring an early-closing nvidia-smi pipeline to the array launcher."""
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_nvidia_smi = fake_bin / "nvidia-smi"
+    fake_nvidia_smi.write_text("#!/usr/bin/env bash\nexit 141\n", encoding="utf-8")
+    fake_nvidia_smi.chmod(0o755)
+    modules = _write_fake_torch(tmp_path)
+    environment = dict(os.environ)
+    environment["PATH"] = f"{fake_bin}:{environment['PATH']}"
+    environment["PYTHONPATH"] = f"{modules}:{environment.get('PYTHONPATH', '')}"
+    probe = ROOT / "examples" / "probe_task7_l40s_gpu.sh"
+
+    completed = subprocess.run(
+        [str(probe), "/home/lmalveau/mamba-envs/docprune-sol/bin/python"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert completed.stdout.strip() == "NVIDIA L40S"
+    launcher = (ROOT / "examples" / "sbatch" / "35_docprune_task6_l40s_matrix.sbatch").read_text(
+        encoding="utf-8"
+    )
+    assert 'probe_task7_l40s_gpu.sh" "$PYTHON"' in launcher
+    assert "head -n 1" not in launcher
+
+
+@pytest.mark.parametrize(
+    ("available", "count", "current", "name"),
+    (
+        (False, 1, 0, "NVIDIA L40S"),
+        (True, 2, 0, "NVIDIA L40S"),
+        (True, 1, 1, "NVIDIA L40S"),
+        (True, 1, 0, ""),
+        (True, 1, 0, "NVIDIA A100-SXM4-40GB"),
+    ),
+)
+def test_task7_l40s_probe_rejects_invalid_cuda_visibility_or_identity(
+    tmp_path: Path,
+    available: bool,
+    count: int,
+    current: int,
+    name: str,
+) -> None:
+    """Catch admitting an unavailable, ambiguous, nonzero, or non-L40S device."""
+
+    modules = _write_fake_torch(
+        tmp_path,
+        available=available,
+        count=count,
+        current=current,
+        name=name,
+    )
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = f"{modules}:{environment.get('PYTHONPATH', '')}"
+    probe = ROOT / "examples" / "probe_task7_l40s_gpu.sh"
+
+    completed = subprocess.run(
+        [str(probe), "/home/lmalveau/mamba-envs/docprune-sol/bin/python"],
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    assert completed.returncode != 0

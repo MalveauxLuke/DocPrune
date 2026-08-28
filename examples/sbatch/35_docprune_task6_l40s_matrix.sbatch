@@ -52,6 +52,7 @@ fi
 
 test -d "$MATRIX_ROOT"
 test -x "$PYTHON"
+test -x "$RUNTIME_DIR/examples/probe_task7_l40s_gpu.sh"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$RUNTIME_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
@@ -89,8 +90,8 @@ export HF_DATASETS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
 export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
 
-GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
-case "$GPU_NAME" in *L40S*) ;; *) echo "canonical Task 6 shard requires L40S" >&2; exit 2 ;; esac
+GPU_NAME="$("$RUNTIME_DIR/examples/probe_task7_l40s_gpu.sh" "$PYTHON")"
+readonly GPU_NAME
 
 "$PYTHON" "$RUNTIME_DIR/examples/run_task6_matrix.py" \
   --config "$CONFIG" \
