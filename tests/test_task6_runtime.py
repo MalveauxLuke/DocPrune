@@ -725,6 +725,7 @@ def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
     )
 
     assert "${PYTHON:=" not in launcher
+    assert "#SBATCH --no-requeue" in launcher
     assert "readonly PYTHON=/home/lmalveau/mamba-envs/docprune-sol/bin/python" in launcher
     assert "readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-task6-clean-20260828" in launcher
     assert (
