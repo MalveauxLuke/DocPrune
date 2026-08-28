@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,9 +14,19 @@ import pytest
 from docprune import task7_runtime
 from docprune.m3docrag import SampleInput
 from docprune.m3docvqa_factory import _validate_result_record
+from docprune.task6_runtime import (
+    TASK6_RENDERER_CONTRACT,
+    FixedPageFixture,
+    FixedPageQuestion,
+    FixedPageRecord,
+)
 from docprune.task7_runtime import task7_intervention_matrix
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _production_all_drop_record() -> dict[str, object]:
@@ -391,3 +403,256 @@ def test_fixed_page_launcher_accepts_only_the_eight_cell_task7_grid() -> None:
     assert "#SBATCH --no-requeue" in launcher
     assert "global index" not in launcher.lower()
     assert "retrieve" not in launcher.lower()
+
+
+def test_task7_likelihood_record_uses_max_normalized_full_answer_adaptation() -> None:
+    """Catch first-token scoring, EOS scoring, or averaging alternative gold items."""
+
+    target = task7_runtime.build_task7_likelihood_target(
+        ("Tommy", "Zhang Ling"),
+        ((24732, 2408), (57, 20658, 50858)),
+        assistant_prompt="<assistant>\n",
+    )
+    record = task7_runtime.build_task7_likelihood_record(
+        qid="q-1",
+        intervention_name="btp-qtp-no-ctp",
+        target=target,
+        per_reference_mean_loglikelihood=(-1.25, -0.5),
+    )
+
+    assert target["target_name"] == "best-reference-full-gold-sequence"
+    assert target["normalization"] == "mean-log-probability-per-supplied-answer-token"
+    assert target["aggregation"] == "maximum-over-official-answer-items"
+    assert target["eos_included"] is False
+    assert target["tokenization"] == (
+        "exact-assistant-prompt-prefix-suffix|tokenizer-encode|add-special-tokens-false|no-eos"
+    )
+    assert target["assistant_prompt_sha256"] == hashlib.sha256(b"<assistant>\n").hexdigest()
+    assert target["answer_item_semantics"] == (
+        "local-max-reference-adaptation-not-official-m3docvqa-multispan-scoring"
+    )
+    assert record["best_reference_index"] == 1
+    assert record["best_reference_mean_loglikelihood"] == -0.5
+    assert len(target["likelihood_target_sha256"]) == 64
+    assert len(record["likelihood_record_sha256"]) == 64
+
+
+def test_task7_gold_tokenization_preserves_items_without_special_tokens() -> None:
+    """Catch standalone tokenization or chat/BOS/EOS tokens entering the gold target."""
+
+    class RecordingTokenizer:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, bool]] = []
+
+        def encode(self, text: str, *, add_special_tokens: bool) -> list[int]:
+            self.calls.append((text, add_special_tokens))
+            return {
+                "<assistant>\n": [151644, 77091, 198],
+                "<assistant>\nTommy": [151644, 77091, 198, 24732, 2408],
+                "<assistant>\nZhang Ling": [151644, 77091, 198, 57, 20658, 50858],
+            }[text]
+
+    tokenizer = RecordingTokenizer()
+
+    target = task7_runtime.prepare_task7_likelihood_target(
+        tokenizer,
+        ("Tommy", "Zhang Ling"),
+        assistant_prompt="<assistant>\n",
+    )
+
+    assert target["target_token_ids"] == [[24732, 2408], [57, 20658, 50858]]
+    assert target["assistant_prompt_sha256"] == hashlib.sha256(b"<assistant>\n").hexdigest()
+    assert tokenizer.calls == [
+        ("<assistant>\n", False),
+        ("<assistant>\nTommy", False),
+        ("<assistant>\nZhang Ling", False),
+    ]
+
+
+def test_task7_gold_tokenization_rejects_a_retokenized_prompt_boundary() -> None:
+    """Catch slicing a combined sequence whose answer changed the prompt tokenization."""
+
+    class BoundaryMergingTokenizer:
+        def encode(self, text: str, *, add_special_tokens: bool) -> list[int]:
+            del add_special_tokens
+            return [1, 2] if text == "prompt" else [1, 9]
+
+    with pytest.raises(ValueError, match="continuation prefix"):
+        task7_runtime.tokenize_task7_gold_answers(
+            BoundaryMergingTokenizer(),
+            ("answer",),
+            assistant_prompt="prompt",
+        )
+
+
+def _task7_artifact_fixture(tmp_path: Path) -> tuple[Path, str, FixedPageFixture]:
+    reference = tmp_path / "reference.json"
+    reference.write_text('{"selection_is_outcome_blind":true}\n', encoding="utf-8")
+    eligible = tmp_path / "eligible.jsonl"
+    eligible.write_text(
+        json.dumps(
+            {
+                "qid": "q-1",
+                "question": "Which value is shown?",
+                "answers": [{"answer": "42"}, {"answer": "forty two"}],
+                "supporting_context": [{"doc_id": "doc-1"}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    feature_manifest = tmp_path / "features.json"
+    feature_manifest.write_text("{}\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text("[]\n", encoding="utf-8")
+    pdf = tmp_path / "pages.pdf"
+    pdf.write_bytes(b"pdf")
+    feature = tmp_path / "pages.safetensors"
+    feature.write_bytes(b"features")
+    pages = tuple(
+        FixedPageRecord(
+            rank=index,
+            doc_id=f"doc-{index}",
+            page_index=index,
+            score=1.0 - index / 10,
+            source_pdf_path=pdf.resolve(),
+            source_pdf_sha256=_sha256(pdf),
+            rendered_rgb_width=2,
+            rendered_rgb_height=2,
+            rendered_rgb_sha256="a" * 64,
+            renderer_contract=TASK6_RENDERER_CONTRACT,
+            feature_shard_path=feature.resolve(),
+            feature_shard_sha256=_sha256(feature),
+            feature_page_index=index,
+        )
+        for index in range(4)
+    )
+    fixture = FixedPageFixture(
+        fixture_version="task7-test-v1",
+        reference_path=reference.resolve(),
+        reference_sha256=_sha256(reference),
+        eligible_questions_path=eligible.resolve(),
+        eligible_questions_sha256=_sha256(eligible),
+        feature_manifest_path=feature_manifest.resolve(),
+        feature_manifest_sha256=_sha256(feature_manifest),
+        completion_ledger_path=ledger.resolve(),
+        completion_ledger_sha256=_sha256(ledger),
+        questions=(
+            FixedPageQuestion(
+                "q-1",
+                hashlib.sha256(b"Which value is shown?").hexdigest(),
+                pages,
+            ),
+        ),
+    )
+    fixture_path = tmp_path / "fixture.json"
+    fixture_path.write_text(
+        json.dumps(fixture.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return fixture_path, _sha256(fixture_path), fixture
+
+
+def _task7_result_rows(fixture_sha256: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    cells = task7_intervention_matrix()
+    for index, cell in enumerate(cells):
+        record = _production_all_drop_record()
+        record["answers"] = ["42", "forty two"]
+        if index == 0:
+            record.pop("forced_intervention")
+            record["trace"]["post_ctp_visual_tokens"] = 8
+            from docprune.ctp_policy import no_crossing_selection
+
+            record["policy_selection"] = no_crossing_selection(cell.ctp_policy, 8).to_dict()
+        else:
+            boundary = cell.forced_intervention.boundary
+            boundary_name = "B_input" if boundary == "input" else f"B_{boundary}"
+            record["forced_intervention"]["boundary"] = boundary_name
+            compact, full = 4, 12
+            record["forced_intervention"]["prefill_cache_lengths"] = (
+                [compact] * 28
+                if boundary == "input"
+                else [full] * (boundary + 1) + [compact] * (27 - boundary)
+            )
+        task7_runtime.bind_task7_result_evidence(
+            record,
+            cell,
+            cell_index=index,
+            fixture_sha256=fixture_sha256,
+        )
+        rows.append(record)
+    return rows
+
+
+def test_task7_opportunity_assembly_authenticates_sources_results_and_likelihoods(
+    tmp_path: Path,
+) -> None:
+    """Catch trusted precomputed strata, support-ID drift, or an unbound likelihood drop."""
+
+    fixture_path, fixture_sha256, _ = _task7_artifact_fixture(tmp_path)
+    results_path = tmp_path / "results.jsonl"
+    results = _task7_result_rows(fixture_sha256)
+    results_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in results),
+        encoding="utf-8",
+    )
+    target = task7_runtime.build_task7_likelihood_target(
+        ("42", "forty two"),
+        ((19, 17), (69, 70)),
+        assistant_prompt="<assistant>\n",
+    )
+    likelihood_path = tmp_path / "likelihood.jsonl"
+    likelihood_rows = [
+        task7_runtime.build_task7_likelihood_record(
+            qid="q-1",
+            intervention_name="btp-qtp-no-ctp",
+            target=target,
+            per_reference_mean_loglikelihood=(-0.2, -0.7),
+        ),
+        task7_runtime.build_task7_likelihood_record(
+            qid="q-1",
+            intervention_name="all-visual-drop-B_input",
+            target=target,
+            per_reference_mean_loglikelihood=(-0.5, -0.9),
+        ),
+    ]
+    likelihood_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in likelihood_rows),
+        encoding="utf-8",
+    )
+
+    assembled = task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+        fixture_path=fixture_path,
+        fixture_sha256=fixture_sha256,
+        results_path=results_path,
+        results_sha256=_sha256(results_path),
+        likelihood_path=likelihood_path,
+        likelihood_sha256=_sha256(likelihood_path),
+    )
+
+    assert assembled["qid"] == "q-1"
+    assert assembled["supporting_document_ids"] == ["doc-1"]
+    assert assembled["retrieved_document_ids"] == ["doc-0", "doc-1", "doc-2", "doc-3"]
+    assert assembled["reference"]["em_correct"] is False
+    assert assembled["reference"]["f1"] == 50.0
+    assert assembled["input_all_drop"]["best_reference_loglikelihood_drop_per_token"] == (
+        pytest.approx(0.3)
+    )
+    assert (
+        assembled["input_all_drop"]["likelihood_target_sha256"]
+        == target["likelihood_target_sha256"]
+    )
+
+    likelihood_path.write_text(
+        likelihood_path.read_text().replace("-0.5", "-0.4"), encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="likelihood artifact checksum"):
+        task7_runtime.assemble_task7_opportunity_row_from_artifacts(
+            fixture_path=fixture_path,
+            fixture_sha256=fixture_sha256,
+            results_path=results_path,
+            results_sha256=_sha256(results_path),
+            likelihood_path=likelihood_path,
+            likelihood_sha256=likelihood_rows[0]["likelihood_record_sha256"],
+        )

@@ -2,15 +2,284 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import hashlib
+import json
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from docprune.ctp_policy import CTPPolicy, btp_qtp_no_ctp_policy
+from docprune.evaluation import evaluate_m3docvqa
 from docprune.m3docrag import SampleInput
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
-from docprune.task6_runtime import FixedPageQuestion
+from docprune.task6_runtime import FixedPageQuestion, load_fixed_page_fixture
 
 _TASK7_DECODER_LAYER_COUNT = 28
+_TASK7_LIKELIHOOD_TARGET_KEYS = {
+    "schema_version",
+    "target_name",
+    "normalization",
+    "aggregation",
+    "eos_included",
+    "answer_item_semantics",
+    "tokenization",
+    "assistant_prompt_sha256",
+    "accepted_references",
+    "target_token_ids",
+    "likelihood_target_sha256",
+}
+_TASK7_LIKELIHOOD_RECORD_KEYS = {
+    "schema_version",
+    "qid",
+    "intervention_name",
+    "target",
+    "likelihood_target_sha256",
+    "per_reference_mean_loglikelihood",
+    "best_reference_index",
+    "best_reference_mean_loglikelihood",
+    "likelihood_record_sha256",
+}
+
+
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _authenticated_file(path: Path, expected_sha256: str, label: str) -> Path:
+    file_path = Path(path)
+    if not file_path.is_absolute() or file_path.is_symlink() or not file_path.is_file():
+        raise ValueError(f"{label} must be an absolute regular file")
+    if not _is_sha256(expected_sha256):
+        raise ValueError(f"{label} checksum must be a lowercase SHA-256")
+    digest = hashlib.sha256()
+    with file_path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != expected_sha256:
+        raise ValueError(f"{label} checksum mismatch")
+    return file_path
+
+
+def _jsonl_mappings(path: Path, label: str) -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    try:
+        with path.open(encoding="utf-8") as stream:
+            for line_number, line in enumerate(stream, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if not isinstance(row, Mapping):
+                    raise ValueError(f"{label} row {line_number} is not an object")
+                rows.append(dict(row))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError(f"{label} is not valid JSONL") from error
+    if not rows:
+        raise ValueError(f"{label} must not be empty")
+    return tuple(rows)
+
+
+def tokenize_task7_gold_answers(
+    tokenizer: object,
+    accepted_references: Sequence[str],
+    *,
+    assistant_prompt: str,
+) -> tuple[tuple[int, ...], ...]:
+    """Encode exact prompt continuations without BOS, chat, or EOS additions."""
+
+    references = tuple(accepted_references)
+    encode = getattr(tokenizer, "encode", None)
+    if (
+        not references
+        or any(not isinstance(reference, str) for reference in references)
+        or not isinstance(assistant_prompt, str)
+        or not assistant_prompt
+        or not callable(encode)
+    ):
+        raise ValueError(
+            "Task 7 gold tokenization requires an assistant prompt, text references, and a tokenizer"
+        )
+    prompt_ids = encode(assistant_prompt, add_special_tokens=False)
+    if (
+        not isinstance(prompt_ids, Sequence)
+        or isinstance(prompt_ids, str | bytes)
+        or not prompt_ids
+        or any(type(token) is not int or token < 0 for token in prompt_ids)
+    ):
+        raise ValueError("Task 7 assistant prompt produced invalid token IDs")
+    prompt_prefix = tuple(prompt_ids)
+    tokenized: list[tuple[int, ...]] = []
+    for reference in references:
+        combined = encode(assistant_prompt + reference, add_special_tokens=False)
+        if (
+            not isinstance(combined, Sequence)
+            or isinstance(combined, str | bytes)
+            or any(type(token) is not int or token < 0 for token in combined)
+        ):
+            raise ValueError("Task 7 prompt-plus-answer produced invalid token IDs")
+        combined_ids = tuple(combined)
+        if combined_ids[: len(prompt_prefix)] != prompt_prefix:
+            raise ValueError("Task 7 answer changes the exact assistant-prompt continuation prefix")
+        continuation = combined_ids[len(prompt_prefix) :]
+        if not continuation:
+            raise ValueError("Task 7 gold answer produced an empty continuation token sequence")
+        tokenized.append(continuation)
+    return tuple(tokenized)
+
+
+def _likelihood_target_payload(
+    accepted_references: Sequence[str],
+    target_token_ids: Sequence[Sequence[int]],
+    assistant_prompt_sha256: str,
+) -> dict[str, object]:
+    references = tuple(accepted_references)
+    targets = tuple(tuple(target) for target in target_token_ids)
+    if (
+        not references
+        or len(references) != len(targets)
+        or any(not isinstance(reference, str) for reference in references)
+        or not _is_sha256(assistant_prompt_sha256)
+        or any(
+            not target or any(type(token) is not int or token < 0 for token in target)
+            for target in targets
+        )
+    ):
+        raise ValueError("Task 7 likelihood target has invalid references or token IDs")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "target_name": "best-reference-full-gold-sequence",
+        "normalization": "mean-log-probability-per-supplied-answer-token",
+        "aggregation": "maximum-over-official-answer-items",
+        "eos_included": False,
+        "answer_item_semantics": (
+            "local-max-reference-adaptation-not-official-m3docvqa-multispan-scoring"
+        ),
+        "tokenization": (
+            "exact-assistant-prompt-prefix-suffix|tokenizer-encode|add-special-tokens-false|no-eos"
+        ),
+        "assistant_prompt_sha256": assistant_prompt_sha256,
+        "accepted_references": list(references),
+        "target_token_ids": [list(target) for target in targets],
+    }
+    payload["likelihood_target_sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def build_task7_likelihood_target(
+    accepted_references: Sequence[str],
+    target_token_ids: Sequence[Sequence[int]],
+    *,
+    assistant_prompt: str,
+) -> dict[str, object]:
+    """Bind the exact prompt and local max-reference full-answer adaptation."""
+
+    if not isinstance(assistant_prompt, str) or not assistant_prompt:
+        raise ValueError("Task 7 likelihood target requires the exact assistant prompt")
+    return _likelihood_target_payload(
+        accepted_references,
+        target_token_ids,
+        hashlib.sha256(assistant_prompt.encode("utf-8")).hexdigest(),
+    )
+
+
+def prepare_task7_likelihood_target(
+    tokenizer: object,
+    accepted_references: Sequence[str],
+    *,
+    assistant_prompt: str,
+) -> dict[str, object]:
+    """Tokenize and bind one exact-prompt likelihood target in a single step."""
+
+    target_token_ids = tokenize_task7_gold_answers(
+        tokenizer,
+        accepted_references,
+        assistant_prompt=assistant_prompt,
+    )
+    return build_task7_likelihood_target(
+        accepted_references,
+        target_token_ids,
+        assistant_prompt=assistant_prompt,
+    )
+
+
+def _validated_likelihood_target(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping) or set(value) != _TASK7_LIKELIHOOD_TARGET_KEYS:
+        raise ValueError("Task 7 likelihood target schema is invalid")
+    target = dict(value)
+    digest = target.pop("likelihood_target_sha256")
+    rebuilt = _likelihood_target_payload(
+        target.get("accepted_references", ()),
+        target.get("target_token_ids", ()),
+        target.get("assistant_prompt_sha256"),
+    )
+    if not _is_sha256(digest) or digest != rebuilt["likelihood_target_sha256"] or value != rebuilt:
+        raise ValueError("Task 7 likelihood target identity is invalid")
+    return rebuilt
+
+
+def build_task7_likelihood_record(
+    *,
+    qid: str,
+    intervention_name: str,
+    target: Mapping[str, object],
+    per_reference_mean_loglikelihood: Sequence[float],
+) -> dict[str, object]:
+    """Build one authenticated intervention likelihood record."""
+
+    if not isinstance(qid, str) or not qid:
+        raise ValueError("Task 7 likelihood record requires a nonempty QID")
+    if not isinstance(intervention_name, str) or not intervention_name:
+        raise ValueError("Task 7 likelihood record requires an intervention name")
+    validated_target = _validated_likelihood_target(target)
+    values = tuple(per_reference_mean_loglikelihood)
+    if len(values) != len(validated_target["accepted_references"]) or any(
+        type(value) not in {int, float} or not math.isfinite(float(value)) for value in values
+    ):
+        raise ValueError("Task 7 likelihood values must be finite and match the references")
+    best_index = max(range(len(values)), key=lambda index: float(values[index]))
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "qid": qid,
+        "intervention_name": intervention_name,
+        "target": validated_target,
+        "likelihood_target_sha256": validated_target["likelihood_target_sha256"],
+        "per_reference_mean_loglikelihood": [float(value) for value in values],
+        "best_reference_index": best_index,
+        "best_reference_mean_loglikelihood": float(values[best_index]),
+    }
+    payload["likelihood_record_sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def _validated_likelihood_record(value: object) -> dict[str, object]:
+    if not isinstance(value, Mapping) or set(value) != _TASK7_LIKELIHOOD_RECORD_KEYS:
+        raise ValueError("Task 7 likelihood record schema is invalid")
+    record = dict(value)
+    digest = record.pop("likelihood_record_sha256")
+    rebuilt = build_task7_likelihood_record(
+        qid=record.get("qid"),
+        intervention_name=record.get("intervention_name"),
+        target=record.get("target"),
+        per_reference_mean_loglikelihood=record.get("per_reference_mean_loglikelihood", ()),
+    )
+    if not _is_sha256(digest) or digest != rebuilt["likelihood_record_sha256"] or value != rebuilt:
+        raise ValueError("Task 7 likelihood record identity is invalid")
+    return rebuilt
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,3 +496,166 @@ def validate_task7_result_record(
         )
     if cache_lengths != expected_cache_lengths:
         raise ValueError("Task 7 result has invalid physical all-drop evidence")
+
+
+def _eligible_source_row(path: Path, qid: str) -> dict[str, object]:
+    matches = [
+        row
+        for row in _jsonl_mappings(path, "eligible questions")
+        if row.get("qid", row.get("question_id")) == qid
+    ]
+    if len(matches) != 1:
+        raise ValueError("Task 7 QID must occur exactly once in eligible questions")
+    return matches[0]
+
+
+def _ordered_supporting_document_ids(source: Mapping[str, object]) -> list[str]:
+    contexts = source.get("supporting_context")
+    if not isinstance(contexts, Sequence) or isinstance(contexts, str | bytes):
+        raise ValueError("Task 7 source has invalid supporting_context")
+    values: list[str] = []
+    for context in contexts:
+        doc_id = context.get("doc_id") if isinstance(context, Mapping) else context
+        if not isinstance(doc_id, str) or not doc_id:
+            raise ValueError("Task 7 source has invalid supporting document identity")
+        if doc_id not in values:
+            values.append(doc_id)
+    if not values:
+        raise ValueError("Task 7 source has no supporting document identity")
+    return values
+
+
+def _ordered_retrieved_document_ids(record: Mapping[str, object]) -> list[str]:
+    pages = record.get("retrieved_pages")
+    if not isinstance(pages, Sequence) or isinstance(pages, str | bytes) or len(pages) != 4:
+        raise ValueError("Task 7 reference must contain four cached retrieved pages")
+    values: list[str] = []
+    for page in pages:
+        doc_id = page.get("doc_id") if isinstance(page, Mapping) else None
+        if not isinstance(doc_id, str) or not doc_id:
+            raise ValueError("Task 7 reference has invalid retrieved document identity")
+        values.append(doc_id)
+    return values
+
+
+def _task7_result_score(
+    record: Mapping[str, object], source: Mapping[str, object]
+) -> tuple[bool, float]:
+    qid = record.get("question_id")
+    metrics = evaluate_m3docvqa((record,), (source,))
+    score = metrics.per_question.get(qid)
+    if score is None:
+        raise ValueError("Task 7 result could not be scored against its source")
+    return score["list_em"] == 1.0, score["list_f1"] * 100.0
+
+
+def assemble_task7_opportunity_row_from_artifacts(
+    *,
+    fixture_path: Path,
+    fixture_sha256: str,
+    results_path: Path,
+    results_sha256: str,
+    likelihood_path: Path,
+    likelihood_sha256: str,
+) -> dict[str, object]:
+    """Authenticate raw Task 7 artifacts and derive one opportunity-strata row.
+
+    This function deliberately derives scores and support/retrieval identities
+    from the sealed sources.  It never accepts a precomputed stratum label.
+    """
+
+    fixture_file = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
+    results_file = _authenticated_file(results_path, results_sha256, "results artifact")
+    likelihood_file = _authenticated_file(likelihood_path, likelihood_sha256, "likelihood artifact")
+    fixture = load_fixed_page_fixture(
+        fixture_file,
+        expected_sha256=fixture_sha256,
+        validate_external_bytes=False,
+    )
+    _authenticated_file(
+        fixture.eligible_questions_path,
+        fixture.eligible_questions_sha256,
+        "eligible questions artifact",
+    )
+    result_rows = _jsonl_mappings(results_file, "Task 7 results")
+    matrix = task7_intervention_matrix()
+    if len(result_rows) != len(matrix):
+        raise ValueError("Task 7 results must contain the exact eight-cell fixed grid")
+    qids = {row.get("question_id") for row in result_rows}
+    if len(qids) != 1 or not isinstance(next(iter(qids)), str):
+        raise ValueError("Task 7 results must contain exactly one nonempty QID")
+    qid = next(iter(qids))
+    if not qid:
+        raise ValueError("Task 7 results must contain exactly one nonempty QID")
+    fixture_question = fixture.question(qid)
+    sample = fixture.selected_samples((qid,))[0]
+    source = _eligible_source_row(fixture.eligible_questions_path, qid)
+    if SampleInput.from_mapping(source) != sample:
+        raise ValueError("Task 7 eligible source does not match the fixture sample")
+
+    from docprune.m3docvqa_factory import _validate_result_record
+
+    results_by_name: dict[str, dict[str, object]] = {}
+    for line_number, (record, cell) in enumerate(zip(result_rows, matrix, strict=True), start=1):
+        expected_policy = None if cell.ctp_policy is None else cell.ctp_policy.to_dict()
+        _validate_result_record(
+            record,
+            line_number=line_number,
+            expected_page_count=4,
+            production=True,
+            expected_policy=expected_policy,
+            forbid_policy=expected_policy is None,
+            allowed_extra_fields={"matrix_cell", "matrix_kind", "intervention_name"},
+            allow_zero_post_ctp=True,
+        )
+        validate_task7_source_identity(record, sample, fixture_question)
+        validate_task7_result_record(record, cell, fixture_sha256=fixture_sha256)
+        results_by_name[cell.name] = record
+
+    likelihood_rows = tuple(
+        _validated_likelihood_record(row)
+        for row in _jsonl_mappings(likelihood_file, "Task 7 likelihoods")
+    )
+    expected_likelihood_names = ("btp-qtp-no-ctp", "all-visual-drop-B_input")
+    if (
+        len(likelihood_rows) != len(expected_likelihood_names)
+        or tuple(row["intervention_name"] for row in likelihood_rows) != expected_likelihood_names
+        or any(row["qid"] != qid for row in likelihood_rows)
+    ):
+        raise ValueError("Task 7 likelihoods must match reference and B_input in order")
+    target = likelihood_rows[0]["target"]
+    if likelihood_rows[1]["target"] != target or target["accepted_references"] != list(
+        sample.answers
+    ):
+        raise ValueError("Task 7 likelihood target does not match the sealed gold answers")
+
+    reference_result = results_by_name["btp-qtp-no-ctp"]
+    input_result = results_by_name["all-visual-drop-B_input"]
+    reference_em, reference_f1 = _task7_result_score(reference_result, source)
+    input_em, _ = _task7_result_score(input_result, source)
+    reference_likelihood, input_likelihood = likelihood_rows
+    likelihood_drop = float(reference_likelihood["best_reference_mean_loglikelihood"]) - float(
+        input_likelihood["best_reference_mean_loglikelihood"]
+    )
+    return {
+        "qid": qid,
+        "supporting_document_ids": _ordered_supporting_document_ids(source),
+        "retrieved_document_ids": _ordered_retrieved_document_ids(reference_result),
+        "reference": {
+            "name": "btp-qtp-no-ctp",
+            "result_sha256": _canonical_sha256(reference_result),
+            "em_correct": reference_em,
+            "f1": reference_f1,
+        },
+        "input_all_drop": {
+            "name": "all-visual-drop-B_input",
+            "boundary": "B_input",
+            "mode": "physical_delete",
+            "retained_visual_ids": [],
+            "result_sha256": _canonical_sha256(input_result),
+            "em_correct": input_em,
+            "best_reference_loglikelihood_drop_per_token": likelihood_drop,
+            "likelihood_target": target["target_name"],
+            "likelihood_target_sha256": target["likelihood_target_sha256"],
+        },
+    }

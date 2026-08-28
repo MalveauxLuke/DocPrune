@@ -12,6 +12,7 @@ from docprune.qwen2vl.compat import assert_supported_qwen2vl
 from docprune.qwen2vl.decoder import (
     ForcedInterventionRecord,
     ForcedVisualIntervention,
+    PrefillResult,
     decode_one_token,
     prefill_with_ctp,
 )
@@ -59,6 +60,74 @@ class GenerationResult:
     decoder_seconds: float = 0.0
     forced_intervention: ForcedInterventionRecord | None = None
     policy_selection: CTPSelectionRecord | None = None
+
+
+def _clone_dynamic_cache(cache: object) -> object:
+    """Clone the pinned DynamicCache without retaining target-continuation state."""
+
+    from transformers.cache_utils import DynamicCache
+
+    if not isinstance(cache, DynamicCache):
+        raise TypeError("teacher-forced likelihood requires a DynamicCache")
+    cloned = DynamicCache()
+    cloned.key_cache = [value.clone() for value in cache.key_cache]
+    cloned.value_cache = [value.clone() for value in cache.value_cache]
+    cloned._seen_tokens = cache._seen_tokens
+    return cloned
+
+
+def teacher_forced_sequence_loglikelihoods(
+    decoder_model: object,
+    lm_head: object,
+    prefill: PrefillResult,
+    target_token_ids: tuple[tuple[int, ...], ...],
+) -> tuple[float, ...]:
+    """Return mean full-answer log likelihood for each nonempty token sequence.
+
+    The first target token is scored from the prompt prefill.  Every later
+    token is scored after feeding only its gold predecessor.  EOS is not added;
+    normalization is over the supplied answer tokens exactly.
+    """
+
+    targets = tuple(tuple(target) for target in target_token_ids)
+    if not targets or any(not target for target in targets):
+        raise ValueError("teacher-forced targets must be nonempty token sequences")
+    first_logits = lm_head(prefill.hidden_states[:, -1, :]).float()
+    if first_logits.ndim != 2 or first_logits.shape[0] != 1:
+        raise ValueError("teacher-forced likelihood requires batch-one vocabulary logits")
+    vocabulary_size = int(first_logits.shape[-1])
+    if any(
+        type(token) is not int or not 0 <= token < vocabulary_size
+        for target in targets
+        for token in target
+    ):
+        raise ValueError("teacher-forced target token is outside the model vocabulary")
+    first_log_probs = torch.log_softmax(first_logits, dim=-1)
+    next_position = int(prefill.position_ids.max().item()) + 1
+    values: list[float] = []
+    for target in targets:
+        cache = _clone_dynamic_cache(prefill.cache)
+        total = first_log_probs[0, target[0]]
+        for offset, (previous_token, current_token) in enumerate(
+            zip(target, target[1:], strict=False)
+        ):
+            token = torch.tensor(
+                [[previous_token]],
+                dtype=torch.long,
+                device=prefill.hidden_states.device,
+            )
+            token_embedding = decoder_model.embed_tokens(token)
+            step_positions = torch.full(
+                (3, 1, 1),
+                next_position + offset,
+                dtype=prefill.position_ids.dtype,
+                device=token_embedding.device,
+            )
+            hidden = decode_one_token(decoder_model, token_embedding, step_positions, cache)
+            log_probs = torch.log_softmax(lm_head(hidden[:, -1, :]).float(), dim=-1)
+            total = total + log_probs[0, current_token]
+        values.append(float((total / len(target)).item()))
+    return tuple(values)
 
 
 def _model_device(model: object) -> torch.device | None:

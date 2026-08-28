@@ -14,6 +14,7 @@ from docprune.qwen2vl.model import (
     _module_timer_hooks,
     _remove_module_timer_hooks,
     _resolve_module_timer_samples,
+    teacher_forced_sequence_loglikelihoods,
 )
 
 
@@ -82,6 +83,102 @@ def test_tiny_model_generates_with_monotonic_pruning_trace(tiny_qwen2vl) -> None
     assert got.trace.post_qtp_visual_tokens == 2
     assert got.trace.post_ctp_visual_tokens == 0
     assert got.trace.ctp_layer == 0
+
+
+def test_teacher_forced_likelihood_scores_every_answer_token_without_eos(
+    tiny_qwen2vl,
+) -> None:
+    """Catch scoring only the first token, shifting targets, or adding EOS."""
+
+    from docprune.qwen2vl.decoder import decode_one_token, prefill_with_ctp
+
+    input_ids = torch.tensor([[10, 102, 100, 100, 100, 100, 103, 11]])
+    attention_mask = torch.ones_like(input_ids)
+    positions, _ = tiny_qwen2vl.get_rope_index(
+        input_ids,
+        image_grid_thw=torch.tensor([[1, 4, 4]]),
+        attention_mask=attention_mask,
+    )
+    hidden = tiny_qwen2vl.model.embed_tokens(input_ids)
+    with torch.no_grad():
+        prefill = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3, 4, 5]),
+            comprehension_threshold=1e9,
+            attention_threshold=0.0,
+        )
+        first_logits = tiny_qwen2vl.lm_head(prefill.hidden_states[:, -1, :]).float()
+        first_log_probs = torch.log_softmax(first_logits, dim=-1)
+        first_target = 12
+        second_target = 13
+        step_hidden = decode_one_token(
+            tiny_qwen2vl.model,
+            tiny_qwen2vl.model.embed_tokens(torch.tensor([[first_target]])),
+            torch.full(
+                (3, 1, 1),
+                int(prefill.position_ids.max().item()) + 1,
+                dtype=prefill.position_ids.dtype,
+            ),
+            prefill.cache,
+        )
+        second_log_probs = torch.log_softmax(
+            tiny_qwen2vl.lm_head(step_hidden[:, -1, :]).float(), dim=-1
+        )
+        expected = float(
+            (first_log_probs[0, first_target] + second_log_probs[0, second_target]).item() / 2
+        )
+
+        # Rebuild because the hand-derived continuation above intentionally
+        # advanced its cache.
+        fresh = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            hidden,
+            positions,
+            visual_indices=torch.tensor([2, 3, 4, 5]),
+            comprehension_threshold=1e9,
+            attention_threshold=0.0,
+        )
+        before = tuple(cache.shape[-2] for cache in fresh.cache.key_cache)
+        scores = teacher_forced_sequence_loglikelihoods(
+            tiny_qwen2vl.model,
+            tiny_qwen2vl.lm_head,
+            fresh,
+            ((first_target, second_target), (second_target,)),
+        )
+
+    assert scores[0] == pytest.approx(expected)
+    assert scores[1] == pytest.approx(float(first_log_probs[0, second_target].item()))
+    assert tuple(cache.shape[-2] for cache in fresh.cache.key_cache) == before
+
+
+@pytest.mark.parametrize("targets", [(), ((),), ((-1,),), ((10**9,),)])
+def test_teacher_forced_likelihood_rejects_missing_or_invalid_targets(
+    tiny_qwen2vl, targets: tuple[tuple[int, ...], ...]
+) -> None:
+    """Catch an empty or invalid gold target producing a meaningless finite score."""
+
+    from docprune.qwen2vl.decoder import prefill_with_ctp
+
+    input_ids = torch.tensor([[10, 102, 100, 100, 100, 100, 103, 11]])
+    positions = torch.arange(8).view(1, 1, 8).expand(3, 1, 8).clone()
+    with torch.no_grad():
+        prefill = prefill_with_ctp(
+            tiny_qwen2vl.model,
+            tiny_qwen2vl.model.embed_tokens(input_ids),
+            positions,
+            visual_indices=torch.tensor([2, 3, 4, 5]),
+            comprehension_threshold=1e9,
+            attention_threshold=0.0,
+        )
+        with pytest.raises(ValueError, match="teacher-forced target"):
+            teacher_forced_sequence_loglikelihoods(
+                tiny_qwen2vl.model,
+                tiny_qwen2vl.lm_head,
+                prefill,
+                targets,
+            )
 
 
 def test_all_kept_adapter_matches_stock_qwen_generation(tiny_qwen2vl) -> None:
