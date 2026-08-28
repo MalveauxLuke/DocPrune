@@ -766,7 +766,7 @@ def test_task6_holdout_batched_launcher_covers_only_held_qids_with_small_memory(
     )
 
     assert "#SBATCH --array=0-98%12" in launcher
-    assert "#SBATCH --mem=6G" in launcher
+    assert "#SBATCH --mem=24G" in launcher
     assert "#SBATCH --time=00:20:00" in launcher
     assert "START_SHARD=$((36 + SLURM_ARRAY_TASK_ID * 12))" in launcher
     assert "if (( END_SHARD > 1212 )); then END_SHARD=1212; fi" in launcher

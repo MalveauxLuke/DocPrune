@@ -7,7 +7,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=l40s
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=6G
+#SBATCH --mem=24G
 #SBATCH --time=00:20:00
 #SBATCH --no-requeue
 #SBATCH --output=slurm-%x-%A_%a.out
