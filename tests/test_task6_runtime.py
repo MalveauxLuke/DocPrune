@@ -758,6 +758,25 @@ def test_task6_l40s_launcher_rejects_existing_shard_before_runtime_access(
     assert "missing-runtime" not in completed.stderr
 
 
+def test_task6_holdout_batched_launcher_covers_only_held_qids_with_small_memory() -> None:
+    """Catch re-running completed QIDs or retaining the 96-GiB fair-share request."""
+
+    launcher = Path("examples/sbatch/42_docprune_task6_holdout_batched_l40s.sbatch").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#SBATCH --array=0-98%12" in launcher
+    assert "#SBATCH --mem=6G" in launcher
+    assert "#SBATCH --time=00:20:00" in launcher
+    assert "START_SHARD=$((36 + SLURM_ARRAY_TASK_ID * 12))" in launcher
+    assert "if (( END_SHARD > 1212 )); then END_SHARD=1212; fi" in launcher
+    assert "for (( SHARD=START_SHARD; SHARD<=END_SHARD; SHARD++ )); do" in launcher
+    assert '--shard "$SHARD"' in launcher
+    assert '--kind holdout-primary' in launcher
+    assert 'OUTPUT_DIR="$BATCH_ROOT/$SHARD_NAME"' in launcher
+    assert "--mem=96G" not in launcher
+
+
 def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:
     launcher = Path("examples/sbatch/35_docprune_task6_l40s_matrix.sbatch").read_text(
         encoding="utf-8"
