@@ -7,6 +7,7 @@ import json
 import math
 import re
 from collections.abc import Mapping, Sequence
+from itertools import combinations
 
 import numpy as np
 
@@ -355,21 +356,9 @@ def fit_contextcite_lasso(
             }
         )
         checked_targets.append(target)
-    try:
-        from sklearn.linear_model import Lasso
-        from sklearn.pipeline import make_pipeline
-        from sklearn.preprocessing import StandardScaler
-    except ImportError as error:  # pragma: no cover - exercised in the isolated tool environment
-        raise RuntimeError("pinned ContextCite scikit-learn environment is required") from error
-
     matrix = np.asarray(checked_masks, dtype=np.float32)
     targets = np.asarray(checked_targets, dtype=np.float64)
-    scaler = StandardScaler()
-    lasso = Lasso(alpha=0.01, random_state=0, fit_intercept=True)
-    pipeline = make_pipeline(scaler, lasso)
-    pipeline.fit(matrix, targets)
-    coefficients = lasso.coef_ / scaler.scale_
-    intercept = float(lasso.intercept_ - (scaler.mean_ / scaler.scale_) @ lasso.coef_.T)
+    coefficients, intercept = _fit_contextcite_solver(matrix, targets)
     result: dict[str, object] = {
         "method": "pinned-contextcite-standardscaler-lasso",
         "upstream_repository": _CONTEXTCITE_REPOSITORY,
@@ -397,6 +386,30 @@ def fit_contextcite_lasso(
     }
     result["surrogate_sha256"] = _canonical_sha256(result)
     return result
+
+
+def _fit_contextcite_solver(
+    masks: np.ndarray,
+    targets: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """Run the exact pinned StandardScaler-plus-Lasso solver adapter."""
+
+    try:
+        from sklearn.linear_model import Lasso
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+    except ImportError as error:  # pragma: no cover - exercised in the isolated tool environment
+        raise RuntimeError("pinned ContextCite scikit-learn environment is required") from error
+
+    matrix = np.asarray(masks, dtype=np.float32)
+    output = np.asarray(targets, dtype=np.float64)
+    scaler = StandardScaler()
+    lasso = Lasso(alpha=0.01, random_state=0, fit_intercept=True)
+    pipeline = make_pipeline(scaler, lasso)
+    pipeline.fit(matrix, output)
+    coefficients = lasso.coef_ / scaler.scale_
+    intercept = float(lasso.intercept_ - (scaler.mean_ / scaler.scale_) @ lasso.coef_.T)
+    return coefficients, intercept
 
 
 def _finite_float(value: object, *, label: str) -> float:
@@ -714,9 +727,159 @@ def whole_region_knapsack(
     }
 
 
+def evaluate_contextcite_refit_stability(
+    design: Mapping[str, object],
+    fit_outcomes: Sequence[Mapping[str, object]],
+    surrogate: Mapping[str, object],
+    regions: Sequence[Mapping[str, object]],
+    *,
+    requested_budget: int,
+) -> dict[str, object]:
+    """Evaluate deterministic five-refit coefficient and selection stability."""
+
+    source_ids, fit_masks, _ = _validated_mask_design(design)
+    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    _validated_surrogate(
+        surrogate,
+        design=design,
+        source_ids=source_ids,
+        fit_masks=fit_masks,
+    )
+    if _canonical_bytes(surrogate) != _canonical_bytes(expected_surrogate):
+        raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
+    validated_regions = _validated_regions(regions, allow_zero_cost=False)
+    if [source_id for source_id, _ in validated_regions] != source_ids:
+        raise ValueError("stability regions must exactly match canonical source order")
+    if type(requested_budget) is not int or requested_budget < 0:
+        raise ValueError("requested_budget must be a nonnegative integer")
+
+    checked_regions = [
+        {"source_id": source_id, "token_cost": token_cost}
+        for source_id, token_cost in validated_regions
+    ]
+    matrix = np.asarray([mask["vector"] for mask in fit_masks], dtype=np.float32)
+    targets = np.asarray(
+        [
+            _finite_float(row["normalized_target"], label="ContextCite normalized target")
+            for row in fit_outcomes
+        ],
+        dtype=np.float64,
+    )
+    refits: list[dict[str, object]] = []
+    achieved_budget: int | None = None
+    for seed in range(5):
+        sampled = np.random.RandomState(seed).choice(64, size=64, replace=True)
+        indices = [int(index) for index in sampled.tolist()]
+        coefficients, intercept = _fit_contextcite_solver(matrix[sampled], targets[sampled])
+        coefficient_map = {
+            source_id: float(coefficient)
+            for source_id, coefficient in zip(source_ids, coefficients, strict=True)
+        }
+        if any(not math.isfinite(value) for value in coefficient_map.values()) or not math.isfinite(
+            intercept
+        ):
+            raise ValueError("ContextCite bootstrap refit must be finite")
+        selection = whole_region_knapsack(
+            checked_regions,
+            coefficients=coefficient_map,
+            requested_budget=requested_budget,
+        )
+        current_budget = int(selection["achieved_budget"])
+        if achieved_budget is None:
+            achieved_budget = current_budget
+        elif current_budget != achieved_budget:
+            raise ValueError("bootstrap refits did not use one achieved whole-region budget")
+        record: dict[str, object] = {
+            "seed": seed,
+            "resample_indices": indices,
+            "resample_indices_sha256": _canonical_sha256(indices),
+            "coefficients": coefficient_map,
+            "coefficients_sha256": _canonical_sha256(coefficient_map),
+            "intercept": intercept,
+            "top_source_ids": selection["top_source_ids"],
+            "top_source_ids_sha256": _canonical_sha256(selection["top_source_ids"]),
+            "achieved_budget": current_budget,
+        }
+        record["refit_sha256"] = _canonical_sha256(record)
+        refits.append(record)
+
+    coefficient_pairs: list[dict[str, object]] = []
+    selection_pairs: list[dict[str, object]] = []
+    for left, right in combinations(range(5), 2):
+        correlation = _spearman_rank_correlation(
+            [float(refits[left]["coefficients"][source_id]) for source_id in source_ids],
+            [float(refits[right]["coefficients"][source_id]) for source_id in source_ids],
+        )
+        coefficient_pairs.append(
+            {
+                "left_seed": left,
+                "right_seed": right,
+                "spearman": correlation,
+                "defined": correlation is not None,
+            }
+        )
+        left_selection = set(refits[left]["top_source_ids"])
+        right_selection = set(refits[right]["top_source_ids"])
+        union = left_selection | right_selection
+        jaccard = len(left_selection & right_selection) / len(union) if union else None
+        selection_pairs.append(
+            {
+                "left_seed": left,
+                "right_seed": right,
+                "jaccard": jaccard,
+                "defined": jaccard is not None,
+            }
+        )
+
+    result: dict[str, object] = {
+        "method": "contextcite-five-bootstrap-refit-stability",
+        "bootstrap_rng": "numpy-legacy-randomstate-choice",
+        "bootstrap_seed_start": 0,
+        "bootstrap_seed_stop_exclusive": 5,
+        "bootstrap_draw_count": 64,
+        "bootstrap_replace": True,
+        "mask_design_sha256": design["design_sha256"],
+        "attribution_identity": dict(design["attribution_identity"]),
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
+        "surrogate_sha256": expected_surrogate["surrogate_sha256"],
+        "fit_outcomes_sha256": expected_surrogate["fit_outcomes_sha256"],
+        "fit_targets_sha256": expected_surrogate["fit_targets_sha256"],
+        "regions_sha256": _canonical_sha256(checked_regions),
+        "source_ids": list(source_ids),
+        "requested_budget": requested_budget,
+        "achieved_budget": achieved_budget,
+        "refits": refits,
+        "coefficient_pairwise": coefficient_pairs,
+        "coefficient_summary": _defined_pairwise_summary(
+            [row["spearman"] for row in coefficient_pairs]
+        ),
+        "top_selection_pairwise": selection_pairs,
+        "top_selection_summary": _defined_pairwise_summary(
+            [row["jaccard"] for row in selection_pairs]
+        ),
+    }
+    result["stability_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def _defined_pairwise_summary(values: Sequence[object]) -> dict[str, object]:
+    defined = [
+        _finite_float(value, label="stability value") for value in values if value is not None
+    ]
+    return {
+        "pair_count": len(values),
+        "defined_count": len(defined),
+        "undefined_count": len(values) - len(defined),
+        "all_defined": len(defined) == len(values),
+        "minimum_defined": min(defined) if defined else None,
+        "mean_defined": math.fsum(defined) / len(defined) if defined else None,
+    }
+
+
 __all__ = [
     "build_region_mask_design",
     "evaluate_contextcite_holdout",
+    "evaluate_contextcite_refit_stability",
     "fit_contextcite_lasso",
     "whole_region_knapsack",
 ]

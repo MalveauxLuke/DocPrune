@@ -12,6 +12,7 @@ import pytest
 from docprune.task9_attribution import (
     build_region_mask_design,
     evaluate_contextcite_holdout,
+    evaluate_contextcite_refit_stability,
     fit_contextcite_lasso,
     whole_region_knapsack,
 )
@@ -567,4 +568,177 @@ def test_contextcite_holdout_fidelity_rejects_cross_question_or_target_mixing() 
                 candidate_fit,
                 candidate_surrogate,
                 candidate_holdout,
+            )
+
+
+def test_contextcite_refit_stability_freezes_bootstraps_and_pairwise_summaries() -> None:
+    """Catch outcome-dependent resampling or non-pairwise stability summaries."""
+
+    pytest.importorskip("sklearn")
+    regions = _regions()[:-1]
+    design = _design(regions)
+    fit_outcomes = [
+        {
+            "split": "fit",
+            "seed": mask["seed"],
+            "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "normalized_target": sum(
+                weight * float(retained)
+                for weight, retained in zip((4.0, 3.0, 2.0, 1.0), mask["vector"], strict=True)
+            ),
+        }
+        for mask in design["fit_masks"]
+    ]
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+
+    result = evaluate_contextcite_refit_stability(
+        design,
+        fit_outcomes,
+        surrogate,
+        regions,
+        requested_budget=5,
+    )
+
+    assert result == evaluate_contextcite_refit_stability(
+        design,
+        fit_outcomes,
+        surrogate,
+        regions,
+        requested_budget=5,
+    )
+    assert result["method"] == "contextcite-five-bootstrap-refit-stability"
+    assert result["bootstrap_seed_start"] == 0
+    assert result["bootstrap_seed_stop_exclusive"] == 5
+    assert result["bootstrap_draw_count"] == 64
+    assert result["bootstrap_replace"] is True
+    assert [row["seed"] for row in result["refits"]] == list(range(5))
+    assert [row["resample_indices"][:8] for row in result["refits"]] == [
+        [44, 47, 53, 0, 3, 59, 3, 39],
+        [37, 43, 12, 8, 63, 9, 11, 5],
+        [40, 15, 45, 8, 22, 43, 18, 11],
+        [42, 24, 57, 3, 56, 8, 0, 21],
+        [58, 46, 55, 5, 1, 40, 23, 8],
+    ]
+    assert [row["resample_indices_sha256"] for row in result["refits"]] == [
+        "ea277883149917f280a742f63ec1bba3449d33aa0024bbd9b1211d8ceeb11c06",
+        "ffa786b7cfed9e3295748c5cca2e647e57cd1a1abd79f3bc78e1e9fc82d1ff6a",
+        "ec77fadcfa6d143f8952c5b9487984faf1f6bec7197c01e610b7d7cdc3746f69",
+        "ba41913a57650c5eb7894ccd14954d4647c9596014c3b4e0b72d82d3a93c2669",
+        "02572daba449daad52baabac445e8815a55d55b7410c3c9c87a57a76ca4bf622",
+    ]
+    assert len(result["coefficient_pairwise"]) == 10
+    assert len(result["top_selection_pairwise"]) == 10
+    assert result["coefficient_summary"]["pair_count"] == 10
+    assert result["top_selection_summary"]["pair_count"] == 10
+    coefficient_values = [
+        row["spearman"] for row in result["coefficient_pairwise"] if row["defined"]
+    ]
+    selection_values = [
+        row["jaccard"] for row in result["top_selection_pairwise"] if row["defined"]
+    ]
+    assert result["coefficient_summary"]["minimum_defined"] == min(coefficient_values)
+    assert result["coefficient_summary"]["mean_defined"] == pytest.approx(
+        sum(coefficient_values) / len(coefficient_values)
+    )
+    assert result["top_selection_summary"]["minimum_defined"] == min(selection_values)
+    assert result["top_selection_summary"]["mean_defined"] == pytest.approx(
+        sum(selection_values) / len(selection_values)
+    )
+    assert result["requested_budget"] == 5
+    assert result["achieved_budget"] == 5
+    assert result["mask_design_sha256"] == design["design_sha256"]
+    assert result["surrogate_sha256"] == surrogate["surrogate_sha256"]
+    assert result["attribution_identity_sha256"] == design["attribution_identity_sha256"]
+    assert len(result["regions_sha256"]) == 64
+    assert len(result["stability_sha256"]) == 64
+
+
+def test_contextcite_refit_stability_preserves_undefined_values() -> None:
+    """Catch undefined coefficient or empty-selection stability being called passing."""
+
+    pytest.importorskip("sklearn")
+    regions = [{"source_id": "region-a", "token_cost": 1}]
+    design = _design(regions)
+    fit_outcomes = _fit_outcomes(design)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+
+    result = evaluate_contextcite_refit_stability(
+        design,
+        fit_outcomes,
+        surrogate,
+        regions,
+        requested_budget=0,
+    )
+
+    assert all(
+        row["defined"] is False and row["spearman"] is None
+        for row in result["coefficient_pairwise"]
+    )
+    assert result["coefficient_summary"] == {
+        "pair_count": 10,
+        "defined_count": 0,
+        "undefined_count": 10,
+        "all_defined": False,
+        "minimum_defined": None,
+        "mean_defined": None,
+    }
+    assert all(
+        row["defined"] is False and row["jaccard"] is None
+        for row in result["top_selection_pairwise"]
+    )
+    assert result["top_selection_summary"] == {
+        "pair_count": 10,
+        "defined_count": 0,
+        "undefined_count": 10,
+        "all_defined": False,
+        "minimum_defined": None,
+        "mean_defined": None,
+    }
+
+
+def test_contextcite_refit_stability_fails_closed_on_cross_identity_and_drift() -> None:
+    """Catch mixed artifacts, reordered regions, noncanonical rows, or Python scalar aliases."""
+
+    pytest.importorskip("sklearn")
+    regions = _regions()[:-1]
+    design = _design(regions)
+    fit_outcomes = _fit_outcomes(design)
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    other_design = _design(regions, question_id="question-002")
+    other_fit = _fit_outcomes(other_design)
+    other_surrogate = fit_contextcite_lasso(other_design, other_fit)
+
+    reordered_regions = [regions[1], regions[0], *regions[2:]]
+    bool_cost_regions = deepcopy(regions)
+    bool_cost_regions[0]["token_cost"] = True
+    nonfinite_fit = deepcopy(fit_outcomes)
+    nonfinite_fit[0]["normalized_target"] = float("inf")
+    altered_surrogate = deepcopy(surrogate)
+    altered_surrogate["fit_intercept"] = 1
+
+    invalid_cases = (
+        (design, list(reversed(fit_outcomes)), surrogate, regions, 5),
+        (design, nonfinite_fit, surrogate, regions, 5),
+        (design, fit_outcomes, altered_surrogate, regions, 5),
+        (design, fit_outcomes, other_surrogate, regions, 5),
+        (other_design, other_fit, surrogate, regions, 5),
+        (design, fit_outcomes, surrogate, reordered_regions, 5),
+        (design, fit_outcomes, surrogate, bool_cost_regions, 5),
+        (design, fit_outcomes, surrogate, regions, False),
+    )
+    for (
+        candidate_design,
+        candidate_fit,
+        candidate_surrogate,
+        candidate_regions,
+        budget,
+    ) in invalid_cases:
+        with pytest.raises(ValueError):
+            evaluate_contextcite_refit_stability(
+                candidate_design,
+                candidate_fit,
+                candidate_surrogate,
+                candidate_regions,
+                requested_budget=budget,
             )
