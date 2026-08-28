@@ -595,6 +595,152 @@ def finalize_task8_mineru_smoke(
     return completion
 
 
+def load_task8_mineru_completion(path: Path, *, expected_sha256: str) -> dict[str, object]:
+    """Load and reauthenticate a completed bounded MinerU smoke."""
+
+    from docprune.segmentation import MinerUArtifactIdentity, mineru_regions_from_middle_json
+
+    completion_path = Path(path)
+    raw = _authenticated_bytes(
+        completion_path,
+        _require_sha256(expected_sha256, "completion manifest checksum"),
+        "completion manifest",
+    )
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Task 8 MinerU completion manifest is invalid JSON") from error
+    required = {
+        "schema_version",
+        "status",
+        "run_manifest_path",
+        "run_manifest_sha256",
+        "gpu_manifest_path",
+        "gpu_manifest_sha256",
+        "gpu",
+        "output_dir",
+        "raw_output_files",
+        "raw_middle_json_count",
+        "artifacts",
+        "global_index_loaded",
+        "retrieval_run",
+        "manifest_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ValueError("Task 8 MinerU completion manifest schema is invalid")
+    unsigned = dict(value)
+    supplied = unsigned.pop("manifest_sha256")
+    if supplied != _sha256_bytes(_canonical_bytes(unsigned)):
+        raise ValueError("Task 8 MinerU completion manifest digest is invalid")
+    if raw != _canonical_bytes(value):
+        raise ValueError("Task 8 MinerU completion manifest bytes are not canonical")
+    if (
+        value["schema_version"] != TASK8_MINERU_COMPLETION_SCHEMA_VERSION
+        or value["status"] != "complete"
+        or value["global_index_loaded"] is not False
+        or value["retrieval_run"] is not False
+    ):
+        raise ValueError("Task 8 MinerU completion execution identity is invalid")
+    root = completion_path.parent
+    run_path = Path(value["run_manifest_path"])
+    run_raw = _authenticated_bytes(
+        run_path,
+        value["run_manifest_sha256"],
+        "run manifest",
+    )
+    run = _load_signed_run_manifest(run_path)
+    if run_raw != _canonical_bytes(run):
+        raise ValueError("Task 8 MinerU run manifest bytes are not canonical")
+    gpu = _load_canonical_json(
+        Path(value["gpu_manifest_path"]),
+        value["gpu_manifest_sha256"],
+        "GPU manifest",
+    )
+    if gpu != value["gpu"]:
+        raise ValueError("Task 8 MinerU completion GPU identity drifted")
+    output = Path(value["output_dir"])
+    if (
+        run_path != root / "run-manifest.json"
+        or Path(value["gpu_manifest_path"]) != root / "gpu.json"
+        or output.parent != root
+        or run["job_root"] != str(root)
+        or run["output_dir"] != str(output)
+    ):
+        raise ValueError("Task 8 MinerU completion path identity drifted")
+    inventory = value["raw_output_files"]
+    if not isinstance(inventory, list) or not inventory:
+        raise ValueError("Task 8 MinerU completion output inventory is invalid")
+    seen: set[Path] = set()
+    for row in inventory:
+        if not isinstance(row, Mapping) or set(row) != {
+            "path",
+            "relative_path",
+            "sha256",
+            "size_bytes",
+        }:
+            raise ValueError("Task 8 MinerU completion output inventory is invalid")
+        file_path = Path(row["path"])
+        raw_file = _authenticated_bytes(file_path, row["sha256"], "MinerU output file")
+        if (
+            file_path in seen
+            or file_path.parent == output.parent
+            or file_path.relative_to(output).as_posix() != row["relative_path"]
+            or len(raw_file) != row["size_bytes"]
+        ):
+            raise ValueError("Task 8 MinerU completion output inventory is invalid")
+        seen.add(file_path)
+    if _inventory_regular_tree(output) != inventory:
+        raise ValueError("Task 8 MinerU completion output inventory drifted")
+    artifacts = value["artifacts"]
+    if (
+        not isinstance(artifacts, list)
+        or len(artifacts) != value["raw_middle_json_count"]
+        or len(artifacts) <= 0
+    ):
+        raise ValueError("Task 8 MinerU completion artifact count is invalid")
+    identities: list[MinerUArtifactIdentity] = []
+    for row in artifacts:
+        if not isinstance(row, Mapping) or set(row) != {
+            "identity",
+            "region_count",
+            "region_types",
+        }:
+            raise ValueError("Task 8 MinerU completion artifact schema is invalid")
+        artifact = MinerUArtifactIdentity.from_dict(row["identity"])
+        identities.append(artifact)
+        artifact_raw = _authenticated_bytes(
+            artifact.raw_middle_json_path,
+            artifact.raw_middle_json_sha256,
+            "raw MinerU middle JSON",
+        )
+        regions = mineru_regions_from_middle_json(artifact_raw, artifact)
+        if (
+            len(regions) != row["region_count"]
+            or sorted({region.region_type for region in regions}) != row["region_types"]
+            or artifact.raw_middle_json_path not in seen
+        ):
+            raise ValueError("Task 8 MinerU completion artifact identity drifted")
+    expected_inputs = [
+        {"path": str(artifact.mineru_input_path), "sha256": artifact.mineru_input_sha256}
+        for artifact in identities
+    ]
+    if run["inputs"] != expected_inputs or any(
+        len(artifact.pages) != 1
+        or artifact.pages[0].fixture_question_id != run["qid"]
+        or str(artifact.smoke_input_manifest_path) != run["smoke_input_manifest_path"]
+        or artifact.smoke_input_manifest_sha256 != run["smoke_input_manifest_sha256"]
+        or artifact.repository_revision != run["repository_revision"]
+        or artifact.model_revision != run["model_revision"]
+        or str(artifact.configuration_path) != run["configuration_path"]
+        or artifact.configuration_sha256 != run["configuration_sha256"]
+        or str(artifact.tool_manifest_path) != run["tool_manifest_path"]
+        or artifact.tool_manifest_sha256 != run["tool_manifest_sha256"]
+        for artifact in identities
+    ):
+        raise ValueError("Task 8 MinerU completion identity does not replay")
+    return dict(value)
+
+
 def _validate_manifest(value: object, manifest_path: Path) -> dict[str, object]:
     required = {
         "schema_version",
@@ -789,6 +935,7 @@ __all__ = [
     "TASK8_MINERU_RUN_SCHEMA_VERSION",
     "TASK8_SMOKE_SCHEMA_VERSION",
     "finalize_task8_mineru_smoke",
+    "load_task8_mineru_completion",
     "load_task8_smoke_inputs",
     "prepare_task8_mineru_smoke",
     "seal_task8_smoke_inputs",

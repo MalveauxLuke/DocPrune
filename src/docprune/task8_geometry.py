@@ -21,10 +21,38 @@ from docprune.benchmark_config import (
     QWEN_MODEL,
     QWEN_REVISION,
 )
+from docprune.ctp_controls import VisualTokenGeometry
 from docprune.task6_runtime import AuthenticatedFixedPageRetriever, load_fixed_page_fixture
 from docprune.task8_runtime import load_task8_smoke_inputs
 
 TASK8_GEOMETRY_SCHEMA_VERSION = "docprune-task8-btp-qtp-geometry-v1"
+_GEOMETRY_CAPTURE_KEYS = {
+    "schema_version",
+    "status",
+    "runtime_commit",
+    "qid",
+    "question_sha256",
+    "fixed_page_fixture_path",
+    "fixed_page_fixture_sha256",
+    "smoke_input_manifest_path",
+    "smoke_input_manifest_sha256",
+    "reference_results_path",
+    "reference_results_sha256",
+    "global_index_loaded",
+    "retrieval_search_run",
+    "fixed_page_query_encoding_run",
+    "qwen_generation_model_loaded",
+    "gpu",
+    "resources",
+    "retrieved_pages",
+    "image_grid_thw",
+    "trace",
+    "mask_sha256",
+    "geometry_count",
+    "geometry_sha256",
+    "geometry",
+    "manifest_sha256",
+}
 
 
 def _is_sha256(value: object) -> bool:
@@ -207,6 +235,109 @@ def _publish_no_replace(payload: dict[str, object], destination: Path) -> None:
         stage.unlink(missing_ok=True)
 
 
+def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str, object]:
+    """Load and validate canonical geometry evidence without model execution."""
+
+    raw = _regular_bytes(Path(path), "Task 8 geometry capture")
+    if _sha256_bytes(raw) != _require_sha256(expected_sha256, "geometry capture checksum"):
+        raise ValueError("Task 8 geometry capture checksum mismatch")
+    try:
+        value = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("Task 8 geometry capture is invalid JSON") from error
+    if not isinstance(value, Mapping) or set(value) != _GEOMETRY_CAPTURE_KEYS:
+        raise ValueError("Task 8 geometry capture schema is invalid")
+    payload = dict(value)
+    supplied = payload.pop("manifest_sha256")
+    if supplied != _sha256_bytes(_canonical_bytes(payload)):
+        raise ValueError("Task 8 geometry capture manifest digest is invalid")
+    if raw != _canonical_bytes(value):
+        raise ValueError("Task 8 geometry capture bytes are not canonical")
+    if (
+        value["schema_version"] != TASK8_GEOMETRY_SCHEMA_VERSION
+        or value["status"] != "complete"
+        or value["global_index_loaded"] is not False
+        or value["retrieval_search_run"] is not False
+        or value["fixed_page_query_encoding_run"] is not True
+        or value["qwen_generation_model_loaded"] is not False
+    ):
+        raise ValueError("Task 8 geometry capture execution identity is invalid")
+    if value["resources"] != {
+        "colpali_model": COLPALI_MODEL,
+        "colpali_revision": COLPALI_REVISION,
+        "colpali_backbone_model": COLPALI_BACKBONE_MODEL,
+        "colpali_backbone_revision": COLPALI_BACKBONE_REVISION,
+        "qwen_processor_model": QWEN_MODEL,
+        "qwen_processor_revision": QWEN_REVISION,
+    }:
+        raise ValueError("Task 8 geometry capture resource identity is invalid")
+    _require_commit(value["runtime_commit"])
+    if not isinstance(value["qid"], str) or not value["qid"]:
+        raise ValueError("Task 8 geometry capture QID is invalid")
+    _require_sha256(value["question_sha256"], "question checksum")
+    fixture_path = Path(value["fixed_page_fixture_path"])
+    fixture_sha = _require_sha256(value["fixed_page_fixture_sha256"], "fixture checksum")
+    fixture = load_fixed_page_fixture(
+        fixture_path,
+        expected_sha256=fixture_sha,
+        validate_external_bytes=False,
+    )
+    fixture.validate_external_bytes(selected_qids=(value["qid"],))
+    smoke_path = Path(value["smoke_input_manifest_path"])
+    smoke_raw = _regular_bytes(smoke_path, "Task 8 smoke manifest")
+    if _sha256_bytes(smoke_raw) != value["smoke_input_manifest_sha256"]:
+        raise ValueError("Task 8 geometry smoke manifest checksum mismatch")
+    smoke = load_task8_smoke_inputs(smoke_path)
+    if (
+        smoke["qid"] != value["qid"]
+        or smoke["fixed_page_fixture_path"] != str(fixture_path)
+        or smoke["fixed_page_fixture_sha256"] != fixture_sha
+    ):
+        raise ValueError("Task 8 geometry capture contradicts its smoke inputs")
+    reference_path = Path(value["reference_results_path"])
+    reference = _load_reference_row(
+        reference_path,
+        _require_sha256(value["reference_results_sha256"], "reference checksum"),
+        qid=value["qid"],
+    )
+    rows = value["geometry"]
+    if not isinstance(rows, list):
+        raise ValueError("Task 8 geometry rows are invalid")
+    try:
+        geometry = tuple(VisualTokenGeometry(*row) for row in rows)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Task 8 geometry rows are invalid") from error
+    if (
+        type(value["geometry_count"]) is not int
+        or value["geometry_count"] != len(geometry)
+        or not _is_sha256(value["geometry_sha256"])
+        or _sha256_bytes(_canonical_bytes(rows)) != value["geometry_sha256"]
+    ):
+        raise ValueError("Task 8 geometry rows do not match their identity")
+    reference_question, reference_pages, reference_trace = _reference_identity(
+        reference,
+        fixture_sha256=fixture_sha,
+        expected_geometry_count=value["geometry_count"],
+        expected_geometry_sha256=value["geometry_sha256"],
+    )
+    if (
+        hashlib.sha256(reference_question.encode("utf-8")).hexdigest() != value["question_sha256"]
+        or value["retrieved_pages"] != reference_pages
+        or value["trace"] != reference_trace
+    ):
+        raise ValueError("Task 8 geometry capture contradicts its Task 6 reference")
+    masks = value["mask_sha256"]
+    if not isinstance(masks, Mapping) or set(masks) != {
+        "background_keep",
+        "question_keep",
+        "combined_keep",
+    }:
+        raise ValueError("Task 8 geometry mask identity is invalid")
+    for label, digest in masks.items():
+        _require_sha256(digest, f"{label} mask checksum")
+    return dict(value)
+
+
 def capture_task8_btp_qtp_geometry(
     *,
     fixture_path: Path,
@@ -375,4 +506,5 @@ def capture_task8_btp_qtp_geometry(
 __all__ = [
     "TASK8_GEOMETRY_SCHEMA_VERSION",
     "capture_task8_btp_qtp_geometry",
+    "load_task8_geometry_capture",
 ]
