@@ -18,10 +18,10 @@ set -euo pipefail
 : "${RUNTIME_DIR:?set the clean reviewed runtime checkout}"
 : "${RUNTIME_COMMIT:?set the exact reviewed runtime commit}"
 : "${MATRIX_ROOT:?set the existing native or fixed matrix root}"
-: "${MATRIX_KIND:?set native, native-extension, or fixed}"
+: "${MATRIX_KIND:?set native, native-extension, fixed, or visual-state-fixed-grid}"
 : "${SLURM_ARRAY_TASK_ID:?submit as the sealed 0-63 array}"
 
-case "$MATRIX_KIND" in native|native-extension|fixed) ;; *) exit 2 ;; esac
+case "$MATRIX_KIND" in native|native-extension|fixed|visual-state-fixed-grid) ;; *) exit 2 ;; esac
 case "$SLURM_ARRAY_TASK_ID" in ''|*[!0-9]*) exit 2 ;; esac
 test "$SLURM_ARRAY_TASK_ID" -le 63
 
@@ -97,6 +97,7 @@ case "$GPU_NAME" in *L40S*) ;; *) echo "canonical Task 6 shard requires L40S" >&
 EXPECTED=45
 if [[ "$MATRIX_KIND" == fixed ]]; then EXPECTED=42; fi
 if [[ "$MATRIX_KIND" == native-extension ]]; then EXPECTED=40; fi
+if [[ "$MATRIX_KIND" == visual-state-fixed-grid ]]; then EXPECTED=8; fi
 "$PYTHON" - "$OUTPUT_DIR/results.jsonl" "$EXPECTED" "$MATRIX_KIND" <<'PY'
 import json
 import sys

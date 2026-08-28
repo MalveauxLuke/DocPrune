@@ -10,6 +10,8 @@ from docprune.m3docrag import SampleInput
 from docprune.qwen2vl.decoder import ForcedVisualIntervention
 from docprune.task6_runtime import FixedPageQuestion
 
+_TASK7_DECODER_LAYER_COUNT = 28
+
 
 @dataclass(frozen=True, slots=True)
 class Task7InterventionCell:
@@ -198,3 +200,30 @@ def validate_task7_result_record(
         or retained != 0
     ):
         raise ValueError("Task 7 result has invalid all-drop identity")
+
+    logical_ids = forced.get("logical_retained_sequence_ids")
+    cache_lengths = forced.get("prefill_cache_lengths")
+    position_shape = forced.get("retained_mrope_position_shape")
+    if (
+        not isinstance(logical_ids, list)
+        or not logical_ids
+        or logical_ids != sorted(set(logical_ids))
+        or any(type(identifier) is not int or identifier < 0 for identifier in logical_ids)
+        or max(logical_ids) >= len(logical_ids) + population
+        or not isinstance(cache_lengths, list)
+        or len(cache_lengths) != _TASK7_DECODER_LAYER_COUNT
+        or position_shape != [3, 1, len(logical_ids)]
+    ):
+        raise ValueError("Task 7 result has invalid physical all-drop evidence")
+
+    compact_length = len(logical_ids)
+    full_length = compact_length + population
+    boundary = cell.forced_intervention.boundary
+    if boundary == "input":
+        expected_cache_lengths = [compact_length] * _TASK7_DECODER_LAYER_COUNT
+    else:
+        expected_cache_lengths = [full_length] * (boundary + 1) + [compact_length] * (
+            _TASK7_DECODER_LAYER_COUNT - boundary - 1
+        )
+    if cache_lengths != expected_cache_lengths:
+        raise ValueError("Task 7 result has invalid physical all-drop evidence")

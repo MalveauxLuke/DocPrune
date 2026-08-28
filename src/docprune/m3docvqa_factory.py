@@ -540,18 +540,24 @@ def _validate_forced_intervention_record(value: object, *, line_number: int) -> 
         )
     ):
         raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
-    for name in ("logical_retained_sequence_ids", "prefill_cache_lengths"):
-        items = value.get(name)
-        if not isinstance(items, list) or any(
-            not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in items
-        ):
-            raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
+    logical_ids = value.get("logical_retained_sequence_ids")
+    cache_lengths = value.get("prefill_cache_lengths")
+    removed_visual_count = population - achieved if value.get("mode") == "physical_delete" else 0
+    if (
+        not isinstance(logical_ids, list)
+        or not logical_ids
+        or logical_ids != sorted(set(logical_ids))
+        or any(type(item) is not int or item < 0 for item in logical_ids)
+        or max(logical_ids) >= len(logical_ids) + removed_visual_count
+        or not isinstance(cache_lengths, list)
+        or not cache_lengths
+        or any(type(item) is not int or item < 0 for item in cache_lengths)
+    ):
+        raise ValueError(f"results JSONL record {line_number} has invalid forced intervention")
     shape = value.get("retained_mrope_position_shape")
     digest = value.get("retained_mrope_position_sha256")
     if (
-        not isinstance(shape, list)
-        or len(shape) != 3
-        or any(not isinstance(item, int) or isinstance(item, bool) or item < 0 for item in shape)
+        shape != [3, 1, len(logical_ids)]
         or not isinstance(digest, str)
         or len(digest) != 64
         or any(character not in "0123456789abcdef" for character in digest)
