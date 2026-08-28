@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import os
+import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -29,11 +30,14 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on the pinned Python
 _SHA256_LENGTH = 64
 _COMMIT_LENGTH = 40
 _DECODER_LAYER_COUNT = 28
+_SOURCE_CONFIG_RELATIVE_PATH = Path("configs/docprune-m3docvqa.toml")
+_SOURCE_LAUNCHER_RELATIVE_PATH = Path("examples/sbatch/35_docprune_task6_l40s_matrix.sbatch")
 _MANIFEST_KEYS = {
     "schema_version",
     "status",
     "matrix_root",
     "source_runtime_commit",
+    "source_runtime_dir",
     "qids",
     "fixture_path",
     "fixture_sha256",
@@ -43,6 +47,14 @@ _MANIFEST_KEYS = {
     "feature_manifest_sha256",
     "config_path",
     "config_sha256",
+    "source_config_relative_path",
+    "source_launcher_path",
+    "source_launcher_sha256",
+    "source_launcher_relative_path",
+    "source_admission_path",
+    "source_admission_sha256",
+    "source_admission_internal_sha256",
+    "source_member_digest_sha256",
     "comprehension_threshold",
     "fixed_page_provenance",
     "global_index_loaded",
@@ -215,6 +227,140 @@ def _comprehension_threshold(config_path: Path) -> float:
     return float(value)
 
 
+def _authenticate_task6_admission(
+    path: Path,
+    *,
+    expected_sha256: str,
+    expected_internal_sha256: str,
+    expected_member_digest_sha256: str,
+    matrix_root: Path,
+    source_runtime_commit: str,
+    fixture_sha256: str,
+    gate_sha256: str,
+    qid_count: int,
+) -> tuple[str, str, str]:
+    """Authenticate the admitted Task 6 analysis and every ordered source member."""
+
+    file_digest = _authenticate_file(path, expected_sha256, "Task 6 admission analysis")
+    internal_digest = _require_sha256(
+        expected_internal_sha256, "Task 6 admission internal checksum"
+    )
+    member_digest = _require_sha256(expected_member_digest_sha256, "Task 6 admitted member digest")
+    payload = _load_json(path, "Task 6 admission analysis")
+    unsigned = dict(payload)
+    supplied_internal = unsigned.pop("analysis_sha256", None)
+    if supplied_internal != internal_digest or _manifest_digest(unsigned) != internal_digest:
+        raise ValueError("Task 6 admission analysis internal checksum mismatch")
+    admission = payload.get("admission")
+    members = payload.get("members")
+    expected_member_count = qid_count * 2
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("status") != "admitted-development-r10-extension-required"
+        or payload.get("root") != str(matrix_root)
+        or payload.get("runtime_commit") != source_runtime_commit
+        or payload.get("fixture_sha256") != fixture_sha256
+        or payload.get("gate_sha256") != gate_sha256
+        or not isinstance(admission, Mapping)
+        or admission.get("fixed_page_provenance") is not True
+        or admission.get("global_index_loaded") is not False
+        or admission.get("shards") != qid_count
+        or admission.get("rows") != qid_count * len(_native_cells())
+        or admission.get("member_file_count") != expected_member_count
+        or admission.get("member_digest_sha256") != member_digest
+        or not isinstance(members, list)
+        or len(members) != expected_member_count
+    ):
+        raise ValueError("Task 6 admission analysis identity is invalid")
+    for member_index, member in enumerate(members):
+        shard_index, file_index = divmod(member_index, 2)
+        name = ("run_manifest.json", "results.jsonl")[file_index]
+        expected_path = matrix_root / f"shard-{shard_index:04d}" / name
+        if (
+            not isinstance(member, Mapping)
+            or set(member) != {"path", "sha256"}
+            or member.get("path") != str(expected_path)
+        ):
+            raise ValueError("Task 6 admission has invalid ordered member identity")
+        expected_member_sha256 = _require_sha256(
+            member.get("sha256"), "Task 6 admitted member checksum"
+        )
+        if _hash_file(expected_path, "Task 6 admitted member") != expected_member_sha256:
+            raise ValueError("Task 6 admitted member checksum mismatch")
+    canonical_members = [(member["path"], member["sha256"]) for member in members]
+    computed_member_digest = hashlib.sha256(
+        json.dumps(canonical_members, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if computed_member_digest != member_digest:
+        raise ValueError("Task 6 admitted member digest mismatch")
+    return file_digest, internal_digest, member_digest
+
+
+def _authenticate_source_runtime(
+    runtime_dir: Path,
+    *,
+    source_runtime_commit: str,
+    config_path: Path,
+    config_sha256: str,
+    launcher_path: Path,
+    launcher_sha256: str,
+) -> tuple[str, str]:
+    """Bind source pins to canonical tracked files in the exact clean Task 6 checkout."""
+
+    root = Path(runtime_dir)
+    config = Path(config_path)
+    launcher = Path(launcher_path)
+    if (
+        not root.is_absolute()
+        or root.is_symlink()
+        or not root.is_dir()
+        or config != root / _SOURCE_CONFIG_RELATIVE_PATH
+        or launcher != root / _SOURCE_LAUNCHER_RELATIVE_PATH
+        or config.resolve() != config
+        or launcher.resolve() != launcher
+    ):
+        raise ValueError("source pins are not canonical files in the admitted runtime")
+    try:
+        observed_commit = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        observed_status = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        tracked = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--error-unmatch",
+                str(_SOURCE_CONFIG_RELATIVE_PATH),
+                str(_SOURCE_LAUNCHER_RELATIVE_PATH),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError("source runtime is not the exact clean admitted checkout") from error
+    if (
+        observed_commit != source_runtime_commit
+        or observed_status
+        or tracked != [str(_SOURCE_CONFIG_RELATIVE_PATH), str(_SOURCE_LAUNCHER_RELATIVE_PATH)]
+    ):
+        raise ValueError("source runtime is not the exact clean admitted checkout")
+    return (
+        _authenticate_file(config, config_sha256, "source config"),
+        _authenticate_file(launcher, launcher_sha256, "source launcher"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Task7NativeBoundaryEntry:
     """One question's authenticated native comprehension boundary."""
@@ -236,6 +382,15 @@ class Task7NativeBoundaryManifest:
     comprehension_threshold: float
     fixture_sha256: str
     source_runtime_commit: str
+    source_runtime_dir: str
+    source_admission_path: str
+    source_admission_sha256: str
+    source_admission_internal_sha256: str
+    source_member_digest_sha256: str
+    source_config_sha256: str
+    source_config_relative_path: str
+    source_launcher_sha256: str
+    source_launcher_relative_path: str
     entries: tuple[Task7NativeBoundaryEntry, ...]
 
     def question(self, qid: str) -> Task7NativeBoundaryEntry:
@@ -440,6 +595,13 @@ def publish_task7_native_boundary_manifest(
     feature_manifest_sha256: str,
     config_path: Path,
     config_sha256: str,
+    source_runtime_dir: Path,
+    source_launcher_path: Path,
+    source_launcher_sha256: str,
+    admission_analysis_path: Path,
+    admission_analysis_sha256: str,
+    admission_analysis_internal_sha256: str,
+    admission_member_digest_sha256: str,
     source_runtime_commit: str,
     destination: Path,
 ) -> str:
@@ -469,9 +631,27 @@ def publish_task7_native_boundary_manifest(
     feature_digest = _authenticate_file(
         feature_manifest_path, feature_manifest_sha256, "feature manifest"
     )
-    config_digest = _authenticate_file(config_path, config_sha256, "config")
     runtime_commit = _require_commit(source_runtime_commit, "source runtime")
+    config_digest, launcher_digest = _authenticate_source_runtime(
+        source_runtime_dir,
+        source_runtime_commit=runtime_commit,
+        config_path=config_path,
+        config_sha256=config_sha256,
+        launcher_path=source_launcher_path,
+        launcher_sha256=source_launcher_sha256,
+    )
     expected_cells = _native_cells()
+    admission_file_digest, admission_internal_digest, member_digest = _authenticate_task6_admission(
+        admission_analysis_path,
+        expected_sha256=admission_analysis_sha256,
+        expected_internal_sha256=admission_analysis_internal_sha256,
+        expected_member_digest_sha256=admission_member_digest_sha256,
+        matrix_root=root,
+        source_runtime_commit=runtime_commit,
+        fixture_sha256=fixture_digest,
+        gate_sha256=gate_digest,
+        qid_count=len(ordered_qids),
+    )
     questions: list[dict[str, object]] = []
     for shard_index, qid in enumerate(ordered_qids):
         shard = root / f"shard-{shard_index:04d}"
@@ -552,6 +732,7 @@ def publish_task7_native_boundary_manifest(
         "status": "sealed-task7-native-boundaries",
         "matrix_root": str(root),
         "source_runtime_commit": runtime_commit,
+        "source_runtime_dir": str(source_runtime_dir),
         "qids": list(ordered_qids),
         "fixture_path": str(fixture_path),
         "fixture_sha256": fixture_digest,
@@ -561,6 +742,14 @@ def publish_task7_native_boundary_manifest(
         "feature_manifest_sha256": feature_digest,
         "config_path": str(config_path),
         "config_sha256": config_digest,
+        "source_config_relative_path": str(_SOURCE_CONFIG_RELATIVE_PATH),
+        "source_launcher_path": str(source_launcher_path),
+        "source_launcher_sha256": launcher_digest,
+        "source_launcher_relative_path": str(_SOURCE_LAUNCHER_RELATIVE_PATH),
+        "source_admission_path": str(admission_analysis_path),
+        "source_admission_sha256": admission_file_digest,
+        "source_admission_internal_sha256": admission_internal_digest,
+        "source_member_digest_sha256": member_digest,
         "comprehension_threshold": _comprehension_threshold(config_path),
         "fixed_page_provenance": True,
         "global_index_loaded": False,
@@ -627,6 +816,10 @@ def load_task7_native_boundary_manifest(
         "gate_manifest_sha256",
         "feature_manifest_sha256",
         "config_sha256",
+        "source_launcher_sha256",
+        "source_admission_sha256",
+        "source_admission_internal_sha256",
+        "source_member_digest_sha256",
     ):
         _require_sha256(payload.get(field), field)
     runtime_commit = _require_commit(payload.get("source_runtime_commit"), "source runtime")
@@ -634,14 +827,26 @@ def load_task7_native_boundary_manifest(
     if not isinstance(matrix_root_value, str) or not Path(matrix_root_value).is_absolute():
         raise ValueError("native-boundary manifest matrix root is invalid")
     for field in (
+        "source_runtime_dir",
         "fixture_path",
         "gate_manifest_path",
         "feature_manifest_path",
         "config_path",
+        "source_launcher_path",
+        "source_admission_path",
     ):
         value = payload.get(field)
         if not isinstance(value, str) or not Path(value).is_absolute():
             raise ValueError("native-boundary manifest authenticated path is invalid")
+    source_runtime_dir = Path(str(payload["source_runtime_dir"]))
+    if (
+        payload.get("source_config_relative_path") != str(_SOURCE_CONFIG_RELATIVE_PATH)
+        or payload.get("source_launcher_relative_path") != str(_SOURCE_LAUNCHER_RELATIVE_PATH)
+        or Path(str(payload["config_path"])) != source_runtime_dir / _SOURCE_CONFIG_RELATIVE_PATH
+        or Path(str(payload["source_launcher_path"]))
+        != source_runtime_dir / _SOURCE_LAUNCHER_RELATIVE_PATH
+    ):
+        raise ValueError("native-boundary manifest source runtime pins are invalid")
     matrix_root = Path(matrix_root_value)
     entries: list[Task7NativeBoundaryEntry] = []
     for index, (qid, question) in enumerate(zip(qids, questions, strict=True)):
@@ -692,6 +897,15 @@ def load_task7_native_boundary_manifest(
         float(threshold),
         str(payload["fixture_sha256"]),
         runtime_commit,
+        str(payload["source_runtime_dir"]),
+        str(payload["source_admission_path"]),
+        str(payload["source_admission_sha256"]),
+        str(payload["source_admission_internal_sha256"]),
+        str(payload["source_member_digest_sha256"]),
+        str(payload["config_sha256"]),
+        str(payload["source_config_relative_path"]),
+        str(payload["source_launcher_sha256"]),
+        str(payload["source_launcher_relative_path"]),
         tuple(entries),
     )
 

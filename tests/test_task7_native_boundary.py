@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 from copy import deepcopy
 from pathlib import Path
 
@@ -23,6 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _member_digest(members: list[dict[str, str]]) -> str:
+    ordered = [(member["path"], member["sha256"]) for member in members]
+    return hashlib.sha256(json.dumps(ordered, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _selection(policy_name: str, *, layer: int | None = 14) -> dict[str, object]:
@@ -113,12 +119,40 @@ def _source_tree(tmp_path: Path, *, layer: int | None = 14) -> dict[str, object]
     gate.write_text("sealed gate\n", encoding="utf-8")
     feature = tmp_path / "feature.json"
     feature.write_text("sealed features\n", encoding="utf-8")
-    config = tmp_path / "config.toml"
+    runtime = tmp_path / "runtime"
+    config = runtime / "configs" / "docprune-m3docvqa.toml"
+    config.parent.mkdir(parents=True)
     config.write_text("[paper.top4]\ncomprehension_threshold = 45.0\n", encoding="utf-8")
+    launcher = runtime / "examples" / "sbatch" / "35_docprune_task6_l40s_matrix.sbatch"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("#!/usr/bin/env bash\nset -euo pipefail\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(runtime)], check=True)
+    subprocess.run(["git", "-C", str(runtime), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(runtime),
+            "-c",
+            "user.name=Task 7 Test",
+            "-c",
+            "user.email=task7@example.invalid",
+            "commit",
+            "-q",
+            "-m",
+            "sealed source runtime",
+        ],
+        check=True,
+    )
     fixture_sha256 = _sha256(fixture)
     gate_sha256 = _sha256(gate)
     feature_sha256 = _sha256(feature)
-    runtime_commit = "1" * 40
+    runtime_commit = subprocess.run(
+        ["git", "-C", str(runtime), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     qid = "q-1"
     cells = [
         {
@@ -192,6 +226,33 @@ def _source_tree(tmp_path: Path, *, layer: int | None = 14) -> dict[str, object]
     (shard / "results.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
     )
+    members = [
+        {"path": str(shard / name), "sha256": _sha256(shard / name)}
+        for name in ("run_manifest.json", "results.jsonl")
+    ]
+    member_digest_sha256 = _member_digest(members)
+    admission = {
+        "schema_version": 1,
+        "status": "admitted-development-r10-extension-required",
+        "root": str(root),
+        "runtime_commit": runtime_commit,
+        "fixture_sha256": fixture_sha256,
+        "gate_sha256": gate_sha256,
+        "admission": {
+            "fixed_page_provenance": True,
+            "global_index_loaded": False,
+            "member_digest_sha256": member_digest_sha256,
+            "member_file_count": 2,
+            "rows": 45,
+            "shards": 1,
+        },
+        "members": members,
+    }
+    admission["analysis_sha256"] = _manifest_digest(admission)
+    admission_path = tmp_path / "task6-admission.json"
+    admission_path.write_text(
+        json.dumps(admission, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return {
         "root": root,
         "fixture": fixture,
@@ -202,6 +263,13 @@ def _source_tree(tmp_path: Path, *, layer: int | None = 14) -> dict[str, object]
         "feature_sha256": feature_sha256,
         "config": config,
         "config_sha256": _sha256(config),
+        "runtime": runtime,
+        "launcher": launcher,
+        "launcher_sha256": _sha256(launcher),
+        "admission": admission_path,
+        "admission_sha256": _sha256(admission_path),
+        "admission_internal_sha256": admission["analysis_sha256"],
+        "member_digest_sha256": member_digest_sha256,
         "runtime_commit": runtime_commit,
         "qid": qid,
     }
@@ -221,9 +289,35 @@ def _publish(source: dict[str, object], output: Path) -> str:
         feature_manifest_sha256=source["feature_sha256"],
         config_path=source["config"],
         config_sha256=source["config_sha256"],
+        source_runtime_dir=source["runtime"],
+        source_launcher_path=source["launcher"],
+        source_launcher_sha256=source["launcher_sha256"],
+        admission_analysis_path=source["admission"],
+        admission_analysis_sha256=source["admission_sha256"],
+        admission_analysis_internal_sha256=source["admission_internal_sha256"],
+        admission_member_digest_sha256=source["member_digest_sha256"],
         source_runtime_commit=source["runtime_commit"],
         destination=output,
     )
+
+
+def _resign_admission_for_semantic_test(source: dict[str, object]) -> None:
+    """Let older semantic-drift tests proceed beyond the stronger member-hash gate."""
+
+    admission_path = source["admission"]
+    payload = json.loads(admission_path.read_text(encoding="utf-8"))
+    for member in payload["members"]:
+        member["sha256"] = _sha256(Path(member["path"]))
+    member_digest = _member_digest(payload["members"])
+    payload["admission"]["member_digest_sha256"] = member_digest
+    payload.pop("analysis_sha256")
+    payload["analysis_sha256"] = _manifest_digest(payload)
+    admission_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    source["admission_sha256"] = _sha256(admission_path)
+    source["admission_internal_sha256"] = payload["analysis_sha256"]
+    source["member_digest_sha256"] = member_digest
 
 
 def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outcomes(
@@ -247,9 +341,47 @@ def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outc
     assert entry.source_literal_policy_name == "literal-native-threshold"
     assert entry.source_aggregate_policy_name == "aggregate-native-threshold"
     assert loaded.comprehension_threshold == 45.0
+    assert loaded.source_admission_sha256 == source["admission_sha256"]
+    assert loaded.source_admission_internal_sha256 == source["admission_internal_sha256"]
+    assert loaded.source_member_digest_sha256 == source["member_digest_sha256"]
+    assert loaded.source_config_sha256 == source["config_sha256"]
+    assert loaded.source_runtime_dir == str(source["runtime"])
+    assert loaded.source_config_relative_path == "configs/docprune-m3docvqa.toml"
+    assert loaded.source_launcher_sha256 == source["launcher_sha256"]
+    assert (
+        loaded.source_launcher_relative_path
+        == "examples/sbatch/35_docprune_task6_l40s_matrix.sbatch"
+    )
     encoded = output.read_text(encoding="utf-8")
     assert "outcome-must-not-enter-boundary-manifest" not in encoded
     assert "predicted_answer" not in encoded
+
+
+def test_native_boundary_publisher_rejects_member_changed_after_task6_admission(
+    tmp_path: Path,
+) -> None:
+    """Catch sealing a post-admission mutation as admitted native-boundary evidence."""
+
+    source = _source_tree(tmp_path)
+    results = source["root"] / "shard-0000" / "results.jsonl"
+    results.write_bytes(results.read_bytes() + b"\n")
+
+    with pytest.raises(ValueError, match="admitted member checksum"):
+        _publish(source, tmp_path / "native-boundaries.json")
+
+
+@pytest.mark.parametrize("source_name", ("config", "launcher"))
+def test_native_boundary_publisher_rejects_substituted_source_bytes_and_supplied_hash(
+    tmp_path: Path, source_name: str
+) -> None:
+    """Catch substituting source bytes even when the caller also supplies their new checksum."""
+
+    source = _source_tree(tmp_path)
+    source[source_name].write_text("substituted bytes\n", encoding="utf-8")
+    source[f"{source_name}_sha256"] = _sha256(source[source_name])
+
+    with pytest.raises(ValueError, match="exact clean admitted checkout"):
+        _publish(source, tmp_path / "native-boundaries.json")
 
 
 @pytest.mark.parametrize(
@@ -294,6 +426,8 @@ def test_native_boundary_publisher_rejects_source_identity_drift(
         unsigned.pop("run_manifest_sha256")
         manifest["run_manifest_sha256"] = _manifest_digest(unsigned)
         (shard / "run_manifest.json").write_text(json.dumps(manifest) + "\n")
+
+    _resign_admission_for_semantic_test(source)
 
     with pytest.raises(ValueError, match=message):
         _publish(source, tmp_path / "native-boundaries.json")
