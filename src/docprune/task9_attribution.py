@@ -1199,10 +1199,54 @@ def _bootstrap_quantile(values: Sequence[float], fraction: float) -> float:
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
+def _replay_aggregate_raw_input(
+    value: object,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    required = {
+        "design",
+        "fit_outcomes",
+        "surrogate",
+        "holdout_outcomes",
+        "regions",
+        "requested_budget",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ValueError("per-question aggregate raw-input schema is invalid")
+    raw = dict(value)
+    fidelity = evaluate_contextcite_holdout(
+        raw["design"],
+        raw["fit_outcomes"],
+        raw["surrogate"],
+        raw["holdout_outcomes"],
+    )
+    stability = evaluate_contextcite_refit_stability(
+        raw["design"],
+        raw["fit_outcomes"],
+        raw["surrogate"],
+        raw["regions"],
+        requested_budget=raw["requested_budget"],
+    )
+    identity = fidelity["attribution_identity"]
+    binding: dict[str, object] = {
+        "question_id": identity["question_id"],
+        "attribution_identity": dict(identity),
+        "attribution_identity_sha256": fidelity["attribution_identity_sha256"],
+        "design_sha256": fidelity["mask_design_sha256"],
+        "fit_outcomes_sha256": fidelity["fit_outcomes_sha256"],
+        "surrogate_sha256": fidelity["surrogate_sha256"],
+        "holdout_outcomes_sha256": fidelity["holdout_outcomes_sha256"],
+        "regions_sha256": stability["regions_sha256"],
+        "requested_budget": stability["requested_budget"],
+        "raw_input_sha256": _canonical_sha256(value),
+    }
+    return fidelity, stability, binding
+
+
 def aggregate_contextcite_admission_metrics(
     fidelity_artifacts: Sequence[Mapping[str, object]],
     stability_artifacts: Sequence[Mapping[str, object]],
     *,
+    raw_inputs: Sequence[Mapping[str, object]],
     support_components: Sequence[Sequence[str]],
     draws: int = 100_000,
     seed: int = 20_260_827,
@@ -1216,12 +1260,35 @@ def aggregate_contextcite_admission_metrics(
         or isinstance(fidelity_artifacts, str | bytes)
         or not isinstance(stability_artifacts, Sequence)
         or isinstance(stability_artifacts, str | bytes)
+        or not isinstance(raw_inputs, Sequence)
+        or isinstance(raw_inputs, str | bytes)
         or not fidelity_artifacts
         or len(fidelity_artifacts) != len(stability_artifacts)
+        or len(fidelity_artifacts) != len(raw_inputs)
     ):
-        raise ValueError("aggregate fidelity requires paired per-question artifacts")
-    fidelities = tuple(_validated_aggregate_fidelity(value) for value in fidelity_artifacts)
-    stabilities = tuple(_validated_aggregate_stability(value) for value in stability_artifacts)
+        raise ValueError("aggregate fidelity requires paired per-question artifacts and raw inputs")
+    persisted_fidelities = tuple(
+        _validated_aggregate_fidelity(value) for value in fidelity_artifacts
+    )
+    persisted_stabilities = tuple(
+        _validated_aggregate_stability(value) for value in stability_artifacts
+    )
+    replayed = tuple(_replay_aggregate_raw_input(value) for value in raw_inputs)
+    fidelities = tuple(row[0] for row in replayed)
+    stabilities = tuple(row[1] for row in replayed)
+    raw_input_bindings = tuple(row[2] for row in replayed)
+    if any(
+        _canonical_bytes(persisted_fidelity) != _canonical_bytes(fidelity)
+        or _canonical_bytes(persisted_stability) != _canonical_bytes(stability)
+        for persisted_fidelity, persisted_stability, fidelity, stability in zip(
+            persisted_fidelities,
+            persisted_stabilities,
+            fidelities,
+            stabilities,
+            strict=True,
+        )
+    ):
+        raise ValueError("persisted fidelity/stability artifacts do not match canonical raw inputs")
     fidelity_qids = tuple(row["attribution_identity"]["question_id"] for row in fidelities)
     stability_qids = tuple(row["attribution_identity"]["question_id"] for row in stabilities)
     if (
@@ -1313,6 +1380,7 @@ def aggregate_contextcite_admission_metrics(
         "support_components": [list(component) for component in components],
         "fidelity_sha256s": [row["fidelity_sha256"] for row in fidelities],
         "stability_sha256s": [row["stability_sha256"] for row in stabilities],
+        "raw_input_bindings": [dict(binding) for binding in raw_input_bindings],
         "lds": {
             "definition": "mean-per-question-spearman-lds",
             "undefined_policy": (
