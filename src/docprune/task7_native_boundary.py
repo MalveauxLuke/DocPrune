@@ -156,6 +156,21 @@ def _require_destination_parent_identity(path: Path, descriptor: int) -> None:
         raise ValueError("native-boundary destination parent was replaced")
 
 
+def _unlink_name_if_identity(
+    directory_fd: int, name: str, expected_identity: tuple[int, int]
+) -> bool:
+    """Remove a cleanup name only while it still identifies the file we created."""
+
+    try:
+        current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    if (current.st_dev, current.st_ino) != expected_identity:
+        return False
+    os.unlink(name, dir_fd=directory_fd)
+    return True
+
+
 def _publish_new_file(content: bytes, destination: Path) -> None:
     """Durably publish one new file relative to one retained parent descriptor."""
 
@@ -163,6 +178,7 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
     parent_fd = _open_directory_nofollow(target.parent)
     temporary_name: str | None = None
     temporary_fd: int | None = None
+    created_identity: tuple[int, int] | None = None
     published = False
     try:
         _require_destination_parent_identity(target.parent, parent_fd)
@@ -184,16 +200,16 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
             except FileExistsError:
                 continue
             temporary_name = candidate
+            created = os.fstat(temporary_fd)
+            created_identity = (created.st_dev, created.st_ino)
             break
-        if temporary_fd is None or temporary_name is None:
+        if temporary_fd is None or temporary_name is None or created_identity is None:
             raise FileExistsError("could not create a private native-boundary temporary")
         remaining = memoryview(content)
         while remaining:
             written = os.write(temporary_fd, remaining)
             remaining = remaining[written:]
         os.fsync(temporary_fd)
-        os.close(temporary_fd)
-        temporary_fd = None
         _require_destination_parent_identity(target.parent, parent_fd)
         _renameat2_noreplace(parent_fd, temporary_name, parent_fd, target.name)
         temporary_name = None
@@ -201,17 +217,15 @@ def _publish_new_file(content: bytes, destination: Path) -> None:
         os.fsync(parent_fd)
         _require_destination_parent_identity(target.parent, parent_fd)
     except BaseException:
-        if published:
-            try:
-                os.unlink(target.name, dir_fd=parent_fd)
-                os.fsync(parent_fd)
-            except FileNotFoundError:
-                pass
-        if temporary_name is not None:
-            try:
-                os.unlink(temporary_name, dir_fd=parent_fd)
-            except FileNotFoundError:
-                pass
+        removed = False
+        if published and created_identity is not None:
+            removed = _unlink_name_if_identity(parent_fd, target.name, created_identity)
+        if temporary_name is not None and created_identity is not None:
+            removed = (
+                _unlink_name_if_identity(parent_fd, temporary_name, created_identity) or removed
+            )
+        if removed:
+            os.fsync(parent_fd)
         raise
     finally:
         if temporary_fd is not None:

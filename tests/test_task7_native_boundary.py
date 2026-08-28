@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 from copy import deepcopy
 from pathlib import Path
@@ -484,6 +485,118 @@ def test_native_boundary_publisher_rejects_replaced_destination_parent(
     assert replaced is True
     assert not destination.exists()
     assert not (moved_parent / destination.name).exists()
+
+
+def test_native_boundary_cleanup_does_not_delete_replacement_after_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch rollback deleting unrelated bytes swapped into the published name."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination = tmp_path / "native-boundaries.json"
+    moved_publication = tmp_path / "moved-publication.json"
+    unrelated = b"unrelated replacement must survive\n"
+    original = native._require_destination_parent_identity
+    identity_checks = 0
+
+    def fail_after_name_replacement(path: Path, descriptor: int) -> None:
+        nonlocal identity_checks
+        original(path, descriptor)
+        identity_checks += 1
+        if identity_checks == 3:
+            destination.replace(moved_publication)
+            destination.write_bytes(unrelated)
+            raise ValueError("injected post-publication failure")
+
+    monkeypatch.setattr(native, "_require_destination_parent_identity", fail_after_name_replacement)
+
+    with pytest.raises(ValueError, match="injected post-publication failure"):
+        _publish(source, destination)
+
+    assert destination.read_bytes() == unrelated
+    assert moved_publication.is_file()
+
+
+def test_native_boundary_cleanup_does_not_delete_replaced_temporary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch failed-publication cleanup deleting a replacement temporary inode."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination = tmp_path / "native-boundaries.json"
+    unrelated = b"unrelated temporary replacement must survive\n"
+    observed_temporary: str | None = None
+
+    def replace_temporary_then_fail(
+        old_directory_fd: int,
+        old_name: str,
+        new_directory_fd: int,
+        new_name: str,
+    ) -> None:
+        del new_directory_fd, new_name
+        nonlocal observed_temporary
+        observed_temporary = old_name
+        os.rename(
+            old_name,
+            f"moved-{old_name}",
+            src_dir_fd=old_directory_fd,
+            dst_dir_fd=old_directory_fd,
+        )
+        replacement_fd = os.open(
+            old_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=old_directory_fd,
+        )
+        try:
+            os.write(replacement_fd, unrelated)
+        finally:
+            os.close(replacement_fd)
+        raise OSError("injected rename failure")
+
+    monkeypatch.setattr(native, "_renameat2_noreplace", replace_temporary_then_fail)
+
+    with pytest.raises(OSError, match="injected rename failure"):
+        _publish(source, destination)
+
+    assert observed_temporary is not None
+    assert (tmp_path / observed_temporary).read_bytes() == unrelated
+    assert not destination.exists()
+
+
+def test_native_boundary_failed_temporary_cleanup_fsyncs_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch a removed failed-publication temporary surviving crash recovery."""
+
+    import docprune.task7_native_boundary as native
+
+    source = _source_tree(tmp_path / "inputs")
+    destination = tmp_path / "native-boundaries.json"
+    original_fsync = native.os.fsync
+    directory_fsyncs = 0
+
+    def record_fsync(descriptor: int) -> None:
+        nonlocal directory_fsyncs
+        if stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            directory_fsyncs += 1
+        original_fsync(descriptor)
+
+    def fail_rename(*_args: object) -> None:
+        raise OSError("injected rename failure")
+
+    monkeypatch.setattr(native.os, "fsync", record_fsync)
+    monkeypatch.setattr(native, "_renameat2_noreplace", fail_rename)
+
+    with pytest.raises(OSError, match="injected rename failure"):
+        _publish(source, destination)
+
+    assert directory_fsyncs == 1
+    assert not list(tmp_path.glob(f".{destination.name}.*"))
 
 
 def test_native_boundary_publisher_authenticates_source_and_excludes_answer_outcomes(
