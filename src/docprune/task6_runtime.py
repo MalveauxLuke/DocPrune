@@ -214,6 +214,11 @@ def task6_policy_matrix(kind: str) -> tuple[Task6PolicyCell, ...]:
             for name in _RANDOM_NAMES
             for repetition in range(10, 20)
         )
+    if kind == "holdout-primary":
+        return (Task6PolicyCell(task6_policy("aggregate-score-top-m"), None),) + tuple(
+            Task6PolicyCell(task6_policy("global-uniform-random"), repetition)
+            for repetition in range(20)
+        )
     if kind == "fixed":
         cells: list[Task6PolicyCell] = []
         for suffix in _RETENTION_NAMES:
@@ -227,7 +232,9 @@ def task6_policy_matrix(kind: str) -> tuple[Task6PolicyCell, ...]:
                 for repetition in range(3)
             )
         return tuple(cells)
-    raise ValueError("Task 6 matrix kind must be native, native-extension, or fixed")
+    raise ValueError(
+        "Task 6 matrix kind must be native, native-extension, holdout-primary, or fixed"
+    )
 
 
 def build_task6_gate_manifest(
@@ -297,6 +304,83 @@ def build_task6_gate_manifest(
         "native_random_mcse_f1_limit": 0.25,
         "conditional_additional_native_repetitions": list(range(10, 20)),
         "holdout_status": "unsealed-until-development-analysis",
+        "required_result_evidence": [
+            "fixed_page_fixture_sha256",
+            "fixed_page_provenance",
+            "global_index_loaded",
+            "policy_context",
+            "policy_selection.geometry_count",
+            "policy_selection.geometry_sha256",
+            "policy_selection.prefill_cache_lengths",
+            "policy_selection.retained_mrope_position_shape",
+            "policy_selection.retained_mrope_position_sha256",
+        ],
+    }
+
+
+def build_task6_holdout_gate_manifest(
+    fixture: FixedPageFixture,
+    *,
+    fixture_path: Path,
+    fixture_sha256: str,
+    holdout_manifest: Mapping[str, object],
+    holdout_manifest_path: Path,
+    holdout_manifest_file_sha256: str,
+) -> dict[str, object]:
+    """Bind the sealed holdout selection to the minimal confirmatory policy matrix."""
+
+    _require_sha256(fixture_sha256, "fixture checksum")
+    _require_sha256(holdout_manifest_file_sha256, "holdout manifest file checksum")
+    fixture_path = Path(fixture_path)
+    holdout_manifest_path = Path(holdout_manifest_path)
+    if not fixture_path.is_absolute() or not holdout_manifest_path.is_absolute():
+        raise ValueError("holdout gate input paths must be absolute")
+    qids = [question.qid for question in fixture.questions]
+    selected_qids = holdout_manifest.get("selected_qids")
+    if holdout_manifest.get("status") != "sealed" or selected_qids != qids:
+        raise ValueError("fixed-page fixture does not exactly match the sealed holdout selection")
+    holdout_digest = holdout_manifest.get("manifest_sha256")
+    selection_digest = holdout_manifest.get("selection_sha256")
+    _require_sha256(holdout_digest, "holdout manifest digest")
+    _require_sha256(selection_digest, "holdout selection digest")
+    cells = [
+        {
+            "cell": index,
+            "policy": cell.policy.to_dict(),
+            "experiment_version": (
+                "task6-holdout-primary-v1"
+                if cell.policy.family in {"random-top-m", "coverage-top-m"}
+                else None
+            ),
+            "repetition": cell.repetition,
+        }
+        for index, cell in enumerate(task6_policy_matrix("holdout-primary"))
+    ]
+    return {
+        "schema_version": 1,
+        "status": "sealed-holdout-gate",
+        "fixture_path": str(fixture_path),
+        "fixture_sha256": fixture_sha256,
+        "fixture_version": fixture.fixture_version,
+        "fixed_page_provenance": True,
+        "global_index_loaded": False,
+        "renderer_contract": TASK6_RENDERER_CONTRACT,
+        "holdout_manifest_path": str(holdout_manifest_path),
+        "holdout_manifest_file_sha256": holdout_manifest_file_sha256,
+        "holdout_manifest_sha256": holdout_digest,
+        "holdout_selection_sha256": selection_digest,
+        "qid_shards": [{"shard": index, "qid": qid} for index, qid in enumerate(qids)],
+        "holdout_primary_cells": cells,
+        "generation_counts": {
+            "holdout_primary_per_qid": len(cells),
+            "holdout_primary_total": len(cells) * len(qids),
+        },
+        "canonical_gpu_family": "L40S",
+        "equivalence_margin_f1": holdout_manifest.get("power", {}).get(
+            "equivalence_margin_f1"
+        )
+        if isinstance(holdout_manifest.get("power"), Mapping)
+        else None,
         "required_result_evidence": [
             "fixed_page_fixture_sha256",
             "fixed_page_provenance",
@@ -1051,9 +1135,12 @@ def publish_fixed_page_fixture(fixture: FixedPageFixture, destination: Path) -> 
 
 
 def publish_task6_gate_manifest(manifest: Mapping[str, object], destination: Path) -> str:
-    """Publish a closed Task 6 developmental gate atomically without replacement."""
+    """Publish a closed Task 6 developmental or holdout gate without replacement."""
 
-    if manifest.get("schema_version") != 1 or manifest.get("status") != ("sealed-development-gate"):
+    if manifest.get("schema_version") != 1 or manifest.get("status") not in {
+        "sealed-development-gate",
+        "sealed-holdout-gate",
+    }:
         raise ValueError("Task 6 gate manifest schema/status is invalid")
     if (
         manifest.get("fixed_page_provenance") is not True
@@ -1161,6 +1248,7 @@ __all__ = [
     "Task6PolicyCell",
     "Task6ResultIdentity",
     "build_task6_gate_manifest",
+    "build_task6_holdout_gate_manifest",
     "build_fixed_page_fixture",
     "derive_post_qtp_geometry",
     "load_fixed_page_fixture",

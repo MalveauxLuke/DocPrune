@@ -1089,6 +1089,70 @@ def plan_equivalence_power(
     return payload
 
 
+def approve_maximum_available_power(power: Mapping[str, object]) -> dict[str, object]:
+    """Prospectively admit the complete eligible pool without erasing the failed power gate."""
+
+    _validate_signed_record(power, "power_sha256", "power")
+    if power.get("status") != "underpowered_full_pool":
+        raise ValueError("maximum-available approval requires an underpowered full-pool plan")
+    if power.get("launch_admissible") is not False:
+        raise ValueError("original underpowered power plan must fail launch admission")
+    eligible = power.get("eligible_pool_size")
+    selected = power.get("selected_n")
+    required = power.get("required_n")
+    if (
+        type(eligible) is not int
+        or type(selected) is not int
+        or type(required) is not int
+        or selected != eligible
+        or not 1 <= selected < required
+    ):
+        raise ValueError("original power plan is not a maximum-available shortfall")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "status": "approved-maximum-available",
+        "method": (
+            "prospective maximum-available amendment preserving the original signed "
+            "normal-TOST power plan"
+        ),
+        "planned_required_n": required,
+        "required_n": selected,
+        "selected_n": selected,
+        "eligible_pool_size": eligible,
+        "achieved_power": power.get("achieved_power"),
+        "target_power": power.get("target_power"),
+        "equivalence_margin_f1": power.get("equivalence_margin_f1"),
+        "launch_admissible": True,
+        "claim_rule": (
+            "passing the frozen TOST establishes equivalence; failing it is unresolved"
+        ),
+        "original_power": dict(power),
+    }
+    payload["power_sha256"] = _canonical_json_sha256(payload)
+    return payload
+
+
+def _validate_launch_power(power: Mapping[str, object]) -> int:
+    """Authenticate either the original powered plan or its prospective full-pool amendment."""
+
+    _validate_signed_record(power, "power_sha256", "power")
+    status = power.get("status")
+    if status == "passed" and power.get("launch_admissible") is True:
+        required_n = power.get("required_n")
+        if type(required_n) is not int or required_n < 1:
+            raise ValueError("power record required N is invalid")
+        return required_n
+    if status == "approved-maximum-available" and power.get("launch_admissible") is True:
+        original = power.get("original_power")
+        if not isinstance(original, Mapping):
+            raise ValueError("maximum-available power amendment lacks its original plan")
+        expected = approve_maximum_available_power(original)
+        if dict(power) != expected:
+            raise ValueError("maximum-available power amendment semantic mismatch")
+        return int(expected["required_n"])
+    raise ValueError("power record is not launch-admissible")
+
+
 def development_qid_projection(
     *,
     diagnostic_label: str,
@@ -1283,9 +1347,7 @@ def seal_holdout(
     destination = Path(destination).absolute()
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f"holdout destination already exists: {destination}")
-    if power.get("status") != "passed" or power.get("launch_admissible") is not True:
-        raise ValueError("power record is not launch-admissible")
-    _validate_signed_record(power, "power_sha256", "power")
+    required_n = _validate_launch_power(power)
     _validate_signed_record(calibration, "calibration_sha256", "calibration")
     registry_path = Path(development_registry_path)
     if not registry_path.is_absolute():
@@ -1307,8 +1369,7 @@ def seal_holdout(
         raise ValueError("development registry union is invalid")
     eligible = build_eligibility_records(eligibility_records, development_qids=development_qids)
     _authenticate_eligibility_records(eligible)
-    required_n = power.get("required_n")
-    if type(required_n) is not int or required_n < 1 or len(eligible) < required_n:
+    if len(eligible) < required_n:
         raise ValueError("eligible cohort does not satisfy the sealed required N")
     order = holdout_order([str(record["qid"]) for record in eligible])
     record_by_qid = {str(record["qid"]): record for record in eligible}
@@ -1496,10 +1557,8 @@ def validate_holdout_for_launch(
         raise ValueError("holdout power/calibration records are missing")
     if not isinstance(registry, Mapping):
         raise ValueError("holdout development registry is missing")
-    _validate_signed_record(power, "power_sha256", "power")
+    required_n = _validate_launch_power(power)
     _validate_signed_record(calibration, "calibration_sha256", "calibration")
-    if power.get("status") != "passed" or power.get("launch_admissible") is not True:
-        raise ValueError("holdout power record is not launch-admissible")
     if calibration.get("status") != "passed":
         raise ValueError("holdout calibration is not admitted")
     registry_path = Path(required_registry_path)
@@ -1559,7 +1618,7 @@ def validate_holdout_for_launch(
         or not isinstance(eligible_records, list)
         or not isinstance(selected_records, list)
         or value.get("required_n") != len(selected_qids)
-        or power.get("required_n") != len(selected_qids)
+        or required_n != len(selected_qids)
     ):
         raise ValueError("holdout selected prefix does not equal required N")
     record_qids = [record.get("qid") for record in eligible_records if isinstance(record, Mapping)]

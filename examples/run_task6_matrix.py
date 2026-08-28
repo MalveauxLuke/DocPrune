@@ -306,6 +306,7 @@ def main() -> int:
             "smoke",
             "native",
             "native-extension",
+            "holdout-primary",
             "fixed",
             "visual-state-fixed-grid",
             "visual-state-native-boundary",
@@ -362,8 +363,11 @@ def main() -> int:
         raise ValueError("Task 6 execution runtime must be the exact clean committed checkout")
 
     gate = _load_json(args.gate_manifest, args.gate_manifest_sha256, "gate manifest")
+    expected_gate_status = (
+        "sealed-holdout-gate" if args.kind == "holdout-primary" else "sealed-development-gate"
+    )
     if (
-        gate.get("status") != "sealed-development-gate"
+        gate.get("status") != expected_gate_status
         or gate.get("fixture_path") != str(args.fixture)
         or gate.get("fixture_sha256") != args.fixture_sha256
         or gate.get("fixed_page_provenance") is not True
