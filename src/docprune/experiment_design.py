@@ -546,6 +546,228 @@ def nested_f1_inference(
     }
 
 
+_VISUAL_STATE_BOUNDARIES = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
+
+
+def visual_state_removal_inference(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    components: Sequence[Sequence[str]],
+    draws: int = 100_000,
+    seed: int = 20_260_827,
+    dependence_margin_f1: float = 1.0,
+) -> dict[str, object]:
+    """Simultaneous lower bounds for the fixed all-visual-state removal curve."""
+
+    if type(draws) is not int or draws < 1:
+        raise ValueError("draws must be a positive integer")
+    if type(seed) is not int:
+        raise ValueError("seed must be an integer")
+    margin = float(dependence_margin_f1)
+    if not math.isfinite(margin) or margin <= 0:
+        raise ValueError("dependence_margin_f1 must be positive and finite")
+
+    differences: dict[str, dict[str, float]] = {}
+    for row in rows:
+        if set(row) != {"qid", "reference_f1", "all_drop_f1"}:
+            raise ValueError("visual-state removal rows have an invalid schema")
+        qid = row["qid"]
+        all_drop = row["all_drop_f1"]
+        if not isinstance(qid, str) or not qid or qid in differences:
+            raise ValueError("visual-state removal QIDs must be unique nonempty strings")
+        if not isinstance(all_drop, Mapping) or tuple(all_drop) != _VISUAL_STATE_BOUNDARIES:
+            raise ValueError("all-drop F1 must contain the exact ordered fixed boundaries")
+        try:
+            reference = float(row["reference_f1"])
+            values = {boundary: float(all_drop[boundary]) for boundary in _VISUAL_STATE_BOUNDARIES}
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"qid {qid} has nonnumeric F1") from error
+        if not math.isfinite(reference) or any(
+            not math.isfinite(value) for value in values.values()
+        ):
+            raise ValueError(f"qid {qid} has nonfinite F1")
+        differences[qid] = {
+            boundary: values[boundary] - reference for boundary in _VISUAL_STATE_BOUNDARIES
+        }
+    if not differences:
+        raise ValueError("visual-state removal rows must not be empty")
+
+    normalized_components = tuple(tuple(component) for component in components)
+    if len(normalized_components) < 2:
+        raise ValueError("cluster inference requires at least two support components")
+    flattened = [qid for component in normalized_components for qid in component]
+    if (
+        any(not component for component in normalized_components)
+        or len(flattened) != len(set(flattened))
+        or set(flattened) != set(differences)
+    ):
+        raise ValueError("support components must partition visual-state QIDs exactly once")
+
+    point_estimates = {
+        boundary: sum(row[boundary] for row in differences.values()) / len(differences)
+        for boundary in _VISUAL_STATE_BOUNDARIES
+    }
+    generator = random.Random(seed)
+    max_statistics: list[float] = []
+    for _ in range(draws):
+        selected_components = [
+            normalized_components[generator.randrange(len(normalized_components))]
+            for _ in range(len(normalized_components))
+        ]
+        selected_qids = [qid for component in selected_components for qid in component]
+        bootstrap_estimates = {
+            boundary: sum(differences[qid][boundary] for qid in selected_qids) / len(selected_qids)
+            for boundary in _VISUAL_STATE_BOUNDARIES
+        }
+        max_statistics.append(
+            max(
+                bootstrap_estimates[boundary] - point_estimates[boundary]
+                for boundary in _VISUAL_STATE_BOUNDARIES
+            )
+        )
+    critical = _quantile(max_statistics, 0.95)
+    lower_bounds = {
+        boundary: point_estimates[boundary] - critical for boundary in _VISUAL_STATE_BOUNDARIES
+    }
+    persistent_boundary = next(
+        (
+            boundary
+            for index, boundary in enumerate(_VISUAL_STATE_BOUNDARIES)
+            if all(lower_bounds[later] > -margin for later in _VISUAL_STATE_BOUNDARIES[index:])
+        ),
+        None,
+    )
+    nonmonotonic = [
+        {"earlier": earlier, "later": later}
+        for earlier, later in zip(_VISUAL_STATE_BOUNDARIES, _VISUAL_STATE_BOUNDARIES[1:])
+        if point_estimates[later] < point_estimates[earlier]
+    ]
+    return {
+        "estimand": "mean_qid(all_drop_f1 - btp_qtp_no_ctp_f1)",
+        "method": ("one-sided 95% nonstudentized basic max-statistic support-component bootstrap"),
+        "confidence_level": 0.95,
+        "boundaries": list(_VISUAL_STATE_BOUNDARIES),
+        "point_estimates": point_estimates,
+        "simultaneous_lower_bounds": lower_bounds,
+        "max_statistic_critical": critical,
+        "dependence_margin_f1": margin,
+        "persistent_boundary": persistent_boundary,
+        "nonmonotonic_adjacent_pairs": nonmonotonic,
+        "draw_count": draws,
+        "seed": seed,
+    }
+
+
+def visual_state_opportunity_strata(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Build the prespecified descriptive evidence-opportunity strata."""
+
+    keys = {
+        "qid",
+        "supporting_document_ids",
+        "retrieved_document_ids",
+        "reference",
+        "input_all_drop",
+    }
+    reference_keys = {"name", "result_sha256", "em_correct", "f1"}
+    input_keys = {
+        "name",
+        "boundary",
+        "mode",
+        "retained_visual_ids",
+        "result_sha256",
+        "em_correct",
+        "best_reference_loglikelihood_drop_per_token",
+        "likelihood_target",
+        "likelihood_target_sha256",
+    }
+    full: list[str] = []
+    support: list[str] = []
+    em_correct: list[str] = []
+    f1_positive: list[str] = []
+    visually_sensitive: list[str] = []
+    observed: set[str] = set()
+    for row in rows:
+        if set(row) != keys:
+            raise ValueError("visual-state opportunity rows have an invalid schema")
+        qid = row["qid"]
+        if not isinstance(qid, str) or not qid or qid in observed:
+            raise ValueError("visual-state opportunity QIDs must be unique nonempty strings")
+        observed.add(qid)
+        supports = row["supporting_document_ids"]
+        retrieved = row["retrieved_document_ids"]
+        if (
+            not isinstance(supports, Sequence)
+            or isinstance(supports, str | bytes)
+            or not supports
+            or any(not isinstance(doc_id, str) or not doc_id for doc_id in supports)
+            or len(set(supports)) != len(supports)
+        ):
+            raise ValueError(f"qid {qid} has invalid support-document IDs")
+        if (
+            not isinstance(retrieved, Sequence)
+            or isinstance(retrieved, str | bytes)
+            or len(retrieved) != 4
+            or any(not isinstance(doc_id, str) or not doc_id for doc_id in retrieved)
+        ):
+            raise ValueError(f"qid {qid} must have four cached retrieved document IDs")
+        reference = _require_mapping_keys(
+            row["reference"], reference_keys, label="visual-state reference"
+        )
+        input_all_drop = _require_mapping_keys(
+            row["input_all_drop"], input_keys, label="B_input all-drop result"
+        )
+        if reference["name"] != "btp-qtp-no-ctp":
+            raise ValueError(f"qid {qid} has the wrong visual-state reference")
+        if (
+            input_all_drop["name"] != "all-visual-drop-B_input"
+            or input_all_drop["boundary"] != "B_input"
+            or input_all_drop["mode"] != "physical_delete"
+            or input_all_drop["retained_visual_ids"] != []
+        ):
+            raise ValueError(f"qid {qid} has the wrong B_input all-drop identity")
+        _require_sha256(reference["result_sha256"], label="visual-state reference result")
+        _require_sha256(input_all_drop["result_sha256"], label="B_input all-drop result")
+        if input_all_drop["likelihood_target"] != "best-reference-full-gold-sequence":
+            raise ValueError(f"qid {qid} has the wrong likelihood target")
+        _require_sha256(input_all_drop["likelihood_target_sha256"], label="gold likelihood target")
+        if (
+            type(reference["em_correct"]) is not bool
+            or type(input_all_drop["em_correct"]) is not bool
+        ):
+            raise ValueError(f"qid {qid} has a non-boolean opportunity indicator")
+        try:
+            reference_f1 = float(reference["f1"])
+            gold_drop = float(input_all_drop["best_reference_loglikelihood_drop_per_token"])
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"qid {qid} has a nonnumeric opportunity value") from error
+        if not 0.0 <= reference_f1 <= 100.0 or not math.isfinite(gold_drop):
+            raise ValueError(f"qid {qid} has a nonfinite opportunity value")
+        full.append(qid)
+        if set(supports).issubset(set(retrieved)):
+            support.append(qid)
+        if reference["em_correct"]:
+            em_correct.append(qid)
+        if reference_f1 > 0:
+            f1_positive.append(qid)
+        if (reference["em_correct"] and not input_all_drop["em_correct"]) or gold_drop >= 0.1:
+            visually_sensitive.append(qid)
+    if not full:
+        raise ValueError("visual-state opportunity rows must not be empty")
+    return {
+        "full": full,
+        "support_document_retrieved": support,
+        "no_ctp_em_correct": em_correct,
+        "no_ctp_f1_positive": f1_positive,
+        "input_visually_sensitive": visually_sensitive,
+        "input_visual_sensitivity_rule": (
+            "(reference_em_correct and not input_all_drop_em_correct) or "
+            "best_reference_loglikelihood_drop_per_token >= 0.1"
+        ),
+    }
+
+
 def classify_f1_result(
     *,
     tost_90_interval: Sequence[float],

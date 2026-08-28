@@ -384,6 +384,194 @@ def test_nested_bootstrap_resamples_masks_then_support_components_deterministica
     )
 
 
+def test_visual_state_removal_uses_simultaneous_cluster_bounds_and_persistence() -> None:
+    """Catch pointwise bounds or declaring persistence before a later boundary fails."""
+
+    boundaries = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
+    first_differences = (-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0)
+    second_differences = (-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0)
+    rows = [
+        {
+            "qid": "q1",
+            "reference_f1": 10.0,
+            "all_drop_f1": {
+                boundary: 10.0 + difference
+                for boundary, difference in zip(boundaries, first_differences, strict=True)
+            },
+        },
+        {
+            "qid": "q2",
+            "reference_f1": 10.0,
+            "all_drop_f1": {
+                boundary: 10.0 + difference
+                for boundary, difference in zip(boundaries, second_differences, strict=True)
+            },
+        },
+    ]
+
+    result = experiment_design.visual_state_removal_inference(
+        rows,
+        components=(("q1",), ("q2",)),
+        draws=4,
+        seed=3,
+    )
+
+    assert result["estimand"] == "mean_qid(all_drop_f1 - btp_qtp_no_ctp_f1)"
+    assert result["method"] == (
+        "one-sided 95% nonstudentized basic max-statistic support-component bootstrap"
+    )
+    assert result["confidence_level"] == 0.95
+    assert result["boundaries"] == list(boundaries)
+    assert result["point_estimates"] == pytest.approx(
+        dict(zip(boundaries, (-4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0), strict=True))
+    )
+    assert result["max_statistic_critical"] == pytest.approx(1.0)
+    assert result["simultaneous_lower_bounds"] == pytest.approx(
+        dict(zip(boundaries, first_differences, strict=True))
+    )
+    assert result["dependence_margin_f1"] == 1.0
+    assert result["persistent_boundary"] == "B_23"
+    assert result["nonmonotonic_adjacent_pairs"] == []
+    assert result["draw_count"] == 4
+    assert result["seed"] == 3
+
+
+def test_visual_state_persistence_rejects_earlier_pass_when_a_later_boundary_fails() -> None:
+    """Catch declaring a boundary persistent without checking every later tested point."""
+
+    boundaries = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
+    differences = (-4.0, -3.0, -2.0, 0.0, -0.5, -2.0, 0.0)
+    all_drop = {
+        boundary: 10.0 + difference
+        for boundary, difference in zip(boundaries, differences, strict=True)
+    }
+
+    result = experiment_design.visual_state_removal_inference(
+        [
+            {"qid": "q1", "reference_f1": 10.0, "all_drop_f1": all_drop},
+            {"qid": "q2", "reference_f1": 10.0, "all_drop_f1": all_drop},
+        ],
+        components=(("q1",), ("q2",)),
+        draws=2,
+        seed=1,
+    )
+
+    assert result["persistent_boundary"] == "B_26"
+    assert result["nonmonotonic_adjacent_pairs"] == [
+        {"earlier": "B_13", "later": "B_20"},
+        {"earlier": "B_20", "later": "B_23"},
+    ]
+
+
+def test_visual_state_basic_lower_bound_uses_bootstrap_minus_point_maximum() -> None:
+    """Catch reversing the centered basic-bootstrap statistic on asymmetric clusters."""
+
+    boundaries = ("B_input", "B_0", "B_6", "B_13", "B_20", "B_23", "B_26")
+    differences = (-3.0, -3.0, -3.0, 1.0)
+    rows = [
+        {
+            "qid": f"q{index}",
+            "reference_f1": 10.0,
+            "all_drop_f1": {boundary: 10.0 + difference for boundary in boundaries},
+        }
+        for index, difference in enumerate(differences)
+    ]
+
+    result = experiment_design.visual_state_removal_inference(
+        rows,
+        components=(("q0",), ("q1",), ("q2",), ("q3",)),
+        draws=4,
+        seed=0,
+    )
+
+    assert result["point_estimates"] == pytest.approx({boundary: -2.0 for boundary in boundaries})
+    assert result["max_statistic_critical"] == pytest.approx(1.85)
+    assert result["simultaneous_lower_bounds"] == pytest.approx(
+        {boundary: -3.85 for boundary in boundaries}
+    )
+
+
+def test_visual_state_opportunity_strata_require_correct_to_incorrect_or_gold_loss() -> None:
+    """Catch treating a change between two wrong answers as visual sensitivity."""
+
+    def row(
+        qid: str,
+        *,
+        supports: list[str],
+        retrieved: list[str],
+        reference_em: bool,
+        reference_f1: float,
+        input_em: bool,
+        gold_drop: float,
+    ) -> dict[str, object]:
+        return {
+            "qid": qid,
+            "supporting_document_ids": supports,
+            "retrieved_document_ids": retrieved,
+            "reference": {
+                "name": "btp-qtp-no-ctp",
+                "result_sha256": "a" * 64,
+                "em_correct": reference_em,
+                "f1": reference_f1,
+            },
+            "input_all_drop": {
+                "name": "all-visual-drop-B_input",
+                "boundary": "B_input",
+                "mode": "physical_delete",
+                "retained_visual_ids": [],
+                "result_sha256": "b" * 64,
+                "em_correct": input_em,
+                "best_reference_loglikelihood_drop_per_token": gold_drop,
+                "likelihood_target": "best-reference-full-gold-sequence",
+                "likelihood_target_sha256": "c" * 64,
+            },
+        }
+
+    result = experiment_design.visual_state_opportunity_strata(
+        [
+            row(
+                "correct-to-wrong",
+                supports=["doc-a"],
+                retrieved=["doc-z", "doc-a", "doc-b", "doc-c"],
+                reference_em=True,
+                reference_f1=100.0,
+                input_em=False,
+                gold_drop=0.0,
+            ),
+            row(
+                "wrong-to-other-wrong",
+                supports=["doc-missing"],
+                retrieved=["doc-z", "doc-a", "doc-b", "doc-c"],
+                reference_em=False,
+                reference_f1=0.0,
+                input_em=False,
+                gold_drop=0.09,
+            ),
+            row(
+                "gold-loss",
+                supports=["doc-b", "doc-c"],
+                retrieved=["doc-z", "doc-c", "doc-b", "doc-a"],
+                reference_em=False,
+                reference_f1=25.0,
+                input_em=False,
+                gold_drop=0.1,
+            ),
+        ]
+    )
+
+    assert result == {
+        "full": ["correct-to-wrong", "wrong-to-other-wrong", "gold-loss"],
+        "support_document_retrieved": ["correct-to-wrong", "gold-loss"],
+        "no_ctp_em_correct": ["correct-to-wrong"],
+        "no_ctp_f1_positive": ["correct-to-wrong", "gold-loss"],
+        "input_visually_sensitive": ["correct-to-wrong", "gold-loss"],
+        "input_visual_sensitivity_rule": (
+            "(reference_em_correct and not input_all_drop_em_correct) or "
+            "best_reference_loglikelihood_drop_per_token >= 0.1"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     ("tost_90", "superiority_95", "label", "flags"),
     [
