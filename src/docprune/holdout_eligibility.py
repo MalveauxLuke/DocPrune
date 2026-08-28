@@ -7,7 +7,7 @@ import json
 import os
 import stat
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 
 from docprune.experiment_design import (
@@ -17,6 +17,7 @@ from docprune.experiment_design import (
 )
 
 _SINGLE_HOP_TYPES = {"TextQ", "TableQ", "ImageQ", "ImageListQ"}
+_DEVELOPMENT_PROJECTION_POLICY = "explicit QID fields only; outcome fields forbidden"
 
 
 def _read_regular(path: Path, expected_sha256: str, label: str) -> bytes:
@@ -73,6 +74,33 @@ def _sha256_regular(path: Path, label: str) -> str:
     return digest.hexdigest()
 
 
+def _development_qids(
+    path: Path,
+    expected_file_sha256: str,
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    registry = _json_object(
+        _read_regular(path, expected_file_sha256, "development registry"),
+        "development registry",
+    )
+    observed_registry_sha256 = registry.get("registry_sha256")
+    unsigned = dict(registry)
+    unsigned.pop("registry_sha256", None)
+    qids = registry.get("union_qids")
+    if (
+        registry.get("schema_version") != 1
+        or registry.get("status") != "complete"
+        or registry.get("projection_policy") != _DEVELOPMENT_PROJECTION_POLICY
+        or not isinstance(qids, list)
+        or not qids
+        or any(not isinstance(qid, str) or not qid for qid in qids)
+        or len(qids) != len(set(qids))
+        or registry.get("union_count") != len(qids)
+        or observed_registry_sha256 != _canonical_json_sha256(unsigned)
+    ):
+        raise ValueError("development registry identity is invalid")
+    return registry, tuple(qids)
+
+
 def project_cached_holdout_eligibility(
     *,
     questions_path: Path,
@@ -85,8 +113,9 @@ def project_cached_holdout_eligibility(
     index_manifest_sha256: str,
     completion_ledger_path: Path,
     completion_ledger_sha256: str,
+    development_registry_path: Path,
+    development_registry_file_sha256: str,
     pdf_dir: Path,
-    development_qids: Sequence[str],
 ) -> dict[str, object]:
     """Use only cached page identities, never result outcomes or retrieval scores."""
 
@@ -104,6 +133,10 @@ def project_cached_holdout_eligibility(
         completion_ledger_path,
         completion_ledger_sha256,
         "completion ledger",
+    )
+    development_registry, development_qids = _development_qids(
+        development_registry_path,
+        development_registry_file_sha256,
     )
     if (
         quality.get("schema_version") != 1
@@ -250,6 +283,7 @@ def project_cached_holdout_eligibility(
         )
     eligible = build_eligibility_records(source_rows, development_qids=development_qids)
     _authenticate_eligibility_records(eligible)
+    development_set = set(development_qids)
     payload: dict[str, object] = {
         "schema_version": 1,
         "status": "outcome-blind-cached-page-eligibility",
@@ -271,7 +305,8 @@ def project_cached_holdout_eligibility(
         ],
         "global_index_loaded": False,
         "retrieval_run": False,
-        "development_qids_excluded": len(set(development_qids)),
+        "development_qids_registered": len(development_set),
+        "development_qids_excluded": sum(qid in development_set for qid in quality_qids),
         "eligible_count": len(eligible),
         "source_files": {
             "questions": {"path": str(questions_path), "sha256": questions_sha256},
@@ -290,6 +325,11 @@ def project_cached_holdout_eligibility(
             "completion_ledger": {
                 "path": str(completion_ledger_path),
                 "sha256": completion_ledger_sha256,
+            },
+            "development_registry": {
+                "path": str(development_registry_path),
+                "file_sha256": development_registry_file_sha256,
+                "registry_sha256": development_registry["registry_sha256"],
             },
         },
         "eligible_records": list(eligible),

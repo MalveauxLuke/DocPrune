@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from docprune.experiment_design import _canonical_json_sha256
 from docprune.holdout_eligibility import (
     project_cached_holdout_eligibility,
     publish_cached_holdout_eligibility,
@@ -110,6 +111,16 @@ def _write_fixture(tmp_path: Path) -> dict[str, object]:
         )
         + "\n"
     )
+    registry = tmp_path / "development-registry.json"
+    registry_payload = {
+        "schema_version": 1,
+        "status": "complete",
+        "projection_policy": "explicit QID fields only; outcome fields forbidden",
+        "union_qids": ["development-qid"],
+        "union_count": 1,
+    }
+    registry_payload["registry_sha256"] = _canonical_json_sha256(registry_payload)
+    registry.write_text(json.dumps(registry_payload) + "\n")
     return {
         "questions_path": questions,
         "questions_sha256": _sha(questions),
@@ -121,6 +132,8 @@ def _write_fixture(tmp_path: Path) -> dict[str, object]:
         "index_manifest_sha256": _sha(index),
         "completion_ledger_path": completion,
         "completion_ledger_sha256": _sha(completion),
+        "development_registry_path": registry,
+        "development_registry_file_sha256": _sha(registry),
         "pdf_dir": pdf_dir,
     }
 
@@ -129,14 +142,12 @@ def test_projection_uses_cached_pages_without_outcomes_or_retrieval(tmp_path: Pa
     """Catch selecting on QA outcomes, retrieval scores, or a fresh page search."""
 
     inputs = _write_fixture(tmp_path)
-    projection = project_cached_holdout_eligibility(
-        **inputs,
-        development_qids=("development-qid",),
-    )
+    projection = project_cached_holdout_eligibility(**inputs)
 
     assert projection["status"] == "outcome-blind-cached-page-eligibility"
     assert projection["global_index_loaded"] is False
     assert projection["retrieval_run"] is False
+    assert projection["development_qids_registered"] == 1
     assert projection["development_qids_excluded"] == 1
     assert projection["eligible_count"] == 1
     record = projection["eligible_records"][0]
@@ -160,6 +171,19 @@ def test_projection_uses_cached_pages_without_outcomes_or_retrieval(tmp_path: Pa
     assert len(projection["projection_sha256"]) == 64
 
 
+def test_projection_rejects_modified_development_registry(tmp_path: Path) -> None:
+    """Catch changing the diagnostic exclusion union after its file identity was fixed."""
+
+    inputs = _write_fixture(tmp_path)
+    registry = Path(inputs["development_registry_path"])
+    value = json.loads(registry.read_text())
+    value["union_qids"] = ["different-qid"]
+    registry.write_text(json.dumps(value) + "\n")
+
+    with pytest.raises(ValueError, match="development registry"):
+        project_cached_holdout_eligibility(**inputs)
+
+
 def test_projection_rejects_non_docprune_or_unsealed_cached_results(tmp_path: Path) -> None:
     """Catch projecting all-kept pages or results not bound by the quality manifest."""
 
@@ -170,20 +194,14 @@ def test_projection_rejects_non_docprune_or_unsealed_cached_results(tmp_path: Pa
     quality.write_text(json.dumps(value) + "\n")
     inputs["quality_manifest_sha256"] = _sha(quality)
     with pytest.raises(ValueError, match="DocPrune top-4"):
-        project_cached_holdout_eligibility(
-            **inputs,
-            development_qids=("development-qid",),
-        )
+        project_cached_holdout_eligibility(**inputs)
 
 
 def test_projection_publication_is_atomic_no_replace(tmp_path: Path) -> None:
     """Catch replacing the outcome-blind eligible-pool projection after publication."""
 
     inputs = _write_fixture(tmp_path / "inputs")
-    projection = project_cached_holdout_eligibility(
-        **inputs,
-        development_qids=("development-qid",),
-    )
+    projection = project_cached_holdout_eligibility(**inputs)
     output = tmp_path / "eligible.json"
 
     digest = publish_cached_holdout_eligibility(projection, output)
@@ -196,7 +214,4 @@ def test_projection_publication_is_atomic_no_replace(tmp_path: Path) -> None:
     inputs = _write_fixture(tmp_path / "second")
     inputs["cached_results_sha256"] = "f" * 64
     with pytest.raises(ValueError, match="cached result"):
-        project_cached_holdout_eligibility(
-            **inputs,
-            development_qids=("development-qid",),
-        )
+        project_cached_holdout_eligibility(**inputs)
