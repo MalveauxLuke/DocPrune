@@ -7,7 +7,11 @@ import torch
 from PIL import Image
 
 from docprune import answerers
-from docprune.answerers import AllKeptQwenAnswerer, DocPruneQwenAnswerer
+from docprune.answerers import (
+    AllKeptQwenAnswerer,
+    DocPruneQwenAnswerer,
+    derive_btp_qtp_geometry_without_qwen_model,
+)
 from docprune.config import PagePruningConfig
 from docprune.ctp import ComprehensionController
 from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures
@@ -357,6 +361,71 @@ def test_docprune_answerer_derives_random_policy_geometry_after_exact_qtp_mask(
     ] == [(0, 0, 0, 2, 2), (0, 1, 1, 2, 2)]
     assert context.geometry_count == 2
     assert context.geometry_sha256 == hashlib.sha256(b"[[0,0,0,2,2],[0,1,1,2,2]]").hexdigest()
+
+
+def test_geometry_capture_reuses_exact_answerer_preprocessing_without_qwen_model(
+    monkeypatch,
+) -> None:
+    prepared = PreparedQwenPage(
+        raster=torch.zeros((1, 3, 56, 56), dtype=torch.uint8),
+        pixel_values=torch.zeros((16, 24)),
+        image_grid_thw=torch.tensor([[1, 4, 4]]),
+        patch_size=14,
+        temporal_patch_size=2,
+        merge_size=2,
+        placeholder_count=4,
+        placeholder_raster_indices=torch.arange(4),
+    )
+    masks = VisionPruningMasks(
+        torch.tensor([True, True, False, True]),
+        torch.tensor([True, False, True, True]),
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(answerers, "prepare_qwen_page", lambda processor, image: prepared)
+    monkeypatch.setattr(
+        answerers,
+        "prepared_raster_image",
+        lambda page: Image.new("RGB", (56, 56)),
+    )
+    monkeypatch.setattr(
+        answerers,
+        "_prepare_batch",
+        lambda processor, images, question: {
+            "input_ids": torch.tensor([[10, 100, 100, 100, 100, 11]]),
+            "attention_mask": torch.ones((1, 6), dtype=torch.long),
+            "pixel_values": prepared.pixel_values,
+            "image_grid_thw": prepared.image_grid_thw,
+        },
+    )
+    monkeypatch.setattr(answerers, "_validate_prepared_batch", lambda *args: None)
+
+    def fake_masks(*args, **kwargs):
+        calls.append("masks")
+        return masks
+
+    monkeypatch.setattr(answerers, "_prepare_pruning_masks_from_context", fake_masks)
+
+    capture = derive_btp_qtp_geometry_without_qwen_model(
+        RecordingProcessor(),
+        [Image.new("RGB", (56, 56))],
+        "what?",
+        retrieval_context(),
+        page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+    )
+
+    assert calls == ["masks"]
+    assert capture.original_visual_tokens == 4
+    assert capture.post_btp_visual_tokens == 3
+    assert capture.post_qtp_visual_tokens == 2
+    assert capture.image_grid_thw == ((1, 4, 4),)
+    assert [
+        (token.page_index, token.row, token.column, token.height, token.width)
+        for token in capture.geometry
+    ] == [(0, 0, 0, 2, 2), (0, 1, 1, 2, 2)]
+    assert capture.geometry_sha256 == hashlib.sha256(b"[[0,0,0,2,2],[0,1,1,2,2]]").hexdigest()
+    assert len(capture.background_keep_sha256) == 64
+    assert len(capture.question_keep_sha256) == 64
+    assert len(capture.combined_keep_sha256) == 64
 
 
 def test_docprune_answerer_requires_retrieval_context() -> None:

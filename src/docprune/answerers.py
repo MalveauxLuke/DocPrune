@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ import torch
 
 from docprune.benchmark_config import MAX_NEW_TOKENS, SHORT_ANSWER_TEMPLATE
 from docprune.config import DocPruneConfig, PagePruningConfig, ReconstructionDefaults
+from docprune.ctp_controls import VisualTokenGeometry
 from docprune.ctp_policy import CTPPolicy, PolicySelectionContext
 from docprune.m3docrag import AnswerOutput, RetrievalOutput
 from docprune.pipeline import prepare_qa_pruning_masks
@@ -185,6 +187,125 @@ def _resolved_eos_token_ids(model: object) -> tuple[int, ...]:
 def _all_kept_trace(grid: torch.Tensor) -> PruningTrace:
     count = _merged_count(grid)
     return PruningTrace(count, count, count, count, None)
+
+
+def _mask_sha256(value: object) -> str:
+    mask = torch.as_tensor(value, dtype=torch.bool)
+    if mask.ndim != 1:
+        raise ValueError("vision pruning masks must be one-dimensional")
+    return hashlib.sha256(bytes(int(item) for item in mask.tolist())).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class BTPQTPGeometryCapture:
+    """Exact post-BTP+QTP geometry derived without loading Qwen model weights."""
+
+    geometry: tuple[VisualTokenGeometry, ...]
+    geometry_count: int
+    geometry_sha256: str
+    image_grid_thw: tuple[tuple[int, int, int], ...]
+    original_visual_tokens: int
+    post_btp_visual_tokens: int
+    post_qtp_visual_tokens: int
+    background_keep_sha256: str
+    question_keep_sha256: str
+    combined_keep_sha256: str
+
+
+def _prepare_pruning_masks_from_context(
+    images: Sequence[object],
+    prepared: Sequence[PreparedQwenPage],
+    batch: Mapping[str, object],
+    retrieval_output: RetrievalOutput,
+    *,
+    page_config: PagePruningConfig,
+    reconstruction: ReconstructionDefaults,
+) -> VisionPruningMasks:
+    grid = _grid(batch)
+    if len(retrieval_output.pages) != len(images):
+        raise ValueError("retrieval_output page count must align with images")
+    if len(retrieval_output.page_features) != len(images):
+        raise ValueError("retrieval_output page features must align with images")
+    documents = []
+    rasters = []
+    source_hws = []
+    for page, feature in zip(retrieval_output.pages, retrieval_output.page_features, strict=True):
+        if (page.doc_id, page.page_index) != (feature.doc_id, feature.page_index):
+            raise ValueError("retrieval_output page features do not align with pages")
+        if tuple(feature.source_hw) != (32, 32):
+            raise ValueError("retrieval_output source grid must be (32, 32)")
+        document = torch.as_tensor(feature.visual_embeddings)
+        raster = torch.as_tensor(feature.raster_indices, dtype=torch.long)
+        if document.ndim != 2 or document.shape[1] != 128:
+            raise ValueError("retrieval_output visual embeddings must have shape [tokens, 128]")
+        if raster.ndim != 1 or raster.numel() != document.shape[0] or not raster.numel():
+            raise ValueError("retrieval_output raster rows must align with visual embeddings")
+        if bool((raster < 0).any()) or bool((raster >= 1024).any()):
+            raise ValueError("retrieval_output raster indices are out of range")
+        if raster.numel() > 1 and not bool((raster[1:] > raster[:-1]).all()):
+            raise ValueError("retrieval_output raster indices must be increasing")
+        documents.append(document)
+        rasters.append(raster)
+        source_hws.append(tuple(feature.source_hw))
+    query = torch.as_tensor(retrieval_output.query_embeddings)
+    if query.ndim != 2 or query.shape[1] != 128:
+        raise ValueError("retrieval_output query embeddings must have shape [tokens, 128]")
+    return prepare_qa_pruning_masks(
+        resized_images=[page.raster for page in prepared],
+        image_grid_thw=grid,
+        document_tokens=documents,
+        document_source_hw=source_hws,
+        document_raster_indices=rasters,
+        question_tokens=query,
+        patch_size=prepared[0].patch_size,
+        page_config=page_config,
+        reconstruction=reconstruction,
+    )
+
+
+def derive_btp_qtp_geometry_without_qwen_model(
+    processor: object,
+    images: Sequence[object],
+    question: str,
+    retrieval_output: RetrievalOutput,
+    *,
+    page_config: PagePruningConfig | None = None,
+    reconstruction: ReconstructionDefaults | None = None,
+) -> BTPQTPGeometryCapture:
+    """Run the answerer's exact page/BTP/QTP path without Qwen generation weights."""
+
+    prepared = tuple(prepare_qwen_page(processor, image) for image in images)
+    qwen_images = tuple(prepared_raster_image(page) for page in prepared)
+    batch = _prepare_batch(processor, qwen_images, question)
+    _validate_prepared_batch(prepared, batch, None, processor)
+    grid = _grid(batch)
+    selected_config = page_config or DocPruneConfig.paper_defaults().for_pages(len(images))
+    masks = _prepare_pruning_masks_from_context(
+        images,
+        prepared,
+        batch,
+        retrieval_output,
+        page_config=selected_config,
+        reconstruction=reconstruction or ReconstructionDefaults(),
+    )
+    combined = masks.combined()
+    identity = derive_post_qtp_geometry(
+        grid,
+        combined,
+        merge_size=prepared[0].merge_size,
+    )
+    return BTPQTPGeometryCapture(
+        identity.geometry,
+        identity.count,
+        identity.sha256,
+        tuple(tuple(int(item) for item in row) for row in grid.tolist()),
+        _merged_count(grid, merge_size=prepared[0].merge_size),
+        int(torch.as_tensor(masks.background_keep, dtype=torch.bool).sum().item()),
+        int(torch.as_tensor(combined, dtype=torch.bool).sum().item()),
+        _mask_sha256(masks.background_keep),
+        _mask_sha256(masks.question_keep),
+        _mask_sha256(combined),
+    )
 
 
 def _validate_placeholder_count(
@@ -410,50 +531,16 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         question: str,
         retrieval_output: RetrievalOutput,
     ) -> VisionPruningMasks:
-        grid = _grid(batch)
+        del question
         page_config = self._effective_page_config(len(images))
-        if len(retrieval_output.pages) != len(images):
-            raise ValueError("retrieval_output page count must align with images")
-        if len(retrieval_output.page_features) != len(images):
-            raise ValueError("retrieval_output page features must align with images")
-        documents = []
-        rasters = []
-        source_hws = []
-        for page, feature in zip(
-            retrieval_output.pages, retrieval_output.page_features, strict=True
-        ):
-            if (page.doc_id, page.page_index) != (feature.doc_id, feature.page_index):
-                raise ValueError("retrieval_output page features do not align with pages")
-            if tuple(feature.source_hw) != (32, 32):
-                raise ValueError("retrieval_output source grid must be (32, 32)")
-            document = torch.as_tensor(feature.visual_embeddings)
-            raster = torch.as_tensor(feature.raster_indices, dtype=torch.long)
-            if document.ndim != 2 or document.shape[1] != 128:
-                raise ValueError("retrieval_output visual embeddings must have shape [tokens, 128]")
-            if raster.ndim != 1 or raster.numel() != document.shape[0] or not raster.numel():
-                raise ValueError("retrieval_output raster rows must align with visual embeddings")
-            if bool((raster < 0).any()) or bool((raster >= 1024).any()):
-                raise ValueError("retrieval_output raster indices are out of range")
-            if raster.numel() > 1 and not bool((raster[1:] > raster[:-1]).all()):
-                raise ValueError("retrieval_output raster indices must be increasing")
-            documents.append(document)
-            rasters.append(raster)
-            source_hws.append(tuple(feature.source_hw))
-        query = torch.as_tensor(retrieval_output.query_embeddings)
-        if query.ndim != 2 or query.shape[1] != 128:
-            raise ValueError("retrieval_output query embeddings must have shape [tokens, 128]")
-        masks = prepare_qa_pruning_masks(
-            resized_images=[page.raster for page in prepared],
-            image_grid_thw=grid,
-            document_tokens=documents,
-            document_source_hw=source_hws,
-            document_raster_indices=rasters,
-            question_tokens=query,
-            patch_size=prepared[0].patch_size,
+        return _prepare_pruning_masks_from_context(
+            images,
+            prepared,
+            batch,
+            retrieval_output,
             page_config=page_config,
             reconstruction=self.reconstruction,
         )
-        return masks
 
     def answer(
         self,
