@@ -22,7 +22,11 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--draws", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=20_260_827)
-    parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="dry-run a fresh publication; the output path must still not exist",
+    )
     args = parser.parse_args()
     report = compile_task7_report_from_shards(
         shard_root=args.shard_root,

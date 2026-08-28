@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -107,6 +110,42 @@ def _bundle(qid: str, marker: int) -> dict[str, object]:
     }
     value["analysis_bundle_sha256"] = _canonical_sha256(value)
     return value
+
+
+def _write_member_authority(
+    tmp_path: Path,
+    *,
+    fixture_sha256: str,
+    gate_sha256: str,
+    shard_root: Path,
+    qids: tuple[str, ...],
+) -> tuple[Path, str]:
+    members = []
+    for index, qid in enumerate(qids):
+        shard = shard_root / f"shard-{index:04d}"
+        members.append(
+            {
+                "shard": index,
+                "qid": qid,
+                "files": {
+                    name: hashlib.sha256((shard / name).read_bytes()).hexdigest()
+                    for name in task7_report_driver._SHARD_MEMBERS
+                },
+            }
+        )
+    authority: dict[str, object] = {
+        "schema_version": 1,
+        "status": "sealed-task7-member-hashes",
+        "fixture_sha256": fixture_sha256,
+        "gate_sha256": gate_sha256,
+        "shard_root": str(shard_root),
+        "qids": list(qids),
+        "members": members,
+    }
+    authority["member_manifest_sha256"] = _canonical_sha256(authority)
+    authority_path = tmp_path / "member-hashes.json"
+    authority_path.write_text(json.dumps(authority, sort_keys=True) + "\n", encoding="utf-8")
+    return authority_path, hashlib.sha256(authority_path.read_bytes()).hexdigest()
 
 
 def test_driver_admits_exact_sealed_order_and_publishes_once(
@@ -305,3 +344,142 @@ def test_driver_never_publishes_inside_the_sealed_shard_root(
             seed=3,
             validate_only=True,
         )
+
+
+def test_driver_reauthenticates_early_members_after_late_shard_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+
+    def admit(**kwargs: object) -> dict[str, object]:
+        index = int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))
+        if index == 63:
+            (root / "shard-0000" / "results.jsonl").write_text(
+                '{"qid":"q-00","replaced":true}\n', encoding="utf-8"
+            )
+        return _bundle(qids[index], index)
+
+    monkeypatch.setattr(task7_report_driver, "assemble_task7_analysis_bundle_from_artifacts", admit)
+    output = tmp_path / "analysis.json"
+    with pytest.raises(ValueError, match="changed after admission"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=output,
+            draws=4,
+            seed=3,
+        )
+    assert not output.exists()
+
+
+def test_driver_reauthenticates_members_after_analysis_compilation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    authority, authority_sha = _write_member_authority(
+        tmp_path,
+        fixture_sha256=fixture_sha,
+        gate_sha256=gate_sha,
+        shard_root=root,
+        qids=qids,
+    )
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(
+            qids[int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-"))],
+            int(Path(kwargs["run_manifest_path"]).parent.name.removeprefix("shard-")),
+        ),
+    )
+    compile_report = task7_report_driver.compile_task7_visual_state_report
+
+    def compile_then_replace(*args: object, **kwargs: object) -> dict[str, object]:
+        report = compile_report(*args, **kwargs)
+        (root / "shard-0000" / "results.jsonl").write_text(
+            '{"qid":"q-00","replaced":"after-analysis"}\n', encoding="utf-8"
+        )
+        return report
+
+    monkeypatch.setattr(
+        task7_report_driver, "compile_task7_visual_state_report", compile_then_replace
+    )
+    output = tmp_path / "analysis.json"
+    with pytest.raises(ValueError, match="changed after admission"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            expected_members_path=authority,
+            expected_members_sha256=authority_sha,
+            output_path=output,
+            draws=4,
+            seed=3,
+        )
+    assert not output.exists()
+
+
+def test_validate_only_is_a_dry_run_of_fresh_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture, fixture_sha, gate, gate_sha, root, qids = _write_authority(tmp_path)
+    monkeypatch.setattr(
+        task7_report_driver,
+        "assemble_task7_analysis_bundle_from_artifacts",
+        lambda **kwargs: _bundle(qids[0], 0),
+    )
+    output = tmp_path / "analysis.json"
+    output.write_text("existing\n", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="canonical report already exists"):
+        task7_report_driver.compile_task7_report_from_shards(
+            shard_root=root,
+            fixture_path=fixture,
+            fixture_sha256=fixture_sha,
+            gate_path=gate,
+            gate_sha256=gate_sha,
+            output_path=output,
+            draws=4,
+            seed=3,
+            validate_only=True,
+        )
+    assert output.read_text(encoding="utf-8") == "existing\n"
+
+
+def test_report_driver_import_is_artifact_only() -> None:
+    script = """
+import json
+import sys
+import docprune.task7_report_driver
+prefixes = (
+    'torch',
+    'transformers',
+    'docprune.qwen2vl',
+    'docprune.m3docrag',
+    'docprune.m3docvqa_factory',
+    'docprune.indexing',
+)
+print(json.dumps(sorted(name for name in sys.modules if name.startswith(prefixes))))
+"""
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = str(Path(__file__).parents[1] / "src")
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    assert json.loads(completed.stdout) == []

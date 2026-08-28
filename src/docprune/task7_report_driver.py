@@ -15,16 +15,72 @@ from docprune.experiment_design import (
     _renameat2_noreplace,
     compile_task7_visual_state_report,
 )
-from docprune.task7_runtime import (
-    _authenticated_file,
-    _canonical_sha256,
-    _is_sha256,
-    _read_regular_file_bytes,
-    assemble_task7_analysis_bundle_from_artifacts,
-)
 
 _SHARD_COUNT = 64
 _SHARD_MEMBERS = ("run_manifest.json", "results.jsonl", "task7-likelihood.jsonl")
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _read_regular_file_bytes(path: Path, label: str) -> bytes:
+    file_path = Path(path)
+    if not file_path.is_absolute():
+        raise ValueError(f"{label} must be an absolute regular file")
+    parent_fd = _open_directory_nofollow(file_path.parent)
+    descriptor: int | None = None
+    try:
+        try:
+            descriptor = os.open(
+                file_path.name,
+                os.O_RDONLY | os.O_NOFOLLOW,
+                dir_fd=parent_fd,
+            )
+        except OSError as error:
+            raise ValueError(f"{label} must be an absolute regular file") from error
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError(f"{label} must be an absolute regular file")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_fd)
+
+
+def _authenticated_file(path: Path, expected_sha256: str, label: str) -> bytes:
+    if not _is_sha256(expected_sha256):
+        raise ValueError(f"{label} checksum must be a lowercase SHA-256")
+    content = _read_regular_file_bytes(path, label)
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
+        raise ValueError(f"{label} checksum mismatch")
+    return content
+
+
+def assemble_task7_analysis_bundle_from_artifacts(**kwargs: object) -> dict[str, object]:
+    """Lazily enter the runtime validator only when report compilation begins."""
+
+    from docprune.task7_runtime import assemble_task7_analysis_bundle_from_artifacts as assemble
+
+    return assemble(**kwargs)
 
 
 def _json_mapping(content: bytes, label: str) -> dict[str, object]:
@@ -113,6 +169,38 @@ def _require_fresh_output(path: Path) -> None:
         raise FileExistsError(f"Task 7 canonical report already exists: {path}")
     finally:
         os.close(parent_fd)
+
+
+def _reauthenticate_admitted_members(
+    shard_root: Path,
+    members: list[dict[str, object]],
+) -> None:
+    """Require the live shard tree to retain every byte admitted into the report."""
+
+    _require_exact_shard_tree(shard_root)
+    if len(members) != _SHARD_COUNT:
+        raise ValueError("Task 7 admitted member set is incomplete")
+    for index, member in enumerate(members):
+        expected_shard = shard_root / f"shard-{index:04d}"
+        if member.get("shard") != index or member.get("path") != str(expected_shard):
+            raise ValueError("Task 7 admitted member path changed after admission")
+        files = member.get("files")
+        if not isinstance(files, Mapping) or set(files) != set(_SHARD_MEMBERS):
+            raise ValueError("Task 7 admitted member schema changed after admission")
+        for name in _SHARD_MEMBERS:
+            identity = files[name]
+            expected_path = expected_shard / name
+            if (
+                not isinstance(identity, Mapping)
+                or set(identity) != {"path", "sha256"}
+                or identity.get("path") != str(expected_path)
+                or not _is_sha256(identity.get("sha256"))
+            ):
+                raise ValueError("Task 7 admitted member identity changed after admission")
+            content = _read_regular_file_bytes(expected_path, f"Task 7 admitted {name}")
+            if hashlib.sha256(content).hexdigest() != identity["sha256"]:
+                raise ValueError("Task 7 shard member changed after admission")
+    _require_exact_shard_tree(shard_root)
 
 
 def _explicit_member_hashes(
@@ -217,7 +305,7 @@ def compile_task7_report_from_shards(
     seed: int = 20_260_827,
     validate_only: bool = False,
 ) -> dict[str, object]:
-    """Admit exactly 64 fixed-grid shards and optionally publish their report once."""
+    """Admit 64 shards and publish once, or dry-run the same fresh publication."""
 
     supplied_paths = tuple(
         Path(path) for path in (shard_root, fixture_path, gate_path, output_path)
@@ -317,7 +405,7 @@ def compile_task7_report_from_shards(
             }
         )
 
-    _require_exact_shard_tree(shard_root)
+    _reauthenticate_admitted_members(shard_root, members)
     analysis = compile_task7_visual_state_report(bundles, draws=draws, seed=seed)
     report: dict[str, object] = {
         "schema_version": 1,
@@ -335,6 +423,7 @@ def compile_task7_report_from_shards(
         "analysis": analysis,
     }
     report["canonical_report_sha256"] = _canonical_sha256(report)
+    _reauthenticate_admitted_members(shard_root, members)
     if not validate_only:
         _publish_report(output_path, report)
     return report
