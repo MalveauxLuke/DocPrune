@@ -95,7 +95,16 @@ def _bind_task7_likelihood_capture(
     )
 
 
-def _expected_cells(gate: dict[str, object], kind: str) -> list[dict[str, object]]:
+def _expected_cells(
+    gate: dict[str, object],
+    kind: str,
+    *,
+    native_boundary_cell: object | None = None,
+) -> list[dict[str, object]]:
+    if kind == "visual-state-native-boundary":
+        if native_boundary_cell is None or not hasattr(native_boundary_cell, "to_dict"):
+            raise ValueError("native-boundary diagnostic requires one authenticated cell")
+        return [{"cell": 0, **native_boundary_cell.to_dict()}]
     if kind == "visual-state-fixed-grid":
         from docprune.task7_runtime import task7_intervention_matrix
 
@@ -139,6 +148,8 @@ def _existing_prefix(
     kind: str,
     sample: SampleInput | None = None,
     fixture_question: FixedPageQuestion | None = None,
+    native_boundary_cell: object | None = None,
+    native_boundary_manifest_sha256: str | None = None,
 ) -> int:
     if not path.exists():
         return 0
@@ -151,6 +162,49 @@ def _existing_prefix(
             if not isinstance(record, dict) or count >= len(cells):
                 raise ValueError("Task 6 resume results are not a valid cell prefix")
             cell = cells[count]
+            if kind == "visual-state-native-boundary":
+                from docprune.task7_native_boundary import (
+                    validate_task7_native_boundary_result_record,
+                )
+                from docprune.task7_runtime import validate_task7_source_identity
+
+                if native_boundary_cell is None or count != 0:
+                    raise ValueError("Task 7 native resume has an invalid cell")
+                expected_policy = (
+                    None
+                    if native_boundary_cell.ctp_policy is None
+                    else native_boundary_cell.ctp_policy.to_dict()
+                )
+                _validate_result_record(
+                    record,
+                    line_number=line_number,
+                    expected_page_count=4,
+                    production=True,
+                    expected_policy=expected_policy,
+                    forbid_policy=expected_policy is None,
+                    allowed_extra_fields={
+                        "matrix_cell",
+                        "matrix_kind",
+                        "intervention_name",
+                        "analysis_family",
+                        "boundary_source",
+                        "native_boundary_manifest_sha256",
+                        "native_crossing",
+                        "native_layer",
+                    },
+                    allow_zero_post_ctp=True,
+                )
+                if sample is None or fixture_question is None:
+                    raise ValueError("Task 7 native resume requires sealed source identity")
+                validate_task7_source_identity(record, sample, fixture_question)
+                validate_task7_native_boundary_result_record(
+                    record,
+                    native_boundary_cell,
+                    fixture_sha256=fixture_sha256,
+                    native_boundary_manifest_sha256=native_boundary_manifest_sha256,
+                )
+                count += 1
+                continue
             if kind == "visual-state-fixed-grid":
                 from docprune.task7_runtime import (
                     task7_intervention_matrix,
@@ -248,9 +302,18 @@ def main() -> int:
     parser.add_argument("--shard", type=int, required=True)
     parser.add_argument(
         "--kind",
-        choices=("smoke", "native", "native-extension", "fixed", "visual-state-fixed-grid"),
+        choices=(
+            "smoke",
+            "native",
+            "native-extension",
+            "fixed",
+            "visual-state-fixed-grid",
+            "visual-state-native-boundary",
+        ),
         required=True,
     )
+    parser.add_argument("--native-boundary-manifest", type=Path)
+    parser.add_argument("--native-boundary-manifest-sha256")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
@@ -267,6 +330,18 @@ def main() -> int:
         value = getattr(args, name)
         if not value.is_absolute():
             raise ValueError(f"--{name.replace('_', '-')} must be absolute")
+    if args.kind == "visual-state-native-boundary":
+        if (
+            args.native_boundary_manifest is None
+            or not args.native_boundary_manifest.is_absolute()
+            or args.native_boundary_manifest_sha256 is None
+        ):
+            raise ValueError("native-boundary diagnostic requires an absolute sealed manifest")
+    elif (
+        args.native_boundary_manifest is not None
+        or args.native_boundary_manifest_sha256 is not None
+    ):
+        raise ValueError("native-boundary manifest is valid only for its separate diagnostic")
     if len(args.runtime_commit) != 40 or any(
         character not in "0123456789abcdef" for character in args.runtime_commit
     ):
@@ -310,7 +385,26 @@ def main() -> int:
     if not isinstance(qid, str):
         raise ValueError("Task 6 shard QID is invalid")
     fixture.question(qid)
-    cells = _expected_cells(gate, args.kind)
+    native_boundary_manifest = None
+    native_boundary_cell = None
+    if args.kind == "visual-state-native-boundary":
+        from docprune.task7_native_boundary import (
+            load_task7_native_boundary_manifest,
+            task7_native_boundary_cell,
+        )
+
+        native_boundary_manifest = load_task7_native_boundary_manifest(
+            args.native_boundary_manifest,
+            expected_sha256=args.native_boundary_manifest_sha256,
+        )
+        if native_boundary_manifest.fixture_sha256 != args.fixture_sha256:
+            raise ValueError("native-boundary manifest fixture identity drifted")
+        native_boundary_cell = task7_native_boundary_cell(native_boundary_manifest.question(qid))
+    cells = _expected_cells(
+        gate,
+        args.kind,
+        native_boundary_cell=native_boundary_cell,
+    )
 
     config = load_config(args.config)
     resolved_run = _resolve_run_config(args.run_config, mode="docprune", page_count=4)
@@ -331,7 +425,11 @@ def main() -> int:
         "status": (
             "configured-task7-fixed-grid"
             if args.kind == "visual-state-fixed-grid"
-            else "configured-task6-matrix"
+            else (
+                "configured-task7-native-boundary"
+                if args.kind == "visual-state-native-boundary"
+                else "configured-task6-matrix"
+            )
         ),
         "output": str(args.output),
         "matrix_kind": args.kind,
@@ -360,6 +458,13 @@ def main() -> int:
             "btp-qtp-no-ctp",
             "all-visual-drop-B_input",
         ]
+    if args.kind == "visual-state-native-boundary":
+        run_manifest.update(
+            {
+                "native_boundary_manifest_path": str(args.native_boundary_manifest),
+                "native_boundary_manifest_sha256": args.native_boundary_manifest_sha256,
+            }
+        )
     run_manifest["run_manifest_sha256"] = _manifest_digest(run_manifest)
     if args.validate_only:
         print(
@@ -390,7 +495,7 @@ def main() -> int:
 
     results_path = args.output / "results.jsonl"
     completed = 0
-    if args.kind != "visual-state-fixed-grid":
+    if args.kind not in {"visual-state-fixed-grid", "visual-state-native-boundary"}:
         completed = _existing_prefix(
             results_path,
             cells=cells,
@@ -460,11 +565,85 @@ def main() -> int:
                 results_path=results_path,
                 likelihood_path=task7_likelihood_path,
             )
+    elif args.kind == "visual-state-native-boundary":
+        completed = _existing_prefix(
+            results_path,
+            cells=cells,
+            qid=qid,
+            fixture_sha256=args.fixture_sha256,
+            kind=args.kind,
+            sample=sample,
+            fixture_question=fixture_question,
+            native_boundary_cell=native_boundary_cell,
+            native_boundary_manifest_sha256=args.native_boundary_manifest_sha256,
+        )
     base_runner.warmup(sample)
     base_answerer = base_runner.answerer
     append_mode = results_path.exists()
     for cell_index in range(completed, len(cells)):
         cell = cells[cell_index]
+        if args.kind == "visual-state-native-boundary":
+            from docprune.task7_native_boundary import (
+                bind_task7_native_boundary_result_evidence,
+                validate_task7_native_boundary_result_record,
+            )
+            from docprune.task7_runtime import validate_task7_source_identity
+
+            answerer = DocPruneQwenAnswerer(
+                base_answerer.model,
+                base_answerer.processor,
+                page_config=config.for_pages(4),
+                qa_stage="full",
+                **native_boundary_cell.answerer_kwargs(),
+            )
+            runner = DocPruneM3DocRAG(
+                base_runner.retriever,
+                base_runner.page_loader,
+                answerer,
+                top_k=4,
+            )
+            runner.inherit_warmup_state(base_runner)
+            record = runner.run_sample(sample).to_dict()
+            bind_task7_native_boundary_result_evidence(
+                record,
+                native_boundary_cell,
+                fixture_sha256=args.fixture_sha256,
+                native_boundary_manifest_sha256=args.native_boundary_manifest_sha256,
+            )
+            expected_policy = (
+                None
+                if native_boundary_cell.ctp_policy is None
+                else native_boundary_cell.ctp_policy.to_dict()
+            )
+            _validate_result_record(
+                record,
+                line_number=1,
+                expected_page_count=4,
+                production=True,
+                expected_policy=expected_policy,
+                forbid_policy=expected_policy is None,
+                allowed_extra_fields={
+                    "matrix_cell",
+                    "matrix_kind",
+                    "intervention_name",
+                    "analysis_family",
+                    "boundary_source",
+                    "native_boundary_manifest_sha256",
+                    "native_crossing",
+                    "native_layer",
+                },
+                allow_zero_post_ctp=True,
+            )
+            validate_task7_source_identity(record, sample, fixture_question)
+            validate_task7_native_boundary_result_record(
+                record,
+                native_boundary_cell,
+                fixture_sha256=args.fixture_sha256,
+                native_boundary_manifest_sha256=args.native_boundary_manifest_sha256,
+            )
+            append_result_jsonl(results_path, record, resume=append_mode)
+            append_mode = True
+            continue
         if args.kind == "visual-state-fixed-grid":
             from docprune.task7_runtime import (
                 bind_task7_result_evidence,

@@ -18,10 +18,10 @@ set -euo pipefail
 : "${RUNTIME_DIR:?set the clean reviewed runtime checkout}"
 : "${RUNTIME_COMMIT:?set the exact reviewed runtime commit}"
 : "${MATRIX_ROOT:?set the existing native or fixed matrix root}"
-: "${MATRIX_KIND:?set native, native-extension, fixed, or visual-state-fixed-grid}"
+: "${MATRIX_KIND:?set native, native-extension, fixed, visual-state-fixed-grid, or visual-state-native-boundary}"
 : "${SLURM_ARRAY_TASK_ID:?submit as the sealed 0-63 array}"
 
-case "$MATRIX_KIND" in native|native-extension|fixed|visual-state-fixed-grid) ;; *) exit 2 ;; esac
+case "$MATRIX_KIND" in native|native-extension|fixed|visual-state-fixed-grid|visual-state-native-boundary) ;; *) exit 2 ;; esac
 case "$SLURM_ARRAY_TASK_ID" in ''|*[!0-9]*) exit 2 ;; esac
 test "$SLURM_ARRAY_TASK_ID" -le 63
 
@@ -52,6 +52,7 @@ fi
 
 test -d "$MATRIX_ROOT"
 test -x "$PYTHON"
+test -x "$RUNTIME_DIR/examples/probe_task7_l40s_gpu.sh"
 test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$RUNTIME_COMMIT"
 test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
@@ -61,6 +62,18 @@ test "$(sha256sum "$GATE" | cut -d' ' -f1)" = "$GATE_SHA256"
 test "$(sha256sum "$RUN_CONFIG" | cut -d' ' -f1)" = "$RUN_CONFIG_SHA256"
 test "$(sha256sum "$INDEX_MANIFEST" | cut -d' ' -f1)" = "$INDEX_MANIFEST_SHA256"
 test "$(sha256sum "$CONFIG" | cut -d' ' -f1)" = "$CONFIG_SHA256"
+
+NATIVE_BOUNDARY_ARGS=()
+if [[ "$MATRIX_KIND" == visual-state-native-boundary ]]; then
+  : "${NATIVE_BOUNDARY_MANIFEST:?set the sealed Task 7 native-boundary manifest}"
+  : "${NATIVE_BOUNDARY_MANIFEST_SHA256:?set its exact SHA-256}"
+  test "$(sha256sum "$NATIVE_BOUNDARY_MANIFEST" | cut -d' ' -f1)" = "$NATIVE_BOUNDARY_MANIFEST_SHA256"
+  NATIVE_BOUNDARY_ARGS=(
+    --native-boundary-manifest "$NATIVE_BOUNDARY_MANIFEST"
+    --native-boundary-manifest-sha256 "$NATIVE_BOUNDARY_MANIFEST_SHA256"
+  )
+fi
+readonly -a NATIVE_BOUNDARY_ARGS
 
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
@@ -77,8 +90,8 @@ export HF_DATASETS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
 export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
 
-GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
-case "$GPU_NAME" in *L40S*) ;; *) echo "canonical Task 6 shard requires L40S" >&2; exit 2 ;; esac
+GPU_NAME="$("$RUNTIME_DIR/examples/probe_task7_l40s_gpu.sh" "$PYTHON")"
+readonly GPU_NAME
 
 "$PYTHON" "$RUNTIME_DIR/examples/run_task6_matrix.py" \
   --config "$CONFIG" \
@@ -92,12 +105,14 @@ case "$GPU_NAME" in *L40S*) ;; *) echo "canonical Task 6 shard requires L40S" >&
   --runtime-commit "$RUNTIME_COMMIT" \
   --shard "$SLURM_ARRAY_TASK_ID" \
   --kind "$MATRIX_KIND" \
+  "${NATIVE_BOUNDARY_ARGS[@]}" \
   --output "$OUTPUT_DIR"
 
 EXPECTED=45
 if [[ "$MATRIX_KIND" == fixed ]]; then EXPECTED=42; fi
 if [[ "$MATRIX_KIND" == native-extension ]]; then EXPECTED=40; fi
 if [[ "$MATRIX_KIND" == visual-state-fixed-grid ]]; then EXPECTED=8; fi
+if [[ "$MATRIX_KIND" == visual-state-native-boundary ]]; then EXPECTED=1; fi
 "$PYTHON" - "$OUTPUT_DIR/results.jsonl" "$EXPECTED" "$MATRIX_KIND" <<'PY'
 import json
 import sys
