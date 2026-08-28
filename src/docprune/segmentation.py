@@ -16,6 +16,7 @@ from pathlib import Path
 
 from docprune.ctp_controls import VisualTokenGeometry
 from docprune.task6_runtime import FixedPageFixture
+from docprune.task8_runtime import load_task8_smoke_inputs
 
 REGION_MAPPING_SCHEMA_VERSION = "docprune-mineru-region-mapping-v2"
 ASSIGNMENT_CONTRACT = (
@@ -208,6 +209,10 @@ class MinerUArtifactIdentity:
 
     raw_middle_json_path: Path
     raw_middle_json_sha256: str
+    smoke_input_manifest_path: Path
+    smoke_input_manifest_sha256: str
+    mineru_input_path: Path
+    mineru_input_sha256: str
     backend: str
     version: str
     repository_id: str
@@ -222,15 +227,21 @@ class MinerUArtifactIdentity:
 
     def __post_init__(self) -> None:
         path = Path(self.raw_middle_json_path)
+        smoke_manifest_path = Path(self.smoke_input_manifest_path)
+        input_path = Path(self.mineru_input_path)
         config_path = Path(self.configuration_path)
         manifest_path = Path(self.tool_manifest_path)
         pages = tuple(self.pages)
         object.__setattr__(self, "raw_middle_json_path", path)
+        object.__setattr__(self, "smoke_input_manifest_path", smoke_manifest_path)
+        object.__setattr__(self, "mineru_input_path", input_path)
         object.__setattr__(self, "configuration_path", config_path)
         object.__setattr__(self, "tool_manifest_path", manifest_path)
         object.__setattr__(self, "pages", pages)
         if (
             not path.is_absolute()
+            or not smoke_manifest_path.is_absolute()
+            or not input_path.is_absolute()
             or not config_path.is_absolute()
             or not manifest_path.is_absolute()
         ):
@@ -238,6 +249,8 @@ class MinerUArtifactIdentity:
         if config_path == manifest_path:
             raise ValueError("MinerU configuration and tool manifest paths must be distinct")
         _require_sha256(self.raw_middle_json_sha256, "MinerU raw output SHA-256")
+        _require_sha256(self.smoke_input_manifest_sha256, "smoke input manifest SHA-256")
+        _require_sha256(self.mineru_input_sha256, "MinerU input SHA-256")
         _require_sha256(self.configuration_sha256, "MinerU configuration SHA-256")
         _require_sha256(self.tool_manifest_sha256, "MinerU tool manifest SHA-256")
         _require_revision(self.repository_revision, "MinerU repository revision")
@@ -250,8 +263,8 @@ class MinerUArtifactIdentity:
             raise ValueError("MinerU repository ID must be nonempty")
         if not isinstance(self.model_repository_id, str) or not self.model_repository_id:
             raise ValueError("MinerU model repository ID must be nonempty")
-        if not pages or any(not isinstance(page, InputPageIdentity) for page in pages):
-            raise ValueError("MinerU artifact must bind at least one input page")
+        if len(pages) != 1 or any(not isinstance(page, InputPageIdentity) for page in pages):
+            raise ValueError("PNG-backed MinerU artifact must bind exactly one input page")
         local = [page.mineru_page_index for page in pages]
         slots = [page.input_page_index for page in pages]
         if len(set(local)) != len(local) or local != sorted(local):
@@ -263,6 +276,10 @@ class MinerUArtifactIdentity:
         return {
             "raw_middle_json_path": str(self.raw_middle_json_path),
             "raw_middle_json_sha256": self.raw_middle_json_sha256,
+            "smoke_input_manifest_path": str(self.smoke_input_manifest_path),
+            "smoke_input_manifest_sha256": self.smoke_input_manifest_sha256,
+            "mineru_input_path": str(self.mineru_input_path),
+            "mineru_input_sha256": self.mineru_input_sha256,
             "backend": self.backend,
             "version": self.version,
             "repository_id": self.repository_id,
@@ -281,6 +298,10 @@ class MinerUArtifactIdentity:
         required = {
             "raw_middle_json_path",
             "raw_middle_json_sha256",
+            "smoke_input_manifest_path",
+            "smoke_input_manifest_sha256",
+            "mineru_input_path",
+            "mineru_input_sha256",
             "backend",
             "version",
             "repository_id",
@@ -301,6 +322,10 @@ class MinerUArtifactIdentity:
         return cls(
             Path(value["raw_middle_json_path"]),
             value["raw_middle_json_sha256"],
+            Path(value["smoke_input_manifest_path"]),
+            value["smoke_input_manifest_sha256"],
+            Path(value["mineru_input_path"]),
+            value["mineru_input_sha256"],
             value["backend"],
             value["version"],
             value["repository_id"],
@@ -1054,10 +1079,57 @@ def _authenticate_tool_manifest(artifact: MinerUArtifactIdentity) -> None:
 
 def _reauthenticate_mapping_inputs(mapping: RegionTokenMapping) -> None:
     audited: list[MinerURegion] = []
+    seen_inputs: set[tuple[Path, str]] = set()
+    smoke_manifests: dict[tuple[Path, str], Mapping[str, object]] = {}
     seen_configs: set[tuple[Path, str]] = set()
     seen_manifests: set[tuple[Path, str]] = set()
     seen_pages: set[tuple[Path, str, int]] = set()
     for artifact in mapping.artifacts:
+        smoke_key = (
+            artifact.smoke_input_manifest_path,
+            artifact.smoke_input_manifest_sha256,
+        )
+        smoke_manifest = smoke_manifests.get(smoke_key)
+        if smoke_manifest is None:
+            _authenticated_bytes(
+                artifact.smoke_input_manifest_path,
+                artifact.smoke_input_manifest_sha256,
+                label="Task 8 smoke input manifest",
+            )
+            smoke_manifest = load_task8_smoke_inputs(artifact.smoke_input_manifest_path)
+            smoke_manifests[smoke_key] = smoke_manifest
+        page = artifact.pages[0]
+        rows = smoke_manifest["pages"]
+        if (
+            smoke_manifest["qid"] != page.fixture_question_id
+            or smoke_manifest["fixed_page_fixture_path"] != str(page.fixed_page_fixture_path)
+            or smoke_manifest["fixed_page_fixture_sha256"] != page.fixed_page_fixture_sha256
+            or page.input_page_index >= len(rows)
+        ):
+            raise ValueError("MinerU artifact contradicts its sealed smoke input manifest")
+        row = rows[page.input_page_index]
+        if (
+            row["input_page_index"] != page.input_page_index
+            or row["mineru_page_index"] != page.mineru_page_index
+            or row["document_id"] != page.document_id
+            or row["source_page_index"] != page.source_page_index
+            or row["fixture_rank"] != page.fixture_rank
+            or row["fixed_page_record_sha256"] != page.fixed_page_record_sha256
+            or row["mineru_input_path"] != str(artifact.mineru_input_path)
+            or row["mineru_input_sha256"] != artifact.mineru_input_sha256
+            or row["rendered_rgb_width"] != page.rendered_rgb_width
+            or row["rendered_rgb_height"] != page.rendered_rgb_height
+            or row["rendered_rgb_sha256"] != page.rendered_rgb_sha256
+        ):
+            raise ValueError("MinerU artifact does not match its sealed smoke input page")
+        input_key = (artifact.mineru_input_path, artifact.mineru_input_sha256)
+        if input_key not in seen_inputs:
+            _authenticated_bytes(
+                artifact.mineru_input_path,
+                artifact.mineru_input_sha256,
+                label="MinerU input",
+            )
+            seen_inputs.add(input_key)
         config_key = (artifact.configuration_path, artifact.configuration_sha256)
         if config_key not in seen_configs:
             _authenticated_bytes(
