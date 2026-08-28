@@ -890,6 +890,106 @@ def test_native_boundary_close_failure_does_not_leak_other_descriptor_or_mask_st
     assert destination.read_bytes() == content
 
 
+def test_native_boundary_verifier_close_failure_cannot_return_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Surface a verifier close failure and retain explicit recovery state."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    content = b"authenticated staged bytes\n"
+    original_open = native.os.open
+    original_close = native.os.close
+    verifier_descriptor: int | None = None
+    leaked_descriptor: int | None = None
+
+    def observe_verifier_open(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal verifier_descriptor
+        descriptor = original_open(path, flags, mode, dir_fd=dir_fd)
+        if path == destination.name and flags & os.O_ACCMODE == os.O_RDONLY:
+            verifier_descriptor = descriptor
+        return descriptor
+
+    def fail_before_verifier_close(descriptor: int) -> None:
+        nonlocal leaked_descriptor
+        if descriptor == verifier_descriptor and leaked_descriptor is None:
+            leaked_descriptor = descriptor
+            raise OSError("injected verifier close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(native.os, "open", observe_verifier_open)
+    monkeypatch.setattr(native.os, "close", fail_before_verifier_close)
+
+    try:
+        with pytest.raises(RuntimeError, match="preserved published destination") as captured:
+            native._publish_new_file(content, destination)
+        assert isinstance(captured.value.__cause__, OSError)
+        assert str(captured.value.__cause__) == "injected verifier close failure"
+        assert destination.read_bytes() == content
+    finally:
+        if leaked_descriptor is not None:
+            original_close(leaked_descriptor)
+
+
+def test_native_boundary_fifo_source_substitution_is_nonblocking_and_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify untrusted leaf names nonblocking before rejecting non-regular files."""
+
+    import docprune.task7_native_boundary as native
+
+    destination = tmp_path / "native.json"
+    displaced = tmp_path / "displaced-stage"
+    content = b"authenticated staged bytes\n"
+    original_rename = native._renameat2_noreplace
+    original_open = native.os.open
+    verifier_flags: list[int] = []
+
+    def substitute_fifo_then_rename(
+        old_directory_fd: int,
+        old_name: str,
+        new_directory_fd: int,
+        new_name: str,
+    ) -> None:
+        os.rename(
+            old_name,
+            displaced.name,
+            src_dir_fd=old_directory_fd,
+            dst_dir_fd=old_directory_fd,
+        )
+        os.mkfifo(old_name, 0o600, dir_fd=old_directory_fd)
+        original_rename(old_directory_fd, old_name, new_directory_fd, new_name)
+
+    def observe_leaf_open(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if path == destination.name:
+            verifier_flags.append(flags)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(native, "_renameat2_noreplace", substitute_fifo_then_rename)
+    monkeypatch.setattr(native.os, "open", observe_leaf_open)
+
+    with pytest.raises(RuntimeError, match="no verified recovery path"):
+        native._publish_new_file(content, destination)
+
+    assert verifier_flags
+    assert all(flags & os.O_NONBLOCK for flags in verifier_flags)
+    assert stat.S_ISFIFO(destination.stat().st_mode)
+    assert displaced.read_bytes() == content
+
+
 def test_native_boundary_readlink_failure_does_not_mask_publication_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

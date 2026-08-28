@@ -173,7 +173,11 @@ def _name_matches_staged_artifact(
 
     descriptor: int | None = None
     try:
-        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=parent_fd)
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
         if _regular_file_identity(descriptor) != staged_identity:
             return False
         chunks: list[bytes] = []
@@ -184,10 +188,7 @@ def _name_matches_staged_artifact(
         return False
     finally:
         if descriptor is not None:
-            try:
-                os.close(descriptor)
-            except OSError:
-                pass
+            os.close(descriptor)
 
 
 def _recovery_description(
