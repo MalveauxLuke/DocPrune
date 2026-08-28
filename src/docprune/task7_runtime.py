@@ -1045,16 +1045,27 @@ def assemble_task7_analysis_bundle_from_artifacts(
         likelihood_path=likelihood_path,
         likelihood_sha256=likelihood_sha256,
     )
-    results_file = _authenticated_file(results_path, results_sha256, "results artifact")
-    fixture_file = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
-    fixture = load_fixed_page_fixture(
-        fixture_file,
-        expected_sha256=fixture_sha256,
-        validate_external_bytes=False,
+    results_content = _authenticated_file(results_path, results_sha256, "results artifact")
+    fixture_content = _authenticated_file(fixture_path, fixture_sha256, "fixture artifact")
+    _authenticated_file(likelihood_path, likelihood_sha256, "likelihood artifact")
+    manifest_content = _authenticated_file(
+        run_manifest_path, run_manifest_file_sha256, "Task 7 run manifest"
     )
+    try:
+        fixture_payload = json.loads(fixture_content.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ValueError("fixed page fixture is not valid JSON") from error
+    fixture = FixedPageFixture.from_dict(fixture_payload)
     qid = admitted["qid"]
-    source = _eligible_source_row(fixture.eligible_questions_path, qid)
-    rows = _jsonl_mappings(results_file, "Task 7 results")
+    eligible_content = _authenticated_file(
+        fixture.eligible_questions_path,
+        fixture.eligible_questions_sha256,
+        "eligible questions artifact",
+    )
+    source = _eligible_source_row(
+        _jsonl_mappings_bytes(eligible_content, "eligible questions"), qid
+    )
+    rows = _jsonl_mappings_bytes(results_content, "Task 7 results")
     matrix = task7_intervention_matrix()
     if len(rows) != len(matrix) or any(
         row.get("question_id") != qid or row.get("intervention_name") != cell.name
@@ -1082,14 +1093,11 @@ def assemble_task7_analysis_bundle_from_artifacts(
         },
     }
     run_manifest = _validated_task7_run_manifest(
-        run_manifest_path,
-        file_sha256=run_manifest_file_sha256,
-        fixture_path=fixture_file,
+        manifest_content,
+        fixture_path=fixture_path,
         fixture_sha256=fixture_sha256,
-        results_path=results_file,
-        likelihood_path=_authenticated_file(
-            likelihood_path, likelihood_sha256, "likelihood artifact"
-        ),
+        results_path=results_path,
+        likelihood_path=likelihood_path,
     )
     provenance = {
         "fixture_sha256": fixture_sha256,
