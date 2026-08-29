@@ -6,8 +6,8 @@
 > approval or SOL-handoff gate.
 
 Status: Tasks 1–5 and Task 8 are complete. Task 9's L40S four-mask smoke is
-admitted; its one-question 96-mask development runtime and exact SOL handoff
-are prepared but not submitted.
+admitted; its one-question 96-mask development run was submitted exactly once
+as HTC job `62323129` and was initially pending for priority.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26
@@ -344,8 +344,8 @@ pending at elapsed zero after the L40S gate passed. Clean successor commit
 dual-target completion-manifest-last publisher, terminal validator, and
 post-validation one-question CPU analysis. Its sealed executable checkout is
 the clean detached worktree
-`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. No development
-job was submitted.
+`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. The development
+job was submitted exactly once as `62323129` after explicit user approval.
 
 The runner makes one shared-prefix scoring call for exact seeds `0..95`; the
 additional unpruned no-CTP generation needed for the secondary target occurs
@@ -468,13 +468,10 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Task 9 preparation is complete at clean commit `7616b29` in detached runtime
-`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. Await explicit user
-approval before submitting the single non-array exact-L40S development job in
-`DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`. Do not submit an
-A100 portability job, shard the 96 masks, run retrieval, load the global index,
-rebuild features, analyze partial output, or begin a large/method-holdout
-experiment. After terminal raw admission, run the prescribed CPU analysis;
-then seal the number and identities of additional development questions before
-their top-versus-reverse outcomes are viewed. Task 10 remains inactive and
-separately approval gated.
+Task 9 development job `62323129` is the only authorized submission. Monitor it
+without resubmission. Do not submit an A100 portability job, shard the 96 masks,
+run retrieval, load the global index, rebuild features, analyze partial output,
+or begin a large/method-holdout experiment. After terminal raw admission, run
+the prescribed CPU analysis; then seal the number and identities of additional
+development questions before their top-versus-reverse outcomes are viewed.
+Task 10 remains inactive and separately approval gated.

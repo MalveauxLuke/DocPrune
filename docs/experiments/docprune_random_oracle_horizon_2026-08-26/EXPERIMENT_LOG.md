@@ -1016,6 +1016,10 @@ array, shard, or requeue. Fresh root
 Exact prepared handoff:
 `sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
 
-No 96-mask job, analysis, retrieval, global-index load, feature build, A100
-replacement, or method-holdout experiment was launched. Next action is to
-await explicit user approval for the exact single-job handoff.
+After explicit user approval, the exact command in the sealed handoff returned
+`Submitted batch job 62323129` at `2026-08-28T19:57:28`. The first Slurm check
+showed `PENDING (Priority)` with partition `htc`, QOS `public`, one node, 8
+CPUs, 24 GiB, one GPU, feature `l40s&public`, a 10-minute limit, and no requeue.
+No analysis, retrieval, global-index load, feature build, A100 replacement, or
+method-holdout experiment was launched. Do not resubmit or inspect partial
+target output; require terminal admission first.

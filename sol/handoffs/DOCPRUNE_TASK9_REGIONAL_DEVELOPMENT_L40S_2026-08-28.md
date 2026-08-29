@@ -1,8 +1,9 @@
 # Task 9 One-Question Regional Development L40S Handoff
 
 Date: 2026-08-28
-Status: prepared and verified; **not submitted**. Do not run `sbatch` until the
-user explicitly approves this exact handoff.
+Status: submitted exactly once as HTC job `62323129` after explicit user
+approval. The job was pending for priority at the first scheduler check. Do
+not run `sbatch` again or submit an automatic retry.
 
 ## Objective and claim boundary
 
@@ -89,7 +90,7 @@ four-mask smoke measured about 2.28 GiB host MaxRSS and 16.55 GiB peak GPU
 allocation. The 24-GiB request is the HTC GPU floor. One job avoids repeated
 model loading and caches the `B_13` decoder prefix once for all 96 branches.
 
-## Submission command after explicit approval
+## Submitted command — provenance only; do not repeat
 
 Run exactly once from a login node:
 
@@ -100,6 +101,11 @@ sbatch \
   --export=ALL,RUNTIME_DIR=/home/lmalveau/DocPrune-task9-development-runtime-7616b29,RUNTIME_COMMIT=7616b29b4dc5ba33584a6e26371281be6886188f,JOB_ROOT=/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1 \
   /home/lmalveau/DocPrune-task9-development-runtime-7616b29/examples/sbatch/39_docprune_task9_regional_development.sbatch
 ```
+
+This command returned `Submitted batch job 62323129` at
+`2026-08-28T19:57:28`. Slurm recorded partition `htc`, QOS `public`, one node,
+8 CPUs, 24 GiB, one GPU, feature `l40s&public`, a 10-minute limit, and
+`Requeue=0`.
 
 No array, shard, dependency, A100 portability job, or automatic retry is
 authorized.

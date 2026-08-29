@@ -4,8 +4,9 @@
 
 The only new executable authority is
 [`handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
-It is prepared and verified but **not submitted**. Do not run `sbatch` until the
-user explicitly approves that exact handoff.
+The user explicitly approved it, and it was submitted exactly once as HTC job
+`62323129` at `2026-08-28T19:57:28`. The first scheduler check showed `PENDING`
+for `Priority`. Do not run `sbatch` again or submit an automatic retry.
 
 The sealed runtime is the clean detached checkout
 `/home/lmalveau/DocPrune-task9-development-runtime-7616b29` at
