@@ -1,5 +1,33 @@
 # Current SOL Task
 
+## Active authority — Task 9 one-question regional development, 2026-08-28
+
+The only new executable authority is
+[`handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
+It is prepared and verified but **not submitted**. Do not run `sbatch` until the
+user explicitly approves that exact handoff.
+
+The sealed runtime is the clean detached checkout
+`/home/lmalveau/DocPrune-task9-development-runtime-7616b29` at
+`7616b29b4dc5ba33584a6e26371281be6886188f`. The launcher SHA-256 is
+`963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
+The proposed HTC job is exactly one NVIDIA L40S, 8 CPUs, 24 GiB RAM, a
+10-minute limit, no array, and no shards. It scores one fixed QID at `B_13`
+with 64 fit and 32 held-out masks in one shared-prefix scoring call. The
+additional unpruned generation that defines the secondary target occurs
+internally.
+
+Terminal validation must precede all target inspection or analysis. If the raw
+artifact is admitted, the frozen CPU analysis reports per-question held-out
+LDS/Spearman, RMSE against the fit-target-mean constant, and five-refit
+stability for both targets. It does not report an LDS confidence interval for
+this one-question run; official inference is deferred to the later sealed
+multi-question development phase. No large holdout, A100 portability run,
+automatic retry, retrieval/index run, or method comparison is authorized.
+
+The older Task 6 and historical authorities below are retained for provenance
+and are superseded for the current next action.
+
 ## Active authority — Task 6 portability smoke, 2026-08-27
 
 The only new executable authority is

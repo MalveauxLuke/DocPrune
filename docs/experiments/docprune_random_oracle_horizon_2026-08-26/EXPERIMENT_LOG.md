@@ -965,3 +965,57 @@ four failed roots under
 `/scratch/lmalveau/docprune/task6-smoke-b0c8742-v1`; the handoff grants no
 retry. The 64-QID and sensitivity matrices remain blocked pending a test-first
 fix, clean successor commit, and successor smoke handoff.
+
+## 2026-08-28 — Task 9 smoke admission and 96-mask development preparation
+
+Canonical exact-L40S four-mask smoke job `62315446` completed `0:0` in 31
+seconds on `scg022` and passed the outcome-blind validator. It used QID
+`e1e6ed53f9ad11813845088f4cf2f6b1`, `B_13`, fit seeds `0..3`, and runtime
+`4e2f44c7dde6f6f9b47e2cb3351207adbc9ed306`. Shared-prefix parity maximum
+absolute error was `0.0`; projected 96-branch decoder time was
+`19.65922513604164` seconds; peak allocated GPU memory was `17765844992`
+bytes; Slurm MaxRSS was `2386936 KiB`. Artifact root:
+`/scratch/lmalveau/docprune/task9-regional-smoke-4e2f44c-v1/output`.
+File hashes were `a034ad922dc83befa77bc79de6c16d340503c6ba7bca9d54ed749a60541a9ea9`,
+`53b7610e62a23c705cb790036b3105c32a19fe2a2dda495f3def027be06eda3a`,
+and `d4279e2a770218f9f48060db613671b713953b7e77c66742617b14adc80aa1c4`.
+This smoke proves parity and cost only; its four outcomes are excluded from
+attribution fitting and judgment.
+
+Diagnostic A100-80 job `62315546` was canceled while pending after the L40S
+gate passed. Slurm recorded `CANCELLED by 2644339`, elapsed `00:00:00`, with
+no node assigned. It consumed no GPU time and is not authorized for
+resubmission absent a new portability question.
+
+Successor `e9310cd32067781952afa46f6b25aee4fd7e889c` added exact unpruned
+generated-response token capture. It removes only a terminal EOS and appends
+the remaining exact IDs to the same teacher-forced mask-scoring call; it does
+not decode and retokenize the response.
+
+Clean preparation commit
+`7616b29b4dc5ba33584a6e26371281be6886188f` adds the exact ordered 96-mask
+runner, dual-target no-replace publication, terminal raw-replay validator, and
+post-validation CPU analysis. The exact clean detached runtime is
+`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. The validator
+authenticates both target identities, generated IDs/EOS/no-CTP trace, all 96
+physical cache records, full-to-compact topology, Qwen M-RoPE shapes, exact
+inputs and L40S, and no retrieval/global index. One-question analysis reports
+per-question LDS/Spearman, fit-target-mean constant RMSE, and five-refit
+stability for both targets. It produces no LDS confidence interval; that
+remains deferred to a later sealed multi-question support-component analysis.
+
+Verification evidence: production `110 passed, 12 skipped`; pinned solver
+environment `24 passed`; Ruff, changed-file formatting, compile, shell syntax,
+and diff checks passed. Exact real-input `--validate-only` authenticated all
+96 seeds and created no output. Launcher
+`examples/sbatch/39_docprune_task9_regional_development.sbatch` has SHA-256
+`963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
+It requests one exact L40S on HTC, 8 CPUs, 24 GiB, and 10 minutes, with no
+array, shard, or requeue. Fresh root
+`/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1` was absent.
+Exact prepared handoff:
+`sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
+
+No 96-mask job, analysis, retrieval, global-index load, feature build, A100
+replacement, or method-holdout experiment was launched. Next action is to
+await explicit user approval for the exact single-job handoff.

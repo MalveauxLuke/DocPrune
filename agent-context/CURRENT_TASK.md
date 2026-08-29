@@ -7,6 +7,24 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
+Task 9 one-question regional-attribution development preparation is complete at
+runtime commit `7616b29b4dc5ba33584a6e26371281be6886188f`. The clean detached
+runtime is `/home/lmalveau/DocPrune-task9-development-runtime-7616b29`; the
+exact launcher is `examples/sbatch/39_docprune_task9_regional_development.sbatch`
+with SHA-256 `963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
+The prepared but unsubmitted HTC job uses one exact L40S, 8 CPUs, 24 GiB RAM,
+10 minutes, and no shards. It scores the canonical 64 fit plus 32 held-out masks
+for QID `e1e6ed53f9ad11813845088f4cf2f6b1` at `B_13` in one shared-prefix
+scoring call, with the secondary generated-response target obtained by the
+internal additional unpruned generation. The terminal validator must admit the
+raw artifact before CPU analysis. That analysis reports per-question held-out
+LDS/Spearman, RMSE versus the fit-target-mean constant, and five-refit stability
+for both targets; it intentionally reports no one-question LDS interval. The
+official interval is deferred to a sealed multi-question development phase.
+Exact execution authority is
+`sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
+Do not submit until the user explicitly approves that handoff.
+
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
 altering their bytes into fresh attempt `/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2`.
@@ -128,7 +146,7 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Implement and verify the lightweight quality-only merge validation path, then publish the two
-atomic top-4 quality runs without efficiency aggregation. Next audit CTP attention-score
-normalization because the controlled loss is localized to CTP and local decoder dropping is
-materially higher than Table 2. Top-1 and top-2 remain unsubmitted.
+Await explicit user approval for the exact Task 9 handoff. If approved, submit
+the single unsharded L40S job exactly once to the fresh root, require terminal
+admission, and only then run the frozen CPU analysis. Do not launch a large
+holdout, shard the masks, or report a one-question LDS confidence interval.

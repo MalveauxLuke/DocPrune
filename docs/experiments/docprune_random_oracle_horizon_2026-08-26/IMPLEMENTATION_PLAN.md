@@ -5,9 +5,9 @@
 > checked step at a time, update the log with evidence, and stop at every
 > approval or SOL-handoff gate.
 
-Status: Tasks 1–5 complete; Task 3 seven-boundary live all-kept parity is
-admitted by job `62265662`; Task 5 CPU integration is independently accepted;
-Task 6 CPU runtime and fixed-page gate accepted; clean SOL smoke handoff next
+Status: Tasks 1–5 and Task 8 are complete. Task 9's L40S four-mask smoke is
+admitted; its one-question 96-mask development runtime and exact SOL handoff
+are prepared but not submitted.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26
@@ -336,7 +336,35 @@ they are never substituted for tokens or treated as evidence labels.
 
 ## Task 9 — Implement exploratory regional attribution
 
-- [ ] Generate 64 deterministic Bernoulli-0.5 fit masks plus 32 independent
+Preparation status (2026-08-28): the exact physical-deletion and surrogate
+contracts are accepted through `e9310cd`. L40S smoke job `62315446` completed
+`0:0` and was admitted; A100 portability job `62315546` was canceled while
+pending at elapsed zero after the L40S gate passed. Clean successor commit
+`7616b29b4dc5ba33584a6e26371281be6886188f` adds a distinct 96-mask runner,
+dual-target completion-manifest-last publisher, terminal validator, and
+post-validation one-question CPU analysis. Its sealed executable checkout is
+the clean detached worktree
+`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. No development
+job was submitted.
+
+The runner makes one shared-prefix scoring call for exact seeds `0..95`; the
+additional unpruned no-CTP generation needed for the secondary target occurs
+inside that call. The validator replays both target vectors from raw sequence
+likelihood rows and authenticates all 96 physical cache/M-RoPE records. The
+one-question analysis reports per-question LDS/Spearman, fit-target-mean
+constant RMSE, and five-refit stability for both targets. It intentionally
+reports no LDS confidence interval; the official interval is deferred to the
+later multi-question support-component analysis.
+
+Verification: production environment `110 passed, 12 skipped`; pinned solver
+environment `24 passed`; Ruff, changed-file formatting, compile, shell, and
+diff checks passed. The exact real-input `--validate-only` path authenticated
+all 96 seeds and created no output. Launcher SHA-256 is
+`963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
+Exact prepared handoff:
+[`DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](../../../sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
+
+- [x] Generate 64 deterministic Bernoulli-0.5 fit masks plus 32 independent
   held-out whole-region masks.
 - [ ] Cache full `B_K` states and physically delete each selected union mask
   before continuing later blocks.
@@ -344,20 +372,23 @@ they are never substituted for tokens or treated as evidence labels.
   log-likelihood and save the maximum accepted-reference target.
 - [ ] Compute the normalized full-sequence likelihood of the unpruned model
   response as a separate contributive target.
-- [ ] Fit the pinned ContextCite Lasso surrogate; log every interface change.
-- [ ] Report held-out LDS and Spearman separately with bootstrap intervals,
-  error versus constant, and five-refit coefficient/selection stability.
-- [ ] Implement whole-region knapsack: maximize attainable cost `M′ <= M`, then
+- [x] Fit the pinned ContextCite Lasso surrogate; log every interface change.
+- [ ] Report held-out LDS/Spearman, error versus constant, and five-refit
+  coefficient/selection stability. The first one-question run has no official
+  interval; add the support-component interval only for the later sealed
+  multi-question development phase.
+- [x] Implement whole-region knapsack: maximize attainable cost `M′ <= M`, then
   maximize coefficient sum at `M′`; reverse attribution minimizes coefficient
   sum at the same `M′`.
 - [ ] Compare aggregate-score, literal-score, and random at exact achieved `M′`.
   Never broadcast coefficients, split regions, or use token index tie-breaking.
 - [ ] Directly validate held-out deployed whole-region physical masks.
 - [ ] Apply the full admission gate before examining attribution QA outcomes:
-  both correlation points at least `0.5`, both lower bounds above `0.2`, better
-  than constant, selection Jaccard at least `0.8`, and deployed top masks above
-  reverse masks on at least 80% of development questions with a positive mean
-  paired difference whose 95% interval excludes zero.
+  the per-question LDS/Spearman point at least `0.5`, the later multi-question
+  LDS lower bound above `0.2`, better than constant, selection Jaccard at least
+  `0.8`, and deployed top masks above reverse masks on at least 80% of
+  development questions with a positive mean paired difference whose 95%
+  interval excludes zero.
 
 Acceptance: either the exploratory regional procedure passes every gate or is
 logged as rejected. It is never called a token oracle or deployable selector.
@@ -437,14 +468,13 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Tasks 1–5 are complete after final independent review. Task 3 CPU
-implementation and live gate are complete: job `62265662` admitted the
-seven-boundary all-kept parity gate under
-`sol/handoffs/DOCPRUNE_QWEN_FORCED_BOUNDARY_PARITY_2026-08-27.md`. Task 4 CPU
-controls and Task 5 corrected-runtime policy integration are independently
-accepted. Stop here: Task 6 remains unstarted and requires a new continuation
-decision before any retrieval/index access, feature work, holdout sealing,
-model run, GPU, launcher, job, or developmental experiment. Geometry-aware
-controls additionally require truthful post-QTP geometry transport. The final
-method holdout remains intentionally unsealed and deferred to Task 6. Task 10
-remains inactive and separately approval gated.
+Task 9 preparation is complete at clean commit `7616b29` in detached runtime
+`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. Await explicit user
+approval before submitting the single non-array exact-L40S development job in
+`DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`. Do not submit an
+A100 portability job, shard the 96 masks, run retrieval, load the global index,
+rebuild features, analyze partial output, or begin a large/method-holdout
+experiment. After terminal raw admission, run the prescribed CPU analysis;
+then seal the number and identities of additional development questions before
+their top-versus-reverse outcomes are viewed. Task 10 remains inactive and
+separately approval gated.
