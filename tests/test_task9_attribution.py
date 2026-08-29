@@ -9,6 +9,7 @@ from copy import deepcopy
 
 import pytest
 
+from docprune import task9_attribution
 from docprune.task9_attribution import (
     build_region_mask_design,
     evaluate_contextcite_holdout,
@@ -382,6 +383,30 @@ def test_contextcite_holdout_fidelity_is_ordered_tie_aware_and_leakage_free() ->
     assert len(result["holdout_targets_sha256"]) == 64
     assert len(result["holdout_predictions_sha256"]) == 64
     assert len(result["fidelity_sha256"]) == 64
+
+
+def test_one_question_development_analysis_reports_no_lds_interval() -> None:
+    """Catch presenting a one-question resample as the official cross-question interval."""
+
+    analyzer = getattr(task9_attribution, "analyze_contextcite_development_question", None)
+    assert analyzer is not None, "Task 9 one-question analyzer is missing"
+    pytest.importorskip("sklearn")
+    design = _design([{"source_id": "region-a", "token_cost": 1}])
+    fit_outcomes = _fit_outcomes(design)
+    holdout_outcomes = _holdout_outcomes(design)
+
+    result = analyzer(
+        design,
+        [*fit_outcomes, *holdout_outcomes],
+        [{"source_id": "region-a", "token_cost": 1}],
+        requested_budget=1,
+    )
+
+    assert result["scope"] == "one-question-development-feasibility"
+    assert result["fidelity"]["lds_spearman"] is not None
+    assert "interval" not in json.dumps(result).lower()
+    assert result["fidelity"]["constant_baseline"] == "fit-target-mean"
+    assert result["stability"]["method"] == "contextcite-five-bootstrap-refit-stability"
 
 
 def test_contextcite_holdout_fidelity_records_undefined_constant_rank() -> None:

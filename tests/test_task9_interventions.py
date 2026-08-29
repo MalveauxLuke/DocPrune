@@ -74,6 +74,113 @@ def _design(*, boundary: str = "B_13") -> dict[str, object]:
     )
 
 
+def _secondary_design(*, boundary: str = "B_13") -> dict[str, object]:
+    return task9_attribution.build_region_mask_design(
+        [
+            {"source_id": "region-a", "token_cost": 2},
+            {"source_id": "region-b", "token_cost": 2},
+            {"source_id": "region-c", "token_cost": 2},
+        ],
+        question_id="qid",
+        forced_boundary=boundary,
+        mapping_artifact_sha256="a" * 64,
+        prompt_input_sha256="b" * 64,
+        target_kind="unpruned-generated-response-mean-loglikelihood",
+        reference_set_token_ids_sha256=None,
+        generated_response_token_ids_sha256="d" * 64,
+    )
+
+
+def test_development_plan_uses_one_physical_mask_sequence_for_exact_seed_order() -> None:
+    """Catch split GPU calls, reordered seeds, or target-specific physical masks."""
+
+    builder = getattr(task9_attribution, "build_regional_development_plan", None)
+    assert builder is not None, "Task 9 development-plan builder is missing"
+
+    plan = builder(
+        _mapping(),
+        _design(),
+        _secondary_design(),
+        mapping_artifact_sha256="a" * 64,
+    )
+
+    assert len(plan) == 96
+    assert [row["seed"] for row in plan] == list(range(96))
+    assert [row["split"] for row in plan] == ["fit"] * 64 + ["holdout"] * 32
+    assert all(
+        row["primary_attribution_identity_sha256"] == _design()["attribution_identity_sha256"]
+        for row in plan
+    )
+    assert all(
+        row["secondary_attribution_identity_sha256"]
+        == _secondary_design()["attribution_identity_sha256"]
+        for row in plan
+    )
+    assert all(row["forced_intervention"].mode == "physical_delete" for row in plan)
+
+
+def test_development_targets_slice_reference_and_generated_likelihoods() -> None:
+    """Catch mixing the appended generated-response score into the reference maximum."""
+
+    plan = task9_attribution.build_regional_development_plan(
+        _mapping(),
+        _design(),
+        _secondary_design(),
+        mapping_artifact_sha256="a" * 64,
+    )
+    builder = getattr(task9_attribution, "build_regional_development_targets", None)
+    assert builder is not None, "Task 9 dual-target packager is missing"
+    raw = [(-0.9, -0.2, -0.01 - seed / 1000) for seed in range(96)]
+
+    targets = builder(
+        _design(),
+        _secondary_design(),
+        plan,
+        mean_sequence_loglikelihoods=raw,
+        reference_sequence_count=2,
+    )
+
+    assert targets["seed_order"] == list(range(96))
+    assert len(targets["primary"]["outcomes"]) == 96
+    assert len(targets["secondary"]["outcomes"]) == 96
+    assert targets["primary"]["per_sequence_mean_loglikelihoods"][0] == [-0.9, -0.2]
+    assert targets["secondary"]["per_sequence_mean_loglikelihoods"][0] == [-0.01]
+    assert targets["primary"]["outcomes"][0]["normalized_target"] == -0.2
+    assert targets["secondary"]["outcomes"][0]["normalized_target"] == -0.01
+    assert targets["secondary"]["outcomes"][-1]["normalized_target"] == -0.105
+    assert (
+        targets["primary"]["attribution_identity_sha256"]
+        != targets["secondary"]["attribution_identity_sha256"]
+    )
+
+
+def test_development_target_validation_reconstructs_outcomes_from_raw_rows() -> None:
+    """Catch trusting a coherently rehashed stored target instead of replaying raw scores."""
+
+    plan = task9_attribution.build_regional_development_plan(
+        _mapping(), _design(), _secondary_design(), mapping_artifact_sha256="a" * 64
+    )
+    raw = [(-0.9, -0.2, -0.01 - seed / 1000) for seed in range(96)]
+    targets = task9_attribution.build_regional_development_targets(
+        _design(),
+        _secondary_design(),
+        plan,
+        mean_sequence_loglikelihoods=raw,
+        reference_sequence_count=2,
+    )
+    validator = getattr(task9_attribution, "validate_regional_development_targets", None)
+    assert validator is not None, "Task 9 raw-target validator is missing"
+    validator(targets["primary"], targets["secondary"], plan, raw, reference_sequence_count=2)
+
+    altered = deepcopy(targets["primary"])
+    altered["outcomes"][0]["normalized_target"] = 99.0
+    unsigned = dict(altered)
+    unsigned.pop("target_dataset_sha256")
+    altered["target_dataset_sha256"] = task9_attribution._canonical_sha256(unsigned)
+    with pytest.raises(ValueError, match="raw likelihood"):
+        validator(altered, targets["secondary"], plan, raw, reference_sequence_count=2)
+
+
 def test_intervention_plan_retains_exact_union_selected_by_contextcite_mask() -> None:
     """Catch inverting ContextCite booleans or broadcasting a region score per token."""
 

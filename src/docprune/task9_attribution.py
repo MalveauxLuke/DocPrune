@@ -316,6 +316,233 @@ def build_regional_intervention_plan(
     return tuple(plan)
 
 
+def build_regional_development_plan(
+    mapping: RegionTokenMapping,
+    primary_design: Mapping[str, object],
+    secondary_design: Mapping[str, object],
+    *,
+    mapping_artifact_sha256: str,
+) -> tuple[dict[str, object], ...]:
+    """Build the canonical 64-fit then 32-holdout physical intervention plan."""
+
+    primary_identity = primary_design.get("attribution_identity")
+    secondary_identity = secondary_design.get("attribution_identity")
+    if (
+        not isinstance(primary_identity, Mapping)
+        or not isinstance(secondary_identity, Mapping)
+        or primary_identity.get("target_kind") != _PRIMARY_TARGET_KIND
+        or secondary_identity.get("target_kind") != _SECONDARY_TARGET_KIND
+    ):
+        raise ValueError("Task 9 development designs must bind the two canonical targets")
+    shared_identity_keys = {
+        "question_id",
+        "forced_boundary",
+        "mapping_artifact_sha256",
+        "prompt_input_sha256",
+    }
+    if any(primary_identity[key] != secondary_identity[key] for key in shared_identity_keys):
+        raise ValueError("Task 9 development target identities do not share one intervention")
+
+    primary_rows = (
+        *build_regional_intervention_plan(
+            mapping,
+            primary_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="fit",
+        ),
+        *build_regional_intervention_plan(
+            mapping,
+            primary_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="holdout",
+        ),
+    )
+    secondary_rows = (
+        *build_regional_intervention_plan(
+            mapping,
+            secondary_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="fit",
+        ),
+        *build_regional_intervention_plan(
+            mapping,
+            secondary_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="holdout",
+        ),
+    )
+    combined: list[dict[str, object]] = []
+    for primary, secondary in zip(primary_rows, secondary_rows, strict=True):
+        primary_shared = {
+            key: value
+            for key, value in primary.items()
+            if key not in {"attribution_identity_sha256", "forced_intervention"}
+        }
+        secondary_shared = {
+            key: value
+            for key, value in secondary.items()
+            if key not in {"attribution_identity_sha256", "forced_intervention"}
+        }
+        if (
+            primary_shared != secondary_shared
+            or primary["forced_intervention"] != secondary["forced_intervention"]
+        ):
+            raise ValueError("Task 9 development targets do not share one physical mask plan")
+        combined.append(
+            {
+                **primary_shared,
+                "primary_attribution_identity_sha256": primary_design[
+                    "attribution_identity_sha256"
+                ],
+                "secondary_attribution_identity_sha256": secondary_design[
+                    "attribution_identity_sha256"
+                ],
+                "forced_intervention": primary["forced_intervention"],
+            }
+        )
+    if [row["seed"] for row in combined] != list(range(96)):
+        raise ValueError("Task 9 development plan must use canonical seeds 0 through 95")
+    return tuple(combined)
+
+
+def build_regional_development_targets(
+    primary_design: Mapping[str, object],
+    secondary_design: Mapping[str, object],
+    development_plan: Sequence[Mapping[str, object]],
+    *,
+    mean_sequence_loglikelihoods: Sequence[Sequence[float]],
+    reference_sequence_count: int,
+) -> dict[str, object]:
+    """Slice one 96-branch scoring result into the two authenticated targets."""
+
+    if type(reference_sequence_count) is not int or reference_sequence_count <= 0:
+        raise ValueError("Task 9 requires a positive accepted-reference sequence count")
+    if len(development_plan) != 96 or len(mean_sequence_loglikelihoods) != 96:
+        raise ValueError("Task 9 development targets require exactly 96 branch rows")
+    try:
+        primary_sources, primary_fit, primary_holdout = _validated_mask_design(primary_design)
+        secondary_sources, secondary_fit, secondary_holdout = _validated_mask_design(
+            secondary_design
+        )
+    except ValueError as error:
+        raise ValueError("Task 9 development target design is invalid") from error
+    if (
+        primary_design["attribution_identity"]["target_kind"] != _PRIMARY_TARGET_KIND
+        or secondary_design["attribution_identity"]["target_kind"] != _SECONDARY_TARGET_KIND
+        or primary_sources != secondary_sources
+        or primary_fit != secondary_fit
+        or primary_holdout != secondary_holdout
+    ):
+        raise ValueError("Task 9 development target designs are not a canonical pair")
+
+    primary_values: list[list[float]] = []
+    secondary_values: list[list[float]] = []
+    primary_outcomes: list[dict[str, object]] = []
+    secondary_outcomes: list[dict[str, object]] = []
+    for expected_seed, (plan, raw_values) in enumerate(
+        zip(development_plan, mean_sequence_loglikelihoods, strict=True)
+    ):
+        expected_split = "fit" if expected_seed < 64 else "holdout"
+        if (
+            not isinstance(plan, Mapping)
+            or plan.get("seed") != expected_seed
+            or plan.get("split") != expected_split
+            or plan.get("primary_attribution_identity_sha256")
+            != primary_design["attribution_identity_sha256"]
+            or plan.get("secondary_attribution_identity_sha256")
+            != secondary_design["attribution_identity_sha256"]
+        ):
+            raise ValueError("Task 9 development target plan seed or identity drifted")
+        checked = list(raw_values)
+        if len(checked) != reference_sequence_count + 1:
+            raise ValueError("Task 9 raw likelihood row does not contain references plus response")
+        primary_row = {
+            **plan,
+            "attribution_identity_sha256": primary_design["attribution_identity_sha256"],
+        }
+        secondary_row = {
+            **plan,
+            "attribution_identity_sha256": secondary_design["attribution_identity_sha256"],
+        }
+        primary_slice = checked[:reference_sequence_count]
+        secondary_slice = checked[reference_sequence_count:]
+        primary_values.append([float(value) for value in primary_slice])
+        secondary_values.append([float(value) for value in secondary_slice])
+        primary_outcomes.append(
+            build_regional_target_outcome(
+                primary_design,
+                primary_row,
+                mean_sequence_loglikelihoods=primary_slice,
+            )
+        )
+        secondary_outcomes.append(
+            build_regional_target_outcome(
+                secondary_design,
+                secondary_row,
+                mean_sequence_loglikelihoods=secondary_slice,
+            )
+        )
+
+    def dataset(
+        design: Mapping[str, object],
+        values: list[list[float]],
+        outcomes: list[dict[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "schema_version": 1,
+            "target_kind": design["attribution_identity"]["target_kind"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "design": dict(design),
+            "per_sequence_mean_loglikelihoods": values,
+            "outcomes": outcomes,
+        }
+        result["target_dataset_sha256"] = _canonical_sha256(result)
+        return result
+
+    return {
+        "schema_version": 1,
+        "seed_order": list(range(96)),
+        "primary": dataset(primary_design, primary_values, primary_outcomes),
+        "secondary": dataset(secondary_design, secondary_values, secondary_outcomes),
+    }
+
+
+def validate_regional_development_targets(
+    primary_target: Mapping[str, object],
+    secondary_target: Mapping[str, object],
+    development_plan: Sequence[Mapping[str, object]],
+    mean_sequence_loglikelihoods: Sequence[Sequence[float]],
+    *,
+    reference_sequence_count: int,
+) -> dict[str, object]:
+    """Replay both development targets from raw normalized sequence likelihoods."""
+
+    for payload, label in (
+        (primary_target, "primary"),
+        (secondary_target, "secondary"),
+    ):
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"Task 9 {label} target dataset is invalid")
+        unsigned = dict(payload)
+        observed = unsigned.pop("target_dataset_sha256", None)
+        if not _is_sha256(observed) or observed != _canonical_sha256(unsigned):
+            raise ValueError(f"Task 9 {label} target dataset digest is invalid")
+    primary_design = primary_target.get("design")
+    secondary_design = secondary_target.get("design")
+    if not isinstance(primary_design, Mapping) or not isinstance(secondary_design, Mapping):
+        raise ValueError("Task 9 target datasets do not contain mask designs")
+    expected = build_regional_development_targets(
+        primary_design,
+        secondary_design,
+        development_plan,
+        mean_sequence_loglikelihoods=mean_sequence_loglikelihoods,
+        reference_sequence_count=reference_sequence_count,
+    )
+    if primary_target != expected["primary"] or secondary_target != expected["secondary"]:
+        raise ValueError("Task 9 stored targets do not match the raw likelihood reconstruction")
+    return expected
+
+
 def build_regional_target_outcome(
     design: Mapping[str, object],
     intervention: Mapping[str, object],
@@ -994,6 +1221,55 @@ def evaluate_contextcite_refit_stability(
     return result
 
 
+def analyze_contextcite_development_question(
+    design: Mapping[str, object],
+    outcomes: Sequence[Mapping[str, object]],
+    regions: Sequence[Mapping[str, object]],
+    *,
+    requested_budget: int,
+) -> dict[str, object]:
+    """Analyze one Task 9 question without fabricating a cross-question LDS interval."""
+
+    _, fit_masks, holdout_masks = _validated_mask_design(design)
+    if not isinstance(outcomes, Sequence) or isinstance(outcomes, str | bytes):
+        raise ValueError("Task 9 one-question analysis requires ordered outcomes")
+    fit_outcomes = list(outcomes[:64])
+    holdout_outcomes = list(outcomes[64:])
+    if (
+        len(fit_outcomes) != len(fit_masks)
+        or len(holdout_outcomes) != len(holdout_masks)
+        or [row.get("seed") for row in outcomes] != list(range(96))
+    ):
+        raise ValueError("Task 9 one-question analysis requires canonical seeds 0 through 95")
+    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    fidelity = evaluate_contextcite_holdout(
+        design,
+        fit_outcomes,
+        surrogate,
+        holdout_outcomes,
+    )
+    stability = evaluate_contextcite_refit_stability(
+        design,
+        fit_outcomes,
+        surrogate,
+        regions,
+        requested_budget=requested_budget,
+    )
+    result: dict[str, object] = {
+        "schema_version": 1,
+        "status": "analyzed-task9-one-question-development",
+        "scope": "one-question-development-feasibility",
+        "cross_question_inference_status": "deferred-to-multi-question-development",
+        "attribution_identity": dict(design["attribution_identity"]),
+        "attribution_identity_sha256": design["attribution_identity_sha256"],
+        "surrogate": surrogate,
+        "fidelity": fidelity,
+        "stability": stability,
+    }
+    result["analysis_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def _defined_pairwise_summary(values: Sequence[object]) -> dict[str, object]:
     defined = [
         _finite_float(value, label="stability value") for value in values if value is not None
@@ -1570,7 +1846,11 @@ def aggregate_contextcite_admission_metrics(
 
 __all__ = [
     "build_region_mask_design",
+    "build_regional_development_plan",
+    "build_regional_development_targets",
+    "validate_regional_development_targets",
     "aggregate_contextcite_admission_metrics",
+    "analyze_contextcite_development_question",
     "evaluate_contextcite_holdout",
     "evaluate_contextcite_refit_stability",
     "fit_contextcite_lasso",
