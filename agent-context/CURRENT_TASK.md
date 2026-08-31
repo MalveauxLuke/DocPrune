@@ -27,8 +27,12 @@ canonical secondary fit and every primary fit converged, so this warning does
 not account for either decisive failure. The analysis contains no LDS interval.
 Exact execution authority is
 `sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
-Do not submit another Task 9 job, seal additional development questions, or
-start a large/method-holdout experiment under this rejected contract.
+The user subsequently approved two new pre-outcome diagnostics on this same
+development question. First submit the frozen B13 256-fit/64-held-out run under
+`sol/handoffs/DOCPRUNE_TASK9_B13_256_DIAGNOSTIC_L40S_2026-08-31.md`. Then
+prepare the same schedule and target with an input-level regional intervention
+under a separate correctness smoke and handoff. Neither authorizes additional
+questions or a method holdout.
 
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
@@ -151,8 +155,7 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Preserve job `62323129`, its admitted raw artifact, and the sealed CPU analysis.
-Task 9 cannot advance to more development questions or a large holdout under
-the current surrogate contract. A separate pre-outcome scientific decision is
-required before either rejecting Task 9 permanently or proposing a newly
-reviewed diagnostic; do not tune against this question's observed outcomes.
+Submit and terminally validate the exact B13 256-fit/64-held-out diagnostic in
+`sol/handoffs/DOCPRUNE_TASK9_B13_256_DIAGNOSTIC_L40S_2026-08-31.md`. While it is
+queued or running, prepare the separately approved input-level diagnostic. Do
+not inspect partial outcomes, add questions, or start a method holdout.

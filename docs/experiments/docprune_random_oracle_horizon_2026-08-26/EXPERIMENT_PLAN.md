@@ -395,6 +395,16 @@ Failure is a valid negative feasibility result. A passing advantage supports
 only that a privileged answer-conditioned regional procedure found a better
 mask in this local setup.
 
+### 2026-08-31 diagnostic amendment
+
+After the original 64-fit/32-held-out one-question gate failed, the user
+approved two outcome-blind diagnostics on that same development question:
+(1) the existing `B_13` intervention with 256 fit masks and 64 unseen masks,
+and (2) the same 256+64 schedule with those regions ablated at model input.
+Only the exact generated-response ContextCite target decides these diagnostics.
+Run B13 first; input-level requires a mechanical smoke and separate handoff.
+Neither diagnostic authorizes another question or method-holdout evaluation.
+
 ## Conditional Wang standalone-contribution study
 
 Wang's released-code score is not interchangeable with regional attribution
