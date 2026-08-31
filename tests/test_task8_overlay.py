@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 from pathlib import Path
@@ -184,6 +185,29 @@ def test_overlay_stages_outputs_and_cleans_failed_publication(
     with pytest.raises(OSError, match="injected publication failure"):
         publish_task8_region_overlays(mapping_path, tmp_path / "overlays")
     assert not (tmp_path / "overlays").exists()
+    assert not list(tmp_path.glob(".overlays.stage-*"))
+
+
+def test_overlay_falls_back_when_filesystem_rejects_directory_renameat2(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Catch losing overlays because Lustre rejects RENAME_NOREPLACE with EINVAL."""
+
+    mapping = _mapping(tmp_path)
+    monkeypatch.setattr(overlay_module, "load_region_mapping", lambda path: mapping)
+    mapping_path = tmp_path / "mapping.json"
+    mapping_path.write_bytes(region_mapping_json_bytes(mapping))
+
+    def unsupported(*args: object) -> None:
+        raise OSError(errno.EINVAL, "Invalid argument")
+
+    monkeypatch.setattr(overlay_module, "_rename_directory_noreplace", unsupported)
+    output = tmp_path / "overlays"
+
+    manifest = publish_task8_region_overlays(mapping_path, output)
+
+    assert json.loads((output / "manifest.json").read_bytes()) == manifest
+    assert (output / manifest["pages"][0]["output_filename"]).is_file()
     assert not list(tmp_path.glob(".overlays.stage-*"))
 
 
