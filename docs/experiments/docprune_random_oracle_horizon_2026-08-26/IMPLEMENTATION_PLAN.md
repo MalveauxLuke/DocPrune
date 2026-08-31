@@ -9,7 +9,8 @@ Status: Tasks 1–5 and Task 8 are complete. Task 9's four-mask smoke, original
 64+32 run, paired 256+64 B13/input diagnostics, and accepted-answer analysis
 are complete. The original identity-Jaccard gate is superseded. Task 9 is now
 authorized for implementation and sealing of a 48-question answer-conditioned
-causal-selection oracle pilot; no pilot job or method holdout is yet authorized.
+causal-selection oracle pilot. Unique accepted Task 6–9 Git work is consolidated
+on the active Task 9 branch; no pilot job or method holdout is yet authorized.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26; approved Task 9 oracle-pilot amendment,
@@ -393,6 +394,9 @@ Completed foundations:
 
 Pilot preparation and implementation:
 
+- [x] Consolidate unique accepted Task 6–9 Git work on the active Task 9
+  branch: Task 6 merge `689432e`, Task 7 merge `c5b212f`, and Task 8 merge
+  `c38cd9c`.
 - [ ] Implement and test an outcome-blind cohort sealer for 48 unique questions:
   16 uniform-anchor, 16 traceable distractor-error, 8 high-ambiguity/correct,
   and 8 clean-control questions. It may read accepted and already-observed
@@ -533,10 +537,8 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Finish the Task 9 documentation amendment and consolidate all unique accepted
-Task 6–9 implementation work onto this branch. Then implement the frozen
-48-question cohort/mapping/mask contracts and controlled pilot arms test-first,
-publish one unified analysis schema, and pass a bounded real-input smoke. The
-next GPU action after those steps is a newly reviewed question-sharded L40S
-pilot handoff; no pilot submission or method-holdout run is currently
-authorized. Task 10 remains inactive and separately gated.
+Implement the frozen 48-question cohort/mapping/mask contracts and controlled
+pilot arms test-first, publish one unified analysis schema, and pass a bounded
+real-input smoke. The next GPU action after those steps is a newly reviewed
+question-sharded L40S pilot handoff; no pilot submission or method-holdout run
+is currently authorized. Task 10 remains inactive and separately gated.

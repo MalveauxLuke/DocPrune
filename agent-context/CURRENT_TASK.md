@@ -35,6 +35,9 @@ coverage pruning arms are excluded. The existing 1,213-question Task 6
 random-versus-DocPrune evidence remains separate and is not rerun.
 Current non-executable preparation authority is
 `sol/handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`.
+All unique accepted Task 6–9 Git work is now consolidated on
+`codex/task9-analysis-cpu-20260828`: Task 6 merge `689432e`, Task 7 merge
+`c5b212f`, and Task 8 merge `c38cd9c`. No pilot job has been submitted.
 
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
@@ -157,9 +160,7 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Complete and verify all Task 9 documentation, merge unique accepted Task 6–9
-work onto this branch, then implement and test the cohort sealer, mappings,
-mask design, gold-conditioned attention, robust selector, matched-budget
-evaluation, and unified analysis JSON. After a bounded real-input smoke, write
-a fresh question-sharded L40S handoff. No pilot or method-holdout submission is
-currently authorized.
+Implement and test the cohort sealer, mappings, mask design, gold-conditioned
+attention, robust selector, matched-budget evaluation, and unified analysis
+JSON. After a bounded real-input smoke, write a fresh question-sharded L40S
+handoff. No pilot or method-holdout submission is currently authorized.

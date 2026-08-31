@@ -16,15 +16,18 @@ boundary. The procedure remains a privileged answer-conditioned whole-region
 reference oracle, not vanilla ContextCite, a token oracle, or a deployable
 query-only method.
 
-Current authority is CPU/documentation/implementation only: finish and verify
-the canonical Task 9 amendment, consolidate unique accepted Task 6–9 branches,
-then implement the sealed 48-question stratified cohort, 256+32+32 mask design,
-gold-conditioned attention control, robust/canonical ContextCite selectors,
-matched 55/65/80% budgeted evaluation, distractor mechanism metrics, and a
-unified analysis JSON. FastV and new random/coverage pruning arms are excluded;
-the completed 1,213-question Task 6 random-versus-DocPrune evidence is separate.
+Current authority is CPU/implementation only: implement the sealed 48-question
+stratified cohort, 256+32+32 mask design, gold-conditioned attention control,
+robust/canonical ContextCite selectors, matched 55/65/80% budgeted evaluation,
+distractor mechanism metrics, and a unified analysis JSON. FastV and new
+random/coverage pruning arms are excluded; the completed 1,213-question Task 6
+random-versus-DocPrune evidence is separate.
 The binding non-executable preparation handoff is
 [`handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`](handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md).
+
+Unique accepted Task 6–9 Git work is consolidated on
+`codex/task9-analysis-cpu-20260828` through Task 6 merge `689432e`, Task 7 merge
+`c5b212f`, and Task 8 merge `c38cd9c`. No pilot job has been submitted.
 
 After test and bounded real-input smoke acceptance, create a new exact handoff
 for question-level L40S shards with 24 GiB host RAM, fresh roots, no requeue,

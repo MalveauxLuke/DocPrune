@@ -122,10 +122,13 @@ developmental result into a confirmatory or population claim.
 
 Authorized now:
 
-- consolidate unique accepted Task 6–9 Git work onto the active Task 9 branch;
 - write CPU code/tests, cohort and mask seals, schemas, validators, and analysis;
 - use only fixed cached pages/features; and
 - run a bounded real-input correctness/cost smoke after CPU verification.
+
+Git consolidation is complete on `codex/task9-analysis-cpu-20260828`: Task 6
+merge `689432e`, Task 7 merge `c5b212f`, and Task 8 merge `c38cd9c` contain all
+unique accepted Task 6–9 work. No pilot job was submitted.
 
 Not authorized now:
 
@@ -145,12 +148,9 @@ IDs remain unset until the bounded smoke measures the final implementation.
 
 ## Immediate next steps
 
-1. Finish and verify the canonical documentation amendment.
-2. Merge every branch with unique accepted Task 6–9 work into the active Task 9
-   branch, resolving the canonical documents to this handoff.
-3. Implement the cohort sealer and mapping/mask schemas test-first.
-4. Implement the matched selectors, direct selected-set runner, validator, and
+1. Implement the cohort sealer and mapping/mask schemas test-first.
+2. Implement the matched selectors, direct selected-set runner, validator, and
    unified analysis JSON test-first.
-5. Run CPU verification and one bounded L40S smoke.
-6. Write and review a new executable pilot handoff; only then request
+3. Run CPU verification and one bounded L40S smoke.
+4. Write and review a new executable pilot handoff; only then request
    submission.

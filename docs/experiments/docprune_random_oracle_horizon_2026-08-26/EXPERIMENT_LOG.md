@@ -38,12 +38,12 @@ matrix. It is existing random-versus-DocPrune evidence, not a Task 9 comparator
 arm; Task 9 will not rerun uniform or coverage-matched random pruning. Its
 branch/code and final analysis authority are consolidated separately.
 
-Next action: complete and verify the Task 9 documentation amendment, merge all
-unique accepted Task 6–9 work onto the active Task 9 branch, then implement and
-smoke the frozen cohort, region mappings, budget-local masks, gold-conditioned
-attention, robust/canonical ContextCite selectors, and unified pilot analysis.
-No 48-question pilot, method holdout, retrieval, feature rebuild, or Task 10
-job is currently authorized. Task 10 remains separately approval gated.
+Unique accepted Task 6–9 work is consolidated on the active Task 9 branch.
+Next action: implement and smoke the frozen cohort, region mappings, budget-
+local masks, gold-conditioned attention, robust/canonical ContextCite
+selectors, and unified pilot analysis. No 48-question pilot, method holdout,
+retrieval, feature rebuild, or Task 10 job is currently authorized. Task 10
+remains separately approval gated.
 
 ## Frozen local provenance
 
@@ -1191,3 +1191,20 @@ This amendment supersedes only the 2026-08-26 prohibition on the phrase
 `oracle headroom` are now allowed when the answer privilege and nondeployable
 claim boundary appear with the result. An unqualified `oracle`, token oracle,
 or deployable-method claim remains prohibited.
+
+### Task 6–9 branch consolidation — 2026-08-31
+
+All local Task 6–9 branches were compared by patch identity before integration.
+The active branch `codex/task9-analysis-cpu-20260828` now contains every unique
+accepted change through Task 6 merge `689432e`, Task 7 merge `c5b212f`, and
+Task 8 merge `c38cd9c`; the remaining Task 9 branches were already patch-
+equivalent. Historical branches and worktrees remain preserved.
+
+Focused post-merge verification passed: 83 Task 7 tests, 99 Task 8 tests, and
+the consolidated Task 6–9 suite with 322 passes and 19 expected dependency/
+opt-in skips. Injecting the pinned solver made the Task 9 solver-dependent
+subset pass 30/30. Targeted Ruff, shell-syntax, and compile checks also passed.
+A repository-wide sweep exposed two stale benchmark-documentation assertions
+that incorrectly treated changing current-task files as benchmark authority;
+their scope was narrowed to the immutable benchmark documents, and both focused
+regressions pass. No experiment was launched during consolidation.

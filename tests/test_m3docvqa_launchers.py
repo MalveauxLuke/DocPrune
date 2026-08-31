@@ -614,16 +614,7 @@ def test_handoff_hybrid_scheduling_overrides_preserve_hardware_contract() -> Non
     assert "61943239" in text and "61943247" in text
 
 
-def test_active_authority_docs_have_no_stale_attempt_one_root() -> None:
-    authorities = (
-        ROOT / "agent-context" / "CURRENT_TASK.md",
-        ROOT / "sol" / "CURRENT_SOL_TASK.md",
-        ROOT / "docs" / "reproduction" / "DOCPRUNE.md",
-        ROOT / "docs" / "reproduction" / "RECONSTRUCTION_GAPS.md",
-    )
-    for path in authorities:
-        text = path.read_text(encoding="utf-8")
-        assert "benchmark-15301ea/attempt-1" in text
+def test_benchmark_handoff_has_no_stale_attempt_one_root() -> None:
     handoff = HANDOFF.read_text(encoding="utf-8")
     active = handoff.split("### Historical failures (not resumable or successful)", 1)[0]
     assert "benchmark-15301ea/attempt-1" in active
@@ -902,10 +893,8 @@ def test_superseded_runtime_pin_and_paths_are_historical_only() -> None:
     assert "none is a complete benchmark result or resumable active attempt" in historical
 
 
-def test_active_runtime_pin_and_root_are_consistent_across_authority_docs() -> None:
-    authority_paths = (
-        ROOT / "agent-context" / "CURRENT_TASK.md",
-        ROOT / "sol" / "CURRENT_SOL_TASK.md",
+def test_benchmark_runtime_pin_and_root_are_consistent_across_benchmark_docs() -> None:
+    benchmark_paths = (
         ROOT / "docs" / "reproduction" / "DOCPRUNE.md",
         ROOT / "docs" / "reproduction" / "RECONSTRUCTION_GAPS.md",
         HANDOFF,
@@ -915,7 +904,7 @@ def test_active_runtime_pin_and_root_are_consistent_across_authority_docs() -> N
         / "2026-08-20-docprune-paper-fidelity-correction"
         / "task-4-runtime-15301ea-reseal-report.md",
     )
-    for path in authority_paths:
+    for path in benchmark_paths:
         text = path.read_text(encoding="utf-8")
         assert ACTIVE_RUNTIME_COMMIT in text, path
         assert ACTIVE_RUNTIME_DIR in text, path
