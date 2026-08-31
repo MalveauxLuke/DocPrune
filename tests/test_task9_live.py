@@ -174,6 +174,7 @@ def test_input_256_launcher_freezes_matching_schedule_before_decoder_blocks() ->
     assert "#SBATCH --constraint=l40s" in launcher
     assert "#SBATCH --mem=24G" in launcher
     assert "#SBATCH --no-requeue" in launcher
+    assert "29e6ac2294d6b87075a1d45b8a8df175b214248a" in launcher
     assert "--boundary input" in launcher
     assert "--boundary B_input" in launcher
     assert "--fit-mask-count 256" in launcher
