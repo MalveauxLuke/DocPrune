@@ -46,3 +46,6 @@ Historical attempt `62423876` used runtime `f1d163c8` and failed at the clean
 dependency-pin preflight in six seconds because the launcher omitted one
 character from the M3DocRAG commit. It created no output and loaded no model.
 Commit `8e956be` adds a regression assertion and corrects only that pin.
+
+Corrected successor job `62424211` was submitted and initially recorded as
+`PENDING (Priority)` with one L40S, 8 CPUs, 24 GiB, 10 minutes, and no requeue.

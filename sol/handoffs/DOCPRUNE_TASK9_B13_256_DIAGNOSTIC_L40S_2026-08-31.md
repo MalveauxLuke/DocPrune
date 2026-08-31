@@ -45,3 +45,8 @@ sbatch \
 
 Do not inspect partial output. Require terminal admission before analysis. The
 approved input-level 256+64 diagnostic receives a separate runtime and handoff.
+
+Submitted job `62423463` completed `0:0` in `00:07:23` on `scg027`. The
+embedded validator returned `admitted-task9-regional-development` for all 320
+masks. Completion-manifest file SHA-256 is
+`db46773f64c45fdbcbc9109af6f92458a96378ec177e6a3c61c978b61d0dec86`.

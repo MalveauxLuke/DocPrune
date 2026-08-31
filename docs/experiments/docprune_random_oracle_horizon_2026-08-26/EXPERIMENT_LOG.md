@@ -1088,3 +1088,7 @@ created no output because its launcher misspelled the pinned M3DocRAG commit.
 Successor `8e956be8259e4d72ba1aa7b534649c2f411ef16c` corrects only that character,
 adds a regression assertion, and uses fresh root
 `/scratch/lmalveau/docprune/task9-input-256-8e956be-v2`.
+Corrected successor job `62424211` was submitted and initially queued for
+priority with the frozen L40S/8-CPU/24-GiB/10-minute contract. B13 job
+`62423463` completed `0:0` in `00:07:23` and terminally admitted all 320 masks;
+no attribution metrics were computed during this admission check.
