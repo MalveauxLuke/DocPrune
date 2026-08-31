@@ -24,6 +24,9 @@ _MASK_DESIGN_ADAPTATION = (
     "independent held-out split; zero-token audit regions are excluded"
 )
 _SURROGATE_ADAPTATION = "upstream num_output_tokens=1 because targets are already per-token means"
+_MEAN_LOGLIKELIHOOD_SCALE = "normalized-full-sequence-loglikelihood"
+_CONTEXTCITE_LOGIT_SCALE = "contextcite-sequence-logit-per-generated-token"
+_TARGET_SCALES = {_MEAN_LOGLIKELIHOOD_SCALE, _CONTEXTCITE_LOGIT_SCALE}
 _PRIMARY_TARGET_KIND = "max-accepted-reference-mean-loglikelihood"
 _SECONDARY_TARGET_KIND = "unpruned-generated-response-mean-loglikelihood"
 _TARGET_KINDS = {_PRIMARY_TARGET_KIND, _SECONDARY_TARGET_KIND}
@@ -38,6 +41,38 @@ def _canonical_bytes(value: object) -> bytes:
 
 def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def contextcite_logit_per_token_from_mean_loglikelihood(
+    mean_loglikelihood: float, token_count: int
+) -> float:
+    """Reconstruct ContextCite's sequence logit and normalize by response length."""
+
+    mean_value = _finite_float(mean_loglikelihood, label="mean sequence log-likelihood")
+    if type(token_count) is not int or token_count <= 0:
+        raise ValueError("generated response token count must be a positive integer")
+    sequence_log_probability = mean_value * token_count
+    if sequence_log_probability >= 0.0:
+        raise ValueError("sequence log-probability must be strictly negative")
+    if sequence_log_probability < -math.log(2.0):
+        log_one_minus_probability = math.log1p(-math.exp(sequence_log_probability))
+    else:
+        log_one_minus_probability = math.log(-math.expm1(sequence_log_probability))
+    result = (sequence_log_probability - log_one_minus_probability) / token_count
+    if not math.isfinite(result):
+        raise ValueError("ContextCite sequence-logit target must be finite")
+    return result
+
+
+def _surrogate_adaptation(target_scale: str) -> str:
+    if target_scale == _MEAN_LOGLIKELIHOOD_SCALE:
+        return _SURROGATE_ADAPTATION
+    if target_scale == _CONTEXTCITE_LOGIT_SCALE:
+        return (
+            "released aggregate_logit_probs sequence logit reconstructed from sealed mean "
+            "log-likelihood and divided by generated non-EOS token count"
+        )
+    raise ValueError("ContextCite target scale is invalid")
 
 
 def _is_sha256(value: object) -> bool:
@@ -218,9 +253,7 @@ def build_region_mask_design(
     excluded = [source_id for source_id, cost in validated if cost == 0]
     if not source_ids:
         raise ValueError("regional attribution requires at least one positive-cost region")
-    fit_masks = [
-        _mask_record(source_ids, split="fit", seed=seed) for seed in range(fit_mask_count)
-    ]
+    fit_masks = [_mask_record(source_ids, split="fit", seed=seed) for seed in range(fit_mask_count)]
     holdout_masks = [
         _mask_record(source_ids, split="holdout", seed=seed)
         for seed in range(fit_mask_count, fit_mask_count + holdout_mask_count)
@@ -689,6 +722,8 @@ def _validated_mask_design(
 def fit_contextcite_lasso(
     design: Mapping[str, object],
     fit_outcomes: Sequence[Mapping[str, object]],
+    *,
+    target_scale: str = _MEAN_LOGLIKELIHOOD_SCALE,
 ) -> dict[str, object]:
     """Fit the pinned ContextCite Lasso to already normalized sequence targets.
 
@@ -699,12 +734,14 @@ def fit_contextcite_lasso(
     """
 
     source_ids, fit_masks, _ = _validated_mask_design(design)
+    adaptation = _surrogate_adaptation(target_scale)
+    fit_mask_count = len(fit_masks)
     if (
         not isinstance(fit_outcomes, Sequence)
         or isinstance(fit_outcomes, str | bytes)
-        or len(fit_outcomes) != 64
+        or len(fit_outcomes) != fit_mask_count
     ):
-        raise ValueError("ContextCite fitting requires exactly 64 keyed fit outcomes")
+        raise ValueError("ContextCite fitting outcomes do not match the frozen fit masks")
     checked_masks = [list(mask["vector"]) for mask in fit_masks]
     checked_outcomes: list[dict[str, object]] = []
     checked_targets: list[float] = []
@@ -761,9 +798,9 @@ def fit_contextcite_lasso(
         "lasso_alpha": 0.01,
         "random_state": 0,
         "fit_intercept": True,
-        "fit_mask_count": 64,
-        "target": "normalized-full-sequence-loglikelihood",
-        "adaptation": _SURROGATE_ADAPTATION,
+        "fit_mask_count": fit_mask_count,
+        "target": target_scale,
+        "adaptation": adaptation,
         "attribution_identity": dict(design["attribution_identity"]),
         "attribution_identity_sha256": design["attribution_identity_sha256"],
         "source_ids": list(source_ids),
@@ -824,6 +861,7 @@ def _validated_surrogate(
     design: Mapping[str, object],
     source_ids: Sequence[str],
     fit_masks: Sequence[Mapping[str, object]],
+    target_scale: str = _MEAN_LOGLIKELIHOOD_SCALE,
 ) -> tuple[dict[str, float], float, float]:
     required = {
         "method",
@@ -854,6 +892,7 @@ def _validated_surrogate(
     observed_digest = unsigned.pop("surrogate_sha256")
     coefficients = surrogate["coefficients"]
     expected_fit_masks_sha256 = _canonical_sha256([mask["vector"] for mask in fit_masks])
+    adaptation = _surrogate_adaptation(target_scale)
     if (
         surrogate["method"] != "pinned-contextcite-standardscaler-lasso"
         or surrogate["upstream_repository"] != _CONTEXTCITE_REPOSITORY
@@ -864,9 +903,9 @@ def _validated_surrogate(
         or surrogate["random_state"] != 0
         or surrogate["fit_intercept"] is not True
         or type(surrogate["fit_mask_count"]) is not int
-        or surrogate["fit_mask_count"] != 64
-        or surrogate["target"] != "normalized-full-sequence-loglikelihood"
-        or surrogate["adaptation"] != _SURROGATE_ADAPTATION
+        or surrogate["fit_mask_count"] != len(fit_masks)
+        or surrogate["target"] != target_scale
+        or surrogate["adaptation"] != adaptation
         or surrogate["attribution_identity"] != design["attribution_identity"]
         or surrogate["attribution_identity_sha256"] != design["attribution_identity_sha256"]
         or surrogate["source_ids"] != list(source_ids)
@@ -936,8 +975,10 @@ def evaluate_contextcite_holdout(
     fit_outcomes: Sequence[Mapping[str, object]],
     surrogate: Mapping[str, object],
     holdout_outcomes: Sequence[Mapping[str, object]],
+    *,
+    target_scale: str = _MEAN_LOGLIKELIHOOD_SCALE,
 ) -> dict[str, object]:
-    """Evaluate one question's surrogate on the frozen 32-mask holdout.
+    """Evaluate one question's surrogate on its frozen holdout.
 
     LDS is exactly Spearman rank correlation with average ranks for ties. The
     constant comparator is the fit-target mean persisted when the surrogate is
@@ -945,21 +986,22 @@ def evaluate_contextcite_holdout(
     """
 
     source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
-    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes, target_scale=target_scale)
     coefficients, intercept, fit_target_mean = _validated_surrogate(
         surrogate,
         design=design,
         source_ids=source_ids,
         fit_masks=fit_masks,
+        target_scale=target_scale,
     )
     if _canonical_bytes(surrogate) != _canonical_bytes(expected_surrogate):
         raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
     if (
         not isinstance(holdout_outcomes, Sequence)
         or isinstance(holdout_outcomes, str | bytes)
-        or len(holdout_outcomes) != 32
+        or len(holdout_outcomes) != len(holdout_masks)
     ):
-        raise ValueError("ContextCite fidelity requires exactly 32 keyed holdout outcomes")
+        raise ValueError("ContextCite fidelity outcomes do not match the frozen holdout masks")
 
     checked_outcomes: list[dict[str, object]] = []
     targets: list[float] = []
@@ -1019,9 +1061,9 @@ def evaluate_contextcite_holdout(
         "surrogate_sha256": expected_surrogate["surrogate_sha256"],
         "fit_outcomes_sha256": expected_surrogate["fit_outcomes_sha256"],
         "fit_targets_sha256": expected_surrogate["fit_targets_sha256"],
-        "holdout_mask_count": 32,
-        "holdout_seed_start": 64,
-        "holdout_seed_stop_exclusive": 96,
+        "holdout_mask_count": len(holdout_masks),
+        "holdout_seed_start": len(fit_masks),
+        "holdout_seed_stop_exclusive": len(fit_masks) + len(holdout_masks),
         "lds_definition": "spearman-rank-correlation-average-ties",
         "lds_spearman": lds,
         "lds_defined": lds is not None,
@@ -1128,16 +1170,18 @@ def evaluate_contextcite_refit_stability(
     regions: Sequence[Mapping[str, object]],
     *,
     requested_budget: int,
+    target_scale: str = _MEAN_LOGLIKELIHOOD_SCALE,
 ) -> dict[str, object]:
     """Evaluate deterministic five-refit coefficient and selection stability."""
 
     source_ids, fit_masks, _ = _validated_mask_design(design)
-    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    expected_surrogate = fit_contextcite_lasso(design, fit_outcomes, target_scale=target_scale)
     _validated_surrogate(
         surrogate,
         design=design,
         source_ids=source_ids,
         fit_masks=fit_masks,
+        target_scale=target_scale,
     )
     if _canonical_bytes(surrogate) != _canonical_bytes(expected_surrogate):
         raise ValueError("ContextCite surrogate does not match the canonical fit outcomes")
@@ -1162,7 +1206,9 @@ def evaluate_contextcite_refit_stability(
     refits: list[dict[str, object]] = []
     achieved_budget: int | None = None
     for seed in range(5):
-        sampled = np.random.RandomState(seed).choice(64, size=64, replace=True)
+        sampled = np.random.RandomState(seed).choice(
+            len(fit_masks), size=len(fit_masks), replace=True
+        )
         indices = [int(index) for index in sampled.tolist()]
         coefficients, intercept = _fit_contextcite_solver(matrix[sampled], targets[sampled])
         coefficient_map = {
@@ -1230,7 +1276,7 @@ def evaluate_contextcite_refit_stability(
         "bootstrap_rng": "numpy-legacy-randomstate-choice",
         "bootstrap_seed_start": 0,
         "bootstrap_seed_stop_exclusive": 5,
-        "bootstrap_draw_count": 64,
+        "bootstrap_draw_count": len(fit_masks),
         "bootstrap_replace": True,
         "mask_design_sha256": design["design_sha256"],
         "attribution_identity": dict(design["attribution_identity"]),
@@ -1262,26 +1308,30 @@ def analyze_contextcite_development_question(
     regions: Sequence[Mapping[str, object]],
     *,
     requested_budget: int,
+    target_scale: str = _MEAN_LOGLIKELIHOOD_SCALE,
 ) -> dict[str, object]:
     """Analyze one Task 9 question without fabricating a cross-question LDS interval."""
 
     _, fit_masks, holdout_masks = _validated_mask_design(design)
     if not isinstance(outcomes, Sequence) or isinstance(outcomes, str | bytes):
         raise ValueError("Task 9 one-question analysis requires ordered outcomes")
-    fit_outcomes = list(outcomes[:64])
-    holdout_outcomes = list(outcomes[64:])
+    fit_mask_count = len(fit_masks)
+    total_mask_count = fit_mask_count + len(holdout_masks)
+    fit_outcomes = list(outcomes[:fit_mask_count])
+    holdout_outcomes = list(outcomes[fit_mask_count:])
     if (
         len(fit_outcomes) != len(fit_masks)
         or len(holdout_outcomes) != len(holdout_masks)
-        or [row.get("seed") for row in outcomes] != list(range(96))
+        or [row.get("seed") for row in outcomes] != list(range(total_mask_count))
     ):
-        raise ValueError("Task 9 one-question analysis requires canonical seeds 0 through 95")
-    surrogate = fit_contextcite_lasso(design, fit_outcomes)
+        raise ValueError("Task 9 one-question analysis requires consecutive canonical seeds")
+    surrogate = fit_contextcite_lasso(design, fit_outcomes, target_scale=target_scale)
     fidelity = evaluate_contextcite_holdout(
         design,
         fit_outcomes,
         surrogate,
         holdout_outcomes,
+        target_scale=target_scale,
     )
     stability = evaluate_contextcite_refit_stability(
         design,
@@ -1289,6 +1339,7 @@ def analyze_contextcite_development_question(
         surrogate,
         regions,
         requested_budget=requested_budget,
+        target_scale=target_scale,
     )
     result: dict[str, object] = {
         "schema_version": 1,

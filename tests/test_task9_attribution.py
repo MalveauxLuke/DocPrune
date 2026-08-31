@@ -12,6 +12,7 @@ import pytest
 from docprune import task9_attribution
 from docprune.task9_attribution import (
     build_region_mask_design,
+    contextcite_logit_per_token_from_mean_loglikelihood,
     evaluate_contextcite_holdout,
     evaluate_contextcite_refit_stability,
     fit_contextcite_lasso,
@@ -170,6 +171,58 @@ def test_region_mask_design_supports_frozen_256_fit_64_holdout_schedule() -> Non
     assert design["holdout_mask_count"] == 64
     assert [row["seed"] for row in design["fit_masks"]] == list(range(256))
     assert [row["seed"] for row in design["holdout_masks"]] == list(range(256, 320))
+
+
+def test_contextcite_logit_per_token_reconstructs_sequence_probability() -> None:
+    mean_loglikelihood = -0.7
+    token_count = 7
+    sequence_log_probability = mean_loglikelihood * token_count
+    expected = (
+        sequence_log_probability - math.log1p(-math.exp(sequence_log_probability))
+    ) / token_count
+
+    assert contextcite_logit_per_token_from_mean_loglikelihood(
+        mean_loglikelihood, token_count
+    ) == pytest.approx(expected)
+    assert math.isfinite(contextcite_logit_per_token_from_mean_loglikelihood(-1e-12, 1))
+    for invalid in ((0.0, 1), (1.0, 1), (-1.0, 0), (float("nan"), 1)):
+        with pytest.raises(ValueError):
+            contextcite_logit_per_token_from_mean_loglikelihood(*invalid)
+
+
+def test_contextcite_analysis_supports_256_fit_64_holdout() -> None:
+    pytest.importorskip("sklearn")
+    design = build_region_mask_design(
+        [{"source_id": "region-a", "token_cost": 1}],
+        **_identity_kwargs(target_kind=_SECONDARY_TARGET_KIND),
+        fit_mask_count=256,
+        holdout_mask_count=64,
+    )
+    outcomes = [
+        {
+            "split": mask["split"],
+            "seed": mask["seed"],
+            "vector_sha256": mask["vector_sha256"],
+            "attribution_identity_sha256": design["attribution_identity_sha256"],
+            "normalized_target": float(mask["vector"][0]),
+        }
+        for mask in [*design["fit_masks"], *design["holdout_masks"]]
+    ]
+
+    result = task9_attribution.analyze_contextcite_development_question(
+        design,
+        outcomes,
+        [{"source_id": "region-a", "token_cost": 1}],
+        requested_budget=1,
+        target_scale="contextcite-sequence-logit-per-generated-token",
+    )
+
+    assert result["surrogate"]["fit_mask_count"] == 256
+    assert result["surrogate"]["target"] == "contextcite-sequence-logit-per-generated-token"
+    assert result["fidelity"]["holdout_mask_count"] == 64
+    assert result["fidelity"]["holdout_seed_start"] == 256
+    assert result["fidelity"]["holdout_seed_stop_exclusive"] == 320
+    assert result["stability"]["bootstrap_draw_count"] == 256
 
 
 def test_region_mask_design_is_replayable_and_rejects_ambiguous_sources() -> None:
