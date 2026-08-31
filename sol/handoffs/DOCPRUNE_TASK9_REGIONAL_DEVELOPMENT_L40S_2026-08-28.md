@@ -1,9 +1,10 @@
 # Task 9 One-Question Regional Development L40S Handoff
 
 Date: 2026-08-28
-Status: submitted exactly once as HTC job `62323129` after explicit user
-approval. The job was pending for priority at the first scheduler check. Do
-not run `sbatch` again or submit an automatic retry.
+Status: completed and analyzed. Exact HTC job `62323129` completed `0:0` and
+passed terminal raw admission; the frozen one-question CPU analysis failed the
+dual-target reliability prerequisite. Do not run `sbatch` again, submit an
+automatic retry, or advance to more questions under this contract.
 
 ## Objective and claim boundary
 
@@ -172,6 +173,38 @@ stability. It intentionally produces no LDS confidence interval. The official
 interval is deferred to a subsequently sealed multi-question development set
 and support-component bootstrap.
 
+## Completed result and decision
+
+Job `62323129` ran on `scg027` from `2026-08-28T21:05:35` through
+`2026-08-28T21:06:50`, completing `0:0`. The terminal validator returned
+`admitted-task9-regional-development` for all 96 masks and both targets.
+Frozen CPU analysis at `M=2689` produced:
+
+```text
+primary LDS/Spearman: 0.8878299120234603
+primary held-out RMSE / constant RMSE: 0.24043597646895476 / 1.0162899764963313
+primary five-refit selection Jaccard mean / minimum: 0.7007899670180094 / 0.6363636363636364
+secondary LDS/Spearman: 0.5879765395894427
+secondary held-out RMSE / constant RMSE: 0.9825739081690632 / 0.9332444565813031
+secondary five-refit selection Jaccard mean / minimum: 0.7628912547637502 / 0.7111111111111111
+```
+
+The secondary surrogate did not beat the constant baseline, and neither target
+met the `0.8` selection-stability requirement. One secondary bootstrap refit
+(seed `3`) reached the pinned upstream default `max_iter=1000`; its canonical
+fit and every primary fit converged, so that warning does not explain the
+secondary fidelity failure or primary stability failure.
+
+```text
+analysis path: /scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json
+analysis file SHA-256: 1dd375f5e52374b17b3efc3b8cad97e50e159e138f90a8270d406641e752de40
+analysis internal SHA-256: 95ead2d334542606bdaa0fac517a851fb163bc84325b7c751048f348e5e5224b
+```
+
+The file contains no LDS confidence interval. This first-stage dual-target
+reliability gate is rejected; no additional development questions or large
+holdout are authorized by this handoff.
+
 ## Failure and recovery limits
 
 - Preserve every partial or failed root unchanged.
@@ -183,7 +216,6 @@ and support-component bootstrap.
   mapping, boundary, pages, features, model, prompt, decoder, or budget.
 - Do not submit the A100 portability probe or any large/method-holdout run.
 
-After the one-question raw artifact and analysis are admitted, the next
-pre-outcome scientific decision is to seal the number and identities of
-additional development questions before viewing their top-versus-reverse
-results. This handoff does not make that decision.
+The next action is a separate pre-outcome scientific decision: reject Task 9
+under this contract or approve a newly reviewed diagnostic without tuning it
+against this question's observed outcomes. This handoff authorizes neither.

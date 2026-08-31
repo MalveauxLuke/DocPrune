@@ -7,24 +7,28 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-Task 9 one-question regional-attribution development preparation is complete at
-runtime commit `7616b29b4dc5ba33584a6e26371281be6886188f`. The clean detached
-runtime is `/home/lmalveau/DocPrune-task9-development-runtime-7616b29`; the
-exact launcher is `examples/sbatch/39_docprune_task9_regional_development.sbatch`
-with SHA-256 `963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
-The prepared HTC job was submitted exactly once as job `62323129` and was
-pending for priority at the first scheduler check. It uses one exact L40S, 8
-CPUs, 24 GiB RAM, 10 minutes, and no shards. It scores the canonical 64 fit plus 32 held-out masks
-for QID `e1e6ed53f9ad11813845088f4cf2f6b1` at `B_13` in one shared-prefix
-scoring call, with the secondary generated-response target obtained by the
-internal additional unpruned generation. The terminal validator must admit the
-raw artifact before CPU analysis. That analysis reports per-question held-out
-LDS/Spearman, RMSE versus the fit-target-mean constant, and five-refit stability
-for both targets; it intentionally reports no one-question LDS interval. The
-official interval is deferred to a sealed multi-question development phase.
+Task 9 one-question regional attribution completed under runtime
+`7616b29b4dc5ba33584a6e26371281be6886188f`. Exact-L40S HTC job `62323129`
+completed `0:0` in `00:01:15` on `scg027`; its terminal validator admitted all
+96 masks and both replayed targets. Frozen CPU analysis at requested budget
+`M=2689` is sealed at
+`/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json`
+with file SHA-256
+`1dd375f5e52374b17b3efc3b8cad97e50e159e138f90a8270d406641e752de40`.
+
+The dual-target one-question reliability prerequisite failed. Primary
+accepted-reference fidelity was LDS/Spearman `0.88783`, held-out RMSE `0.24044`
+versus constant RMSE `1.01629`, but minimum five-refit selection Jaccard was
+only `0.63636`. Secondary generated-response fidelity was LDS/Spearman
+`0.58798`, held-out RMSE `0.98257` versus constant RMSE `0.93324`, so it did
+not beat the constant; its minimum selection Jaccard was `0.71111`. One
+secondary bootstrap refit reached the pinned upstream `max_iter=1000`, but the
+canonical secondary fit and every primary fit converged, so this warning does
+not account for either decisive failure. The analysis contains no LDS interval.
 Exact execution authority is
 `sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
-Do not submit another job or retry. Require terminal admission before analysis.
+Do not submit another Task 9 job, seal additional development questions, or
+start a large/method-holdout experiment under this rejected contract.
 
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
@@ -147,7 +151,8 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Monitor exact job `62323129` without resubmission. Require terminal admission,
-and only then run the frozen CPU analysis. Do not launch a large holdout,
-submit a retry, shard the masks, or report a one-question LDS confidence
-interval.
+Preserve job `62323129`, its admitted raw artifact, and the sealed CPU analysis.
+Task 9 cannot advance to more development questions or a large holdout under
+the current surrogate contract. A separate pre-outcome scientific decision is
+required before either rejecting Task 9 permanently or proposing a newly
+reviewed diagnostic; do not tune against this question's observed outcomes.

@@ -6,8 +6,9 @@
 > approval or SOL-handoff gate.
 
 Status: Tasks 1–5 and Task 8 are complete. Task 9's L40S four-mask smoke is
-admitted; its one-question 96-mask development run was submitted exactly once
-as HTC job `62323129` and was initially pending for priority.
+admitted; its one-question 96-mask development run and frozen CPU analysis are
+complete. The dual-target reliability prerequisite failed, so Task 9 cannot
+advance under the current contract.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26
@@ -364,16 +365,24 @@ all 96 seeds and created no output. Launcher SHA-256 is
 Exact prepared handoff:
 [`DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](../../../sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
 
+Result (2026-08-31): job `62323129` completed and terminally admitted all 96
+physical interventions. At `M=2689`, primary LDS/Spearman was `0.88783` and
+held-out RMSE was `0.24044` versus constant `1.01629`, but minimum five-refit
+selection Jaccard was `0.63636`. Secondary LDS/Spearman was `0.58798`, held-out
+RMSE was `0.98257` versus constant `0.93324`, and minimum selection Jaccard was
+`0.71111`. Thus secondary failed the constant baseline and neither target met
+the `0.8` stability requirement. No one-question interval was computed.
+
 - [x] Generate 64 deterministic Bernoulli-0.5 fit masks plus 32 independent
   held-out whole-region masks.
-- [ ] Cache full `B_K` states and physically delete each selected union mask
+- [x] Cache full `B_K` states and physically delete each selected union mask
   before continuing later blocks.
-- [ ] Compute per-reference normalized teacher-forced full-answer
+- [x] Compute per-reference normalized teacher-forced full-answer
   log-likelihood and save the maximum accepted-reference target.
-- [ ] Compute the normalized full-sequence likelihood of the unpruned model
+- [x] Compute the normalized full-sequence likelihood of the unpruned model
   response as a separate contributive target.
 - [x] Fit the pinned ContextCite Lasso surrogate; log every interface change.
-- [ ] Report held-out LDS/Spearman, error versus constant, and five-refit
+- [x] Report held-out LDS/Spearman, error versus constant, and five-refit
   coefficient/selection stability. The first one-question run has no official
   interval; add the support-component interval only for the later sealed
   multi-question development phase.
@@ -468,10 +477,10 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Task 9 development job `62323129` is the only authorized submission. Monitor it
-without resubmission. Do not submit an A100 portability job, shard the 96 masks,
-run retrieval, load the global index, rebuild features, analyze partial output,
-or begin a large/method-holdout experiment. After terminal raw admission, run
-the prescribed CPU analysis; then seal the number and identities of additional
-development questions before their top-versus-reverse outcomes are viewed.
-Task 10 remains inactive and separately approval gated.
+Task 9's one-question dual-target reliability prerequisite failed. Preserve job
+`62323129`, the admitted raw artifact, and `analysis.json`; do not submit an
+A100 portability job, additional development questions, a retry, or a large
+holdout under the current contract. A separate pre-outcome scientific decision
+is required before rejecting Task 9 permanently or proposing a newly reviewed
+diagnostic. Do not tune a replacement against this question's observed
+outcomes. Task 10 remains inactive and separately approval gated.

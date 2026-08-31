@@ -1023,3 +1023,47 @@ CPUs, 24 GiB, one GPU, feature `l40s&public`, a 10-minute limit, and no requeue.
 No analysis, retrieval, global-index load, feature build, A100 replacement, or
 method-holdout experiment was launched. Do not resubmit or inspect partial
 target output; require terminal admission first.
+
+### Task 9 one-question result and reliability decision — 2026-08-31
+
+Job `62323129` completed `0:0` on L40S node `scg027` in `00:01:15` with MaxRSS
+`2338552K`. The terminal validator returned
+`admitted-task9-regional-development` for all 96 masks. Completion-manifest
+file SHA-256 was
+`5b2f3bcba250640f6172a9cf513c50cc4fb112019cd497bc56a47445e1c3b71c`;
+the primary and secondary target dataset identities were respectively
+`f7253f720d3810a5caf16cbf791c7fdf8bb1dc08763afec2aab912bfbda7f59b`
+and `d5f14dd3120a041269e21c04e5fc3af1b30ec17b407c1b331dffe0403a642c2b`.
+
+The frozen CPU analysis ran once at requested and achieved budget `M=2689`.
+Primary accepted-reference LDS/Spearman was `0.8878299120234603`; held-out RMSE
+was `0.24043597646895476` versus fit-target-mean constant RMSE
+`1.0162899764963313`. Its five-refit coefficient-Spearman mean/minimum were
+`0.39520522916779327`/`0.24705580145431552`, and selection-Jaccard
+mean/minimum were `0.7007899670180094`/`0.6363636363636364`.
+
+Secondary generated-response LDS/Spearman was `0.5879765395894427`; held-out
+RMSE was `0.9825739081690632` versus constant RMSE `0.9332444565813031`, so
+the surrogate did not beat the constant. Its coefficient-Spearman mean/minimum
+were `0.4873276608584233`/`0.36699061531116595`, and selection-Jaccard
+mean/minimum were `0.7628912547637502`/`0.7111111111111111`.
+
+One secondary bootstrap refit, seed `3`, reached the pinned upstream default
+`max_iter=1000` and emitted the sole convergence warning. A fit-by-fit replay
+confirmed that the canonical secondary fit and all primary fits converged.
+The warning therefore does not explain the secondary constant-baseline failure
+or the independently failing primary selection stability.
+
+Analysis path:
+`/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json`.
+File SHA-256 is
+`1dd375f5e52374b17b3efc3b8cad97e50e159e138f90a8270d406641e752de40`;
+internal analysis SHA-256 is
+`95ead2d334542606bdaa0fac517a851fb163bc84325b7c751048f348e5e5224b`.
+All three internal analysis hashes replayed, and the file contains zero
+confidence-interval fields.
+
+Decision: the first one-question dual-target reliability prerequisite failed.
+Do not seal additional Task 9 development questions, launch a large holdout,
+retry the job, or tune a replacement surrogate against this question. A new
+pre-outcome scientific decision is required before any further Task 9 work.

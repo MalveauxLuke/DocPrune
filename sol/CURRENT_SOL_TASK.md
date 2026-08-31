@@ -4,9 +4,9 @@
 
 The only new executable authority is
 [`handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
-The user explicitly approved it, and it was submitted exactly once as HTC job
-`62323129` at `2026-08-28T19:57:28`. The first scheduler check showed `PENDING`
-for `Priority`. Do not run `sbatch` again or submit an automatic retry.
+The user explicitly approved it, and exact HTC job `62323129` completed `0:0`
+in `00:01:15` on `scg027`. The terminal validator admitted all 96 masks and
+both replayed targets. Do not run `sbatch` again or submit an automatic retry.
 
 The sealed runtime is the clean detached checkout
 `/home/lmalveau/DocPrune-task9-development-runtime-7616b29` at
@@ -18,13 +18,15 @@ with 64 fit and 32 held-out masks in one shared-prefix scoring call. The
 additional unpruned generation that defines the secondary target occurs
 internally.
 
-Terminal validation must precede all target inspection or analysis. If the raw
-artifact is admitted, the frozen CPU analysis reports per-question held-out
-LDS/Spearman, RMSE against the fit-target-mean constant, and five-refit
-stability for both targets. It does not report an LDS confidence interval for
-this one-question run; official inference is deferred to the later sealed
-multi-question development phase. No large holdout, A100 portability run,
-automatic retry, retrieval/index run, or method comparison is authorized.
+Frozen CPU analysis completed at `M=2689`. Primary LDS/Spearman was `0.88783`
+and beat the constant in RMSE (`0.24044` versus `1.01629`), but its minimum
+five-refit selection Jaccard was `0.63636`. Secondary LDS/Spearman was
+`0.58798`, its RMSE was worse than the constant (`0.98257` versus `0.93324`),
+and its minimum selection Jaccard was `0.71111`. The analysis has no LDS
+interval. The dual-target one-question reliability prerequisite therefore
+failed. No additional Task 9 development question, large holdout, A100
+portability run, automatic retry, retrieval/index run, or method comparison is
+authorized.
 
 The older Task 6 and historical authorities below are retained for provenance
 and are superseded for the current next action.
