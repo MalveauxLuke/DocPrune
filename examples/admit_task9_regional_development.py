@@ -26,6 +26,8 @@ def main() -> None:
     parser.add_argument("--post-qtp-visual-tokens", type=int, required=True)
     parser.add_argument("--decoder-layer-count", type=int, required=True)
     parser.add_argument("--gpu-substring", required=True)
+    parser.add_argument("--fit-mask-count", type=int, default=64)
+    parser.add_argument("--holdout-mask-count", type=int, default=32)
     args = parser.parse_args()
     admitted = admit_task9_regional_development(
         args.root,
@@ -44,6 +46,8 @@ def main() -> None:
         ),
         expected_decoder_layer_count=args.decoder_layer_count,
         expected_gpu_substring=args.gpu_substring,
+        expected_fit_mask_count=args.fit_mask_count,
+        expected_holdout_mask_count=args.holdout_mask_count,
     )
     print(json.dumps(admitted, sort_keys=True, separators=(",", ":")))
 

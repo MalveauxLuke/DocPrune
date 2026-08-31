@@ -123,6 +123,46 @@ def test_development_scoring_uses_one_call_for_all_96_interventions() -> None:
     assert answerer.calls[0]["include_unpruned_generated_response"] is True
 
 
+def test_development_scoring_supports_one_320_intervention_call() -> None:
+    """Catch splitting or rejecting the frozen 256-fit/64-holdout diagnostic."""
+
+    answerer = type(
+        "Answerer",
+        (),
+        {"score_forced_intervention_likelihoods": lambda self, *args, **kwargs: kwargs},
+    )()
+    interventions = tuple(object() for _ in range(320))
+
+    result = task9_live.score_task9_regional_development_once(
+        answerer,
+        images=("page",),
+        question="question",
+        retrieval_output="fixed-retrieval",
+        forced_interventions=interventions,
+        reference_target_token_ids=((1, 2),),
+        expected_mask_count=320,
+    )
+
+    assert result["forced_interventions"] == interventions
+    assert result["include_unpruned_generated_response"] is True
+
+
+def test_b13_256_launcher_freezes_256_fit_and_64_holdout_masks() -> None:
+    launcher = (
+        Path(__file__).parents[1]
+        / "examples"
+        / "sbatch"
+        / "40_docprune_task9_b13_256_diagnostic.sbatch"
+    ).read_text()
+
+    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --mem=24G" in launcher
+    assert "#SBATCH --no-requeue" in launcher
+    assert "--boundary 13" in launcher
+    assert "--fit-mask-count 256" in launcher
+    assert "--holdout-mask-count 64" in launcher
+
+
 def test_development_admission_requires_completion_authority(tmp_path: Path) -> None:
     """Catch admission of a partial development publication after an interrupted run."""
 
@@ -316,6 +356,24 @@ def test_development_admission_replays_dual_targets_and_all_physical_rows(
 
     assert admitted["status"] == "admitted-task9-regional-development"
     assert admitted["mask_count"] == 96
+
+    with pytest.raises(ValueError, match="mask split"):
+        task9_live.admit_task9_regional_development(
+            root,
+            expected_runtime_commit="d" * 40,
+            expected_qid="qid",
+            expected_boundary="B_13",
+            expected_fixture_sha256=input_paths["fixture"][1],
+            expected_mapping_sha256=mapping_sha,
+            expected_mapping_internal_sha256=mapping.sha256,
+            expected_geometry_count=4,
+            expected_geometry_sha256=mapping.geometry_sha256,
+            expected_trace=(8, 6, 4),
+            expected_decoder_layer_count=28,
+            expected_gpu_substring="L40S",
+            expected_fit_mask_count=65,
+            expected_holdout_mask_count=31,
+        )
 
 
 def _artifact(root: Path) -> None:

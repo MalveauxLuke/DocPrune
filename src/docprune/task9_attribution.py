@@ -188,13 +188,22 @@ def build_region_mask_design(
     target_kind: str,
     reference_set_token_ids_sha256: str | None,
     generated_response_token_ids_sha256: str | None,
+    fit_mask_count: int = 64,
+    holdout_mask_count: int = 32,
 ) -> dict[str, object]:
-    """Build the frozen 64-fit/32-held-out whole-region mask schedule.
+    """Build a frozen fit/held-out whole-region mask schedule.
 
     Zero-token audit regions remain in the mapping audit but are excluded from
     the regression design because toggling them cannot change a physical mask.
     """
 
+    if (
+        type(fit_mask_count) is not int
+        or fit_mask_count <= 0
+        or type(holdout_mask_count) is not int
+        or holdout_mask_count <= 0
+    ):
+        raise ValueError("regional attribution mask counts must be positive integers")
     attribution_identity = _build_attribution_identity(
         question_id=question_id,
         forced_boundary=forced_boundary,
@@ -209,8 +218,13 @@ def build_region_mask_design(
     excluded = [source_id for source_id, cost in validated if cost == 0]
     if not source_ids:
         raise ValueError("regional attribution requires at least one positive-cost region")
-    fit_masks = [_mask_record(source_ids, split="fit", seed=seed) for seed in range(64)]
-    holdout_masks = [_mask_record(source_ids, split="holdout", seed=seed) for seed in range(64, 96)]
+    fit_masks = [
+        _mask_record(source_ids, split="fit", seed=seed) for seed in range(fit_mask_count)
+    ]
+    holdout_masks = [
+        _mask_record(source_ids, split="holdout", seed=seed)
+        for seed in range(fit_mask_count, fit_mask_count + holdout_mask_count)
+    ]
     for column in range(len(source_ids)):
         values = {record["vector"][column] for record in fit_masks}
         if values != {False, True}:
@@ -227,6 +241,8 @@ def build_region_mask_design(
         "source_ids": source_ids,
         "excluded_zero_cost_source_ids": excluded,
         "source_order_sha256": hashlib.sha256("\n".join(source_ids).encode("utf-8")).hexdigest(),
+        "fit_mask_count": fit_mask_count,
+        "holdout_mask_count": holdout_mask_count,
         "fit_masks": fit_masks,
         "holdout_masks": holdout_masks,
     }
@@ -400,8 +416,9 @@ def build_regional_development_plan(
                 "forced_intervention": primary["forced_intervention"],
             }
         )
-    if [row["seed"] for row in combined] != list(range(96)):
-        raise ValueError("Task 9 development plan must use canonical seeds 0 through 95")
+    expected_count = len(primary_rows)
+    if [row["seed"] for row in combined] != list(range(expected_count)):
+        raise ValueError("Task 9 development plan must use consecutive canonical seeds")
     return tuple(combined)
 
 
@@ -413,12 +430,10 @@ def build_regional_development_targets(
     mean_sequence_loglikelihoods: Sequence[Sequence[float]],
     reference_sequence_count: int,
 ) -> dict[str, object]:
-    """Slice one 96-branch scoring result into the two authenticated targets."""
+    """Slice one branch-scoring result into two authenticated targets."""
 
     if type(reference_sequence_count) is not int or reference_sequence_count <= 0:
         raise ValueError("Task 9 requires a positive accepted-reference sequence count")
-    if len(development_plan) != 96 or len(mean_sequence_loglikelihoods) != 96:
-        raise ValueError("Task 9 development targets require exactly 96 branch rows")
     try:
         primary_sources, primary_fit, primary_holdout = _validated_mask_design(primary_design)
         secondary_sources, secondary_fit, secondary_holdout = _validated_mask_design(
@@ -426,6 +441,12 @@ def build_regional_development_targets(
         )
     except ValueError as error:
         raise ValueError("Task 9 development target design is invalid") from error
+    expected_count = len(primary_fit) + len(primary_holdout)
+    if (
+        len(development_plan) != expected_count
+        or len(mean_sequence_loglikelihoods) != expected_count
+    ):
+        raise ValueError("Task 9 development target branch count does not match its design")
     if (
         primary_design["attribution_identity"]["target_kind"] != _PRIMARY_TARGET_KIND
         or secondary_design["attribution_identity"]["target_kind"] != _SECONDARY_TARGET_KIND
@@ -442,7 +463,7 @@ def build_regional_development_targets(
     for expected_seed, (plan, raw_values) in enumerate(
         zip(development_plan, mean_sequence_loglikelihoods, strict=True)
     ):
-        expected_split = "fit" if expected_seed < 64 else "holdout"
+        expected_split = "fit" if expected_seed < len(primary_fit) else "holdout"
         if (
             not isinstance(plan, Mapping)
             or plan.get("seed") != expected_seed
@@ -501,7 +522,7 @@ def build_regional_development_targets(
 
     return {
         "schema_version": 1,
-        "seed_order": list(range(96)),
+        "seed_order": list(range(expected_count)),
         "primary": dataset(primary_design, primary_values, primary_outcomes),
         "secondary": dataset(secondary_design, secondary_values, secondary_outcomes),
     }
@@ -606,6 +627,8 @@ def _validated_mask_design(
         "source_ids",
         "excluded_zero_cost_source_ids",
         "source_order_sha256",
+        "fit_mask_count",
+        "holdout_mask_count",
         "fit_masks",
         "holdout_masks",
         "design_sha256",
@@ -640,9 +663,21 @@ def _validated_mask_design(
         != hashlib.sha256("\n".join(source_ids).encode("utf-8")).hexdigest()
     ):
         raise ValueError("ContextCite mask design identity is invalid")
-    expected_fit = [_mask_record(source_ids, split="fit", seed=seed) for seed in range(64)]
+    fit_mask_count = design["fit_mask_count"]
+    holdout_mask_count = design["holdout_mask_count"]
+    if (
+        type(fit_mask_count) is not int
+        or fit_mask_count <= 0
+        or type(holdout_mask_count) is not int
+        or holdout_mask_count <= 0
+    ):
+        raise ValueError("ContextCite mask design counts are invalid")
+    expected_fit = [
+        _mask_record(source_ids, split="fit", seed=seed) for seed in range(fit_mask_count)
+    ]
     expected_holdout = [
-        _mask_record(source_ids, split="holdout", seed=seed) for seed in range(64, 96)
+        _mask_record(source_ids, split="holdout", seed=seed)
+        for seed in range(fit_mask_count, fit_mask_count + holdout_mask_count)
     ]
     if _canonical_bytes(design["fit_masks"]) != _canonical_bytes(expected_fit) or _canonical_bytes(
         design["holdout_masks"]

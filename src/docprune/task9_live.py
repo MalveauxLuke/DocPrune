@@ -177,14 +177,21 @@ def score_task9_regional_development_once(
     retrieval_output: object,
     forced_interventions: Sequence[object],
     reference_target_token_ids: Sequence[Sequence[int]],
+    expected_mask_count: int = 96,
 ) -> object:
-    """Execute the canonical 96-mask call, including internal response capture."""
+    """Execute one frozen mask call, including internal response capture."""
 
     interventions = tuple(forced_interventions)
     targets = tuple(tuple(row) for row in reference_target_token_ids)
     scoring = getattr(answerer, "score_forced_intervention_likelihoods", None)
-    if len(interventions) != 96 or not targets or not callable(scoring):
-        raise ValueError("Task 9 development scoring requires 96 masks and reference targets")
+    if (
+        type(expected_mask_count) is not int
+        or expected_mask_count <= 0
+        or len(interventions) != expected_mask_count
+        or not targets
+        or not callable(scoring)
+    ):
+        raise ValueError("Task 9 development scoring mask count or reference targets are invalid")
     return scoring(
         images,
         question,
@@ -209,8 +216,19 @@ def admit_task9_regional_development(
     expected_trace: tuple[int, int, int],
     expected_decoder_layer_count: int,
     expected_gpu_substring: str,
+    expected_fit_mask_count: int = 64,
+    expected_holdout_mask_count: int = 32,
 ) -> dict[str, object]:
-    """Authenticate the terminal one-question 96-mask dual-target artifact."""
+    """Authenticate a terminal one-question dual-target artifact."""
+
+    if (
+        type(expected_fit_mask_count) is not int
+        or expected_fit_mask_count <= 0
+        or type(expected_holdout_mask_count) is not int
+        or expected_holdout_mask_count <= 0
+    ):
+        raise ValueError("Task 9 expected mask counts are invalid")
+    expected_mask_count = expected_fit_mask_count + expected_holdout_mask_count
 
     output = Path(root)
     if not output.is_absolute() or output.is_symlink() or not output.is_dir():
@@ -287,8 +305,8 @@ def admit_task9_regional_development(
         or manifest["runtime_commit"] != expected_runtime_commit
         or manifest["qid"] != expected_qid
         or manifest["boundary"] != expected_boundary
-        or manifest["mask_count"] != 96
-        or manifest["seed_order"] != list(range(96))
+        or manifest["mask_count"] != expected_mask_count
+        or manifest["seed_order"] != list(range(expected_mask_count))
         or manifest["fixed_page_fixture_sha256"] != expected_fixture_sha256
         or manifest["mapping_artifact_sha256"] != expected_mapping_sha256
         or manifest["mapping_internal_sha256"] != expected_mapping_internal_sha256
@@ -413,6 +431,12 @@ def admit_task9_regional_development(
     secondary_design = secondary.get("design")
     if not isinstance(primary_design, Mapping) or not isinstance(secondary_design, Mapping):
         raise ValueError("Task 9 development designs are missing")
+    if any(
+        design.get("fit_mask_count") != expected_fit_mask_count
+        or design.get("holdout_mask_count") != expected_holdout_mask_count
+        for design in (primary_design, secondary_design)
+    ):
+        raise ValueError("Task 9 development mask split drifted")
     primary_identity = primary_design.get("attribution_identity")
     secondary_identity = secondary_design.get("attribution_identity")
     if (
@@ -457,14 +481,14 @@ def admit_task9_regional_development(
     expected_prefix = 0 if expected_boundary == "B_input" else int(expected_boundary[2:]) + 1
     if (
         not isinstance(forced_rows, list)
-        or len(forced_rows) != 96
+        or len(forced_rows) != expected_mask_count
         or type(raw["reference_sequence_count"]) is not int
         or raw["reference_sequence_count"] <= 0
         or not isinstance(prefix, list)
         or len(prefix) != expected_prefix
         or any(type(value) is not int or value <= 0 for value in prefix)
         or not isinstance(branch_times, list)
-        or len(branch_times) != 96
+        or len(branch_times) != expected_mask_count
         or any(_finite(value, "branch timing", positive=True) <= 0 for value in branch_times)
         or any(
             _finite(raw[key], "runtime timing") < 0
@@ -510,7 +534,7 @@ def admit_task9_regional_development(
         "status": "admitted-task9-regional-development",
         "qid": expected_qid,
         "boundary": expected_boundary,
-        "mask_count": 96,
+        "mask_count": expected_mask_count,
         "target_dataset_sha256s": [primary_sha, secondary_sha],
         "cuda_device_name": raw["cuda_device_name"],
         "completion_manifest_file_sha256": completion_file_sha,

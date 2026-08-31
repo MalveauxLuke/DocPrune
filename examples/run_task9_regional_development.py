@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the first one-question, 96-mask Task 9 regional development artifact."""
+"""Run one frozen Task 9 regional development artifact."""
 
 from __future__ import annotations
 
@@ -81,6 +81,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--fit-mask-count", type=int, default=64)
+    parser.add_argument("--holdout-mask-count", type=int, default=32)
     parser.add_argument("--validate-only", action="store_true")
     return parser
 
@@ -106,6 +108,9 @@ def _runtime_identity(runtime_dir: Path, runtime_commit: str) -> None:
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.fit_mask_count <= 0 or args.holdout_mask_count <= 0:
+        raise ValueError("Task 9 mask counts must be positive")
+    mask_count = args.fit_mask_count + args.holdout_mask_count
     for path in (
         args.config,
         args.run_config,
@@ -158,8 +163,8 @@ def main() -> None:
                     "status": "validated-task9-development-without-model-or-output",
                     "qid": fixed_question.qid,
                     "boundary": boundary_label,
-                    "mask_count": 96,
-                    "seed_order": list(range(96)),
+                    "mask_count": mask_count,
+                    "seed_order": list(range(mask_count)),
                     "geometry_count": mapping.geometry_count,
                     "geometry_sha256": mapping.geometry_sha256,
                     "mapping_internal_sha256": mapping.sha256,
@@ -231,6 +236,8 @@ def main() -> None:
         target_kind="max-accepted-reference-mean-loglikelihood",
         reference_set_token_ids_sha256=reference_hash,
         generated_response_token_ids_sha256=None,
+        fit_mask_count=args.fit_mask_count,
+        holdout_mask_count=args.holdout_mask_count,
     )
     primary_plan = (
         *build_regional_intervention_plan(
@@ -253,6 +260,7 @@ def main() -> None:
         retrieval_output=retrieval,
         forced_interventions=tuple(row["forced_intervention"] for row in primary_plan),
         reference_target_token_ids=reference_ids,
+        expected_mask_count=mask_count,
     )
     generated_ids = shared.unpruned_generated_response_token_ids
     terminal_eos = shared.unpruned_terminal_eos_token_id
@@ -275,6 +283,8 @@ def main() -> None:
         target_kind="unpruned-generated-response-mean-loglikelihood",
         reference_set_token_ids_sha256=None,
         generated_response_token_ids_sha256=generated_hash,
+        fit_mask_count=args.fit_mask_count,
+        holdout_mask_count=args.holdout_mask_count,
     )
     development_plan = build_regional_development_plan(
         mapping,
@@ -298,8 +308,8 @@ def main() -> None:
         "runtime_commit": args.runtime_commit,
         "qid": args.qid,
         "boundary": boundary_label,
-        "mask_count": 96,
-        "seed_order": list(range(96)),
+        "mask_count": mask_count,
+        "seed_order": list(range(mask_count)),
         "config_path": str(args.config),
         "fixed_page_fixture_path": str(args.fixture),
         "mapping_path": str(args.mapping),

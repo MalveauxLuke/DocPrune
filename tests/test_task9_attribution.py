@@ -155,6 +155,23 @@ def test_region_mask_design_matches_pinned_contextcite_randomstate_schedule() ->
     assert len({row["vector_sha256"] for row in design["fit_masks"]}) > 1
 
 
+def test_region_mask_design_supports_frozen_256_fit_64_holdout_schedule() -> None:
+    """Catch truncating the diagnostic back to the original 64/32 schedule."""
+
+    identity = _identity_kwargs(target_kind=_SECONDARY_TARGET_KIND)
+    design = build_region_mask_design(
+        _regions(),
+        **identity,
+        fit_mask_count=256,
+        holdout_mask_count=64,
+    )
+
+    assert design["fit_mask_count"] == 256
+    assert design["holdout_mask_count"] == 64
+    assert [row["seed"] for row in design["fit_masks"]] == list(range(256))
+    assert [row["seed"] for row in design["holdout_masks"]] == list(range(256, 320))
+
+
 def test_region_mask_design_is_replayable_and_rejects_ambiguous_sources() -> None:
     """Catch nondeterminism, duplicate IDs, negative costs, or inert fitted columns."""
 
