@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--expected-members", type=Path, required=True)
     parser.add_argument("--expected-members-sha256", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scheduler-job-id")
     parser.add_argument("--draws", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=20_260_827)
     parser.add_argument(
@@ -40,6 +41,7 @@ def main() -> int:
         draws=args.draws,
         seed=args.seed,
         validate_only=args.validate_only,
+        scheduler_job_id=args.scheduler_job_id,
     )
     print(
         json.dumps(

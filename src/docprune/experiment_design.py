@@ -91,12 +91,43 @@ def _renameat2_noreplace(
     new_directory_fd: int,
     new_name: str,
 ) -> None:
-    """Use Linux renameat2(RENAME_NOREPLACE), failing closed if unavailable."""
+    """Move without replacement, using a hard-link fallback for regular files."""
+
+    def link_regular_fallback(error_number: int) -> None:
+        source = os.stat(old_name, dir_fd=old_directory_fd, follow_symlinks=False)
+        if not stat.S_ISREG(source.st_mode):
+            raise OSError(error_number, os.strerror(error_number), new_name)
+        try:
+            os.link(
+                old_name,
+                new_name,
+                src_dir_fd=old_directory_fd,
+                dst_dir_fd=new_directory_fd,
+                follow_symlinks=False,
+            )
+        except FileExistsError as error:
+            raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), new_name) from error
+        try:
+            published = os.stat(new_name, dir_fd=new_directory_fd, follow_symlinks=False)
+            current_source = os.stat(old_name, dir_fd=old_directory_fd, follow_symlinks=False)
+            if (published.st_dev, published.st_ino) != (
+                current_source.st_dev,
+                current_source.st_ino,
+            ):
+                raise OSError(errno.ESTALE, "regular-file source changed during publication")
+            os.unlink(old_name, dir_fd=old_directory_fd)
+        except BaseException:
+            try:
+                os.unlink(new_name, dir_fd=new_directory_fd)
+            except FileNotFoundError:
+                pass
+            raise
 
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
     if renameat2 is None:
-        raise OSError(errno.ENOSYS, "renameat2(RENAME_NOREPLACE) is unavailable")
+        link_regular_fallback(errno.ENOSYS)
+        return
     renameat2.argtypes = [
         ctypes.c_int,
         ctypes.c_char_p,
@@ -117,6 +148,9 @@ def _renameat2_noreplace(
     error_number = ctypes.get_errno()
     if error_number == errno.EEXIST:
         raise FileExistsError(error_number, os.strerror(error_number), new_name)
+    if error_number in {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}:
+        link_regular_fallback(error_number)
+        return
     raise OSError(error_number, os.strerror(error_number), new_name)
 
 

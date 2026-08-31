@@ -74,6 +74,23 @@ def _write_authority(tmp_path: Path) -> tuple[Path, str, Path, str, Path, tuple[
     return fixture_path, fixture_sha256, gate_path, gate_sha256, shard_root, qids
 
 
+def _write_scheduler_logs(root: Path, job_id: str) -> None:
+    for index in range(64):
+        for suffix in ("out", "err"):
+            (root / f"slurm-docprune-task6-l40s-{job_id}_{index}.{suffix}").write_text(
+                f"scheduler record {index} {suffix}\n", encoding="utf-8"
+            )
+
+
+def _write_bootstrap_manifests(root: Path) -> None:
+    for index in range(64):
+        bootstrap = root / f"shard-{index:04d}" / "bootstrap"
+        bootstrap.mkdir()
+        (bootstrap / "run_manifest.json").write_text(
+            '{"status":"bootstrap-only"}\n', encoding="utf-8"
+        )
+
+
 def _bundle(qid: str, marker: int) -> dict[str, object]:
     digest = f"{marker % 16:x}" * 64
     provenance = {
@@ -264,6 +281,30 @@ def test_driver_admits_exact_sealed_order_and_publishes_once(
             draws=4,
             seed=3,
         )
+
+
+def test_member_sealer_accepts_only_exact_job_bound_scheduler_logs(tmp_path: Path) -> None:
+    """Catch rejecting the launcher-prescribed Slurm namespace or allowing unrelated extras."""
+
+    fixture, fixture_sha, gate, gate_sha, root, _ = _write_authority(tmp_path)
+    _write_scheduler_logs(root, "62314816")
+    _write_bootstrap_manifests(root)
+    output = tmp_path / "member-hashes.json"
+
+    authority, _ = task7_report_driver.seal_task7_member_hash_authority(
+        shard_root=root,
+        fixture_path=fixture,
+        fixture_sha256=fixture_sha,
+        gate_path=gate,
+        gate_sha256=gate_sha,
+        output_path=output,
+        scheduler_job_id="62314816",
+    )
+
+    assert len(authority["members"]) == 64
+    (root / "unrelated.log").write_text("must fail\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="missing or extra entries"):
+        task7_report_driver._require_exact_shard_tree(root, scheduler_job_id="62314816")
 
 
 @pytest.mark.parametrize("mutation", ["missing", "extra", "qid", "symlink"])
