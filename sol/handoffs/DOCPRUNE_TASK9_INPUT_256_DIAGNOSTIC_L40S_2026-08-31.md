@@ -16,13 +16,13 @@ This is decoder-input ablation, not removal of pixels before the vision encoder.
 - no accepted-reference decision, new question, retrieval, global index,
   feature rebuild, shard, array, or automatic retry
 
-Runtime: `/home/lmalveau/DocPrune-task9-input-256-runtime-f1d163c` at
-`f1d163c8ef3922311f35db4deabd8420621c4e58`.
+Runtime: `/home/lmalveau/DocPrune-task9-input-256-runtime-8e956be` at
+`8e956be8259e4d72ba1aa7b534649c2f411ef16c`.
 
 Launcher: `examples/sbatch/41_docprune_task9_input_256_diagnostic.sbatch`,
-SHA-256 `783f2043a89162710a9f8b124d86d5e2150ecd9f855506aeb96ec99a5a96aa33`.
+SHA-256 `ff8d6c2c38b5a09d9006ad9cf9b1c8376ceaa4be4d81a7dbe9f7ee934d99b81e`.
 
-Fresh root: `/scratch/lmalveau/docprune/task9-input-256-f1d163c-v1`.
+Fresh root: `/scratch/lmalveau/docprune/task9-input-256-8e956be-v2`.
 
 Resources: HTC/public, one exact NVIDIA L40S, 8 CPUs, 24 GiB host RAM, 10
 minutes, no requeue.
@@ -36,8 +36,13 @@ Submit exactly once:
 
 ```bash
 sbatch \
-  --export=ALL,RUNTIME_DIR=/home/lmalveau/DocPrune-task9-input-256-runtime-f1d163c,RUNTIME_COMMIT=f1d163c8ef3922311f35db4deabd8420621c4e58,JOB_ROOT=/scratch/lmalveau/docprune/task9-input-256-f1d163c-v1 \
-  /home/lmalveau/DocPrune-task9-input-256-runtime-f1d163c/examples/sbatch/41_docprune_task9_input_256_diagnostic.sbatch
+  --export=ALL,RUNTIME_DIR=/home/lmalveau/DocPrune-task9-input-256-runtime-8e956be,RUNTIME_COMMIT=8e956be8259e4d72ba1aa7b534649c2f411ef16c,JOB_ROOT=/scratch/lmalveau/docprune/task9-input-256-8e956be-v2 \
+  /home/lmalveau/DocPrune-task9-input-256-runtime-8e956be/examples/sbatch/41_docprune_task9_input_256_diagnostic.sbatch
 ```
 
 Do not inspect partial output. Require terminal admission before analysis.
+
+Historical attempt `62423876` used runtime `f1d163c8` and failed at the clean
+dependency-pin preflight in six seconds because the launcher omitted one
+character from the M3DocRAG commit. It created no output and loaded no model.
+Commit `8e956be` adds a regression assertion and corrects only that pin.

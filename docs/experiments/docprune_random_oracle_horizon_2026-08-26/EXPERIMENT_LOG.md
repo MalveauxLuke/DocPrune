@@ -1082,3 +1082,9 @@ L40S, 8 CPUs, 24 GiB, 10 minutes, and no requeue or shards. At the first joint
 check, B13 was running on `scg027` and B_input was pending for priority. Do not
 inspect partial outputs; the decision target is the exact generated-response
 ContextCite scale reconstructed from terminally admitted raw results.
+
+Input attempt `62423876` failed preflight in six seconds with exit `1:0` and
+created no output because its launcher misspelled the pinned M3DocRAG commit.
+Successor `8e956be8259e4d72ba1aa7b534649c2f411ef16c` corrects only that character,
+adds a regression assertion, and uses fresh root
+`/scratch/lmalveau/docprune/task9-input-256-8e956be-v2`.
