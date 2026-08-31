@@ -1,6 +1,8 @@
 """Tests for the paired B13-versus-input Task 9 diagnostic analysis."""
 
-from examples.analyze_task9_paired_diagnostics import _diagnosis
+import pytest
+
+from examples.analyze_task9_paired_diagnostics import _diagnosis, _prepare_target
 
 
 def _summary(passed: bool, *, predictive_fidelity: bool = True) -> dict[str, object]:
@@ -29,3 +31,32 @@ def test_paired_diagnosis_distinguishes_sample_count_from_boundary_failure() -> 
         == "both-fail-regional-linearity"
     )
     assert _diagnosis(_summary(True), _summary(False))["code"] == "b13-only-pass-input-shift"
+
+
+def test_prepare_target_keeps_accepted_answer_scores_on_their_recorded_scale() -> None:
+    outcomes = [{"normalized_target": -1.25}]
+    target = {
+        "target_kind": "max-accepted-reference-mean-loglikelihood",
+        "outcomes": outcomes,
+    }
+
+    prepared, metadata, target_scale = _prepare_target(
+        target, target_mode="accepted-answer", generated_token_count=7
+    )
+
+    assert prepared is outcomes
+    assert metadata == {
+        "input_scale": "max-accepted-reference-mean-loglikelihood",
+        "output_scale": "normalized-full-sequence-loglikelihood",
+        "formula": "no-transform",
+    }
+    assert target_scale == "normalized-full-sequence-loglikelihood"
+
+
+def test_prepare_target_rejects_the_wrong_artifact_for_accepted_answer() -> None:
+    with pytest.raises(ValueError, match="accepted-answer target"):
+        _prepare_target(
+            {"target_kind": "unpruned-generated-response-mean-loglikelihood", "outcomes": []},
+            target_mode="accepted-answer",
+            generated_token_count=7,
+        )

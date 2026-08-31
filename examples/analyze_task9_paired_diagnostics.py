@@ -23,7 +23,9 @@ from docprune.task9_attribution import (
 from docprune.task9_live import admit_task9_regional_development
 
 _TARGET_SCALE = "contextcite-sequence-logit-per-generated-token"
+_MEAN_LOGLIKELIHOOD_SCALE = "normalized-full-sequence-loglikelihood"
 _SECONDARY_KIND = "unpruned-generated-response-mean-loglikelihood"
+_PRIMARY_KIND = "max-accepted-reference-mean-loglikelihood"
 
 
 def _publish(path: Path, payload: dict[str, object]) -> None:
@@ -85,6 +87,24 @@ def _exact_generated_outcomes(
         },
         "transformed_outcomes_sha256": _canonical_sha256(transformed),
     }
+
+
+def _prepare_target(
+    target: dict[str, object], *, target_mode: str, generated_token_count: int
+) -> tuple[list[dict[str, object]], dict[str, object], str]:
+    if target_mode == "generated-response":
+        outcomes, metadata = _exact_generated_outcomes(target, generated_token_count)
+        return outcomes, metadata, _TARGET_SCALE
+    if target_mode != "accepted-answer" or target.get("target_kind") != _PRIMARY_KIND:
+        raise ValueError("paired diagnostic requires the accepted-answer target")
+    outcomes = target.get("outcomes")
+    if not isinstance(outcomes, list):
+        raise ValueError("accepted-answer target outcomes are invalid")
+    return outcomes, {
+        "input_scale": _PRIMARY_KIND,
+        "output_scale": _MEAN_LOGLIKELIHOOD_SCALE,
+        "formula": "no-transform",
+    }, _MEAN_LOGLIKELIHOOD_SCALE
 
 
 def _condition_summary(
@@ -199,8 +219,8 @@ def _diagnosis(b13_summary: dict[str, object], input_summary: dict[str, object])
             "plain_language": (
                 "With 256 fitting masks, both boundaries predict unseen intervention outcomes "
                 "well enough to clear the fidelity checks, but neither produces a stable selected "
-                "region set across refits. More masks repaired the earlier prediction failure, "
-                "while the dense or weakly separated regional ranking remains unreliable."
+                "region set across refits. Moving deletion to decoder input does not repair this; "
+                "the dense or weakly separated regional ranking remains unreliable."
             ),
         }
     if not b13_pass and not input_pass:
@@ -240,6 +260,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--decoder-layer-count", type=int, required=True)
     parser.add_argument("--gpu-substring", required=True)
     parser.add_argument("--requested-budget", type=int, required=True)
+    parser.add_argument(
+        "--target-mode",
+        choices=("generated-response", "accepted-answer"),
+        default="generated-response",
+    )
     return parser
 
 
@@ -271,6 +296,9 @@ def main() -> None:
     admissions: dict[str, object] = {}
     raw_payloads: dict[str, dict[str, object]] = {}
     targets: dict[str, dict[str, object]] = {}
+    target_filename = (
+        "primary-target.json" if args.target_mode == "accepted-answer" else "secondary-target.json"
+    )
     for name, (root, runtime_commit, boundary) in condition_specs.items():
         admissions[name] = admit_task9_regional_development(
             root,
@@ -279,7 +307,7 @@ def main() -> None:
             **common,
         )
         raw_payloads[name] = _load_json(root / "raw-result.json")
-        targets[name] = _load_json(root / "secondary-target.json")
+        targets[name] = _load_json(root / target_filename)
 
     generated_ids = raw_payloads["b13"]["generated_response_token_ids"]
     if (
@@ -302,8 +330,16 @@ def main() -> None:
     summaries: dict[str, object] = {}
     transforms: dict[str, object] = {}
     solver_warnings: dict[str, object] = {}
+    target_scale: str | None = None
     for name in ("b13", "input"):
-        exact_outcomes, transform = _exact_generated_outcomes(targets[name], len(generated_ids))
+        exact_outcomes, transform, condition_target_scale = _prepare_target(
+            targets[name],
+            target_mode=args.target_mode,
+            generated_token_count=len(generated_ids),
+        )
+        if target_scale is not None and target_scale != condition_target_scale:
+            raise ValueError("paired diagnostics do not use the same target scale")
+        target_scale = condition_target_scale
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             analysis = analyze_contextcite_development_question(
@@ -311,7 +347,7 @@ def main() -> None:
                 exact_outcomes,
                 regions,
                 requested_budget=args.requested_budget,
-                target_scale=_TARGET_SCALE,
+                target_scale=condition_target_scale,
             )
         # The mask design is attached temporarily for summary prediction replay,
         # then removed so it is not duplicated in the durable JSON.
@@ -363,9 +399,10 @@ def main() -> None:
         "question_id": args.qid,
         "analysis_runtime_commit": args.analysis_runtime_commit,
         "requested_budget": args.requested_budget,
+        "target_mode": args.target_mode,
         "generated_response_token_ids": generated_ids,
         "generated_response_token_ids_sha256": _canonical_sha256(generated_ids),
-        "target_scale": _TARGET_SCALE,
+        "target_scale": target_scale,
         "raw_admissions": admissions,
         "source_artifacts": {
             name: {
@@ -375,7 +412,8 @@ def main() -> None:
                 "completion_manifest_file_sha256": _file_sha256(
                     spec[0] / "completion-manifest.json"
                 ),
-                "secondary_target_file_sha256": _file_sha256(spec[0] / "secondary-target.json"),
+                "target_filename": target_filename,
+                "target_file_sha256": _file_sha256(spec[0] / target_filename),
             }
             for name, spec in condition_specs.items()
         },
