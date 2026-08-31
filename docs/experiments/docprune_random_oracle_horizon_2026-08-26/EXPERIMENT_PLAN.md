@@ -373,11 +373,13 @@ diagnostic.
 
 ### Reference surrogate and deployment
 
-1. Use 256 deterministic global fit masks with region keep probability `0.5`
-   and 64 independent global held-out masks. Keep these masks and the pinned
-   solver unchanged for the reference oracle.
+1. Use 256 deterministic global fit masks with region keep probability `0.5`.
+   Add 32 independent global held-out masks and 32 held-out masks local to the
+   primary deployment budget. Keep the fit masks and pinned solver unchanged
+   for the reference oracle.
 2. Fit the pinned ContextCite Lasso-style surrogate; log adaptations.
-3. Treat each coefficient as the estimated total value of its entire region.
+3. Transform coefficients back to raw inclusion-feature space and treat each
+   signed coefficient as the estimated total value of its entire region.
 4. Let each region's cost be its post-QTP token count.
 5. Find the maximum attainable whole-region cost `M′ <= M`; among subsets with
    that cost, select the maximum total coefficient. Reverse attribution selects
@@ -387,14 +389,56 @@ diagnostic.
 7. Report `M′`, requested `M`, and the gap. Never standardize coefficients a
    second time, broadcast them to tokens, or split a whole region.
 
-### Controlled pilot arms
+### Frozen pilot cohort
 
-Seal an outcome-blind 16-question developmental panel before creating new
-question-level attribution outcomes. The primary controlled comparison is at
-`B_13`. Every arm uses identical cached pages, BTP/QTP output, post-QTP visual
-population, 95-source-style whole-region action space, physical-deletion
-operator, achieved whole-region budget `M′`, model, positions, decoding, and
-evaluator. The arms are:
+Seal a 48-question developmental mechanism panel before creating any new
+question-level ContextCite outcomes. Selection may use fixed-page document
+structure, accepted answers, already-observed unpruned answers, and region
+contents, but it may not use ContextCite outcomes, attention scores, or any
+selector comparison. Sample without replacement within each frozen pool using
+a recorded seed, in this order:
+
+1. **Uniform anchor — 16 questions.** Uniformly sample from the authenticated
+   eligible fixed-page pool. This is a question-sampling anchor, not a new
+   uniform-random pruning arm.
+2. **Traceable distractor errors — 16 questions.** The unpruned answer is
+   incorrect; its normalized value occurs in a region; an accepted answer
+   occurs in a different region; both regions are on the fixed retrieved
+   pages; the two values share a frozen semantic type such as date, amount,
+   percentage, name, address, or table entry; and a pre-ContextCite audit says
+   the question is answerable from the document.
+3. **High ambiguity, baseline correct — 8 questions.** Rank eligible correct
+   questions using a frozen score comprising the number of same-type candidate
+   regions, question-similar non-gold regions, and a cross-page duplication
+   indicator, then randomly sample from the prespecified high-ambiguity tier.
+4. **Clean controls — 8 questions.** Randomly sample baseline-correct questions
+   with one audited evidence region, few competing same-type values, and
+   prespecified high unpruned confidence.
+
+Sample the uniform anchor first and exclude its members from the remaining
+primary strata. Preserve secondary multi-labels for analysis. If a stratum is
+too small under its frozen rule, stop before attribution scoring and amend the
+cohort rule; never fill it by inspecting selector outcomes. Attention-conflict
+cases may be labeled after cohort sealing as an adversarial diagnostic, but
+attention failure cannot define a primary stratum.
+
+This enriched panel estimates mechanism behavior, not population prevalence or
+average commercial value. Report every contrast by primary stratum. The
+uniform anchor is descriptive at `n=16`; do not combine the four strata into an
+unqualified population estimate. The completed 1,213-question Task 6
+random-versus-DocPrune holdout remains separate population-level evidence and
+is not rerun or reinterpreted as this same-action-space oracle comparison.
+
+### Matched budgets and controlled pilot arms
+
+The primary controlled comparison is at `B_13` and 65% retention. Repeat it at
+55% and 80% as prespecified secondary budget sensitivities. For retention `r`,
+set requested `M` by the existing deterministic half-up rule applied to that
+question's post-QTP visual-token count, then use the maximum attainable common
+whole-region cost `M′ <= M`. Every arm uses identical cached pages, BTP/QTP
+output, post-QTP visual population, whole-region action space, physical-
+deletion operator, `M′`, model, original positions, decoding, and evaluator.
+The arms are:
 
 1. **Query-only DocPrune attention-region.** Aggregate the existing local
    aggregate-logit attention score over each whole region and solve the same
@@ -404,11 +448,19 @@ evaluator. The arms are:
    per-reference region scores, and solve the same knapsack. Sum over member
    token attention is primary; mean-over-member-token aggregation is a
    region-size sensitivity analysis.
-3. **Accepted-answer ContextCite-region.** Use the canonical 256-mask
-   coefficients and the same knapsack.
-4. **Reverse ContextCite-region.** Use the minimum-coefficient solution at the
+3. **Accepted-answer ContextCite-region.** The reference surrogate is the
+   canonical fit on all 256 unique masks. The primary robust selector uses the
+   elementwise median signed raw-space coefficient from five deterministic
+   80%-without-replacement refits of those 256 rows, followed by the same exact
+   knapsack. The canonical 256-fit selector is a required sensitivity.
+4. **Reverse ContextCite-region.** Use the minimum robust-coefficient solution at the
    identical achieved budget as a manipulation check, not a competing method.
 5. **Unpruned.** Preserve all post-QTP tokens as the quality ceiling/reference.
+6. **Audited gold/distractor constraint.** On traceable distractor questions
+   only, force audited gold regions in, force the mapped wrong-answer regions
+   out, and fill the remaining budget by a frozen source-ID rule. This is a
+   diagnostic ceiling for whether physical pruning can rescue the case, not a
+   learned or deployable method.
 
 FastV is excluded. Uniform random and coverage-matched random are not rerun in
 Task 9; the already established random/coverage work remains part of the
@@ -422,9 +474,12 @@ same-action-space primary contrast.
 The global Bernoulli-0.5 holdout validates interventions near half of the
 regions, while deployment retains a larger budgeted set. Add 32 deterministic
 budget-local held-out masks per pilot question whose physical retained-token
-counts lie within `M′ ± 5%`. These masks are validation-only and never enter
-the canonical 256-mask fit. They must be unique, outcome-blind, sealed before
-scoring, and physically delete the same whole regions at `B_13`.
+counts lie within the primary 65% `M′ ± 5%`. These masks and the 32 global
+holdouts are validation-only and never enter the canonical 256-mask fit. They
+must be unique, outcome-blind, sealed before scoring, and physically delete the
+same whole regions at `B_13`. The 55% and 80% results are secondary budget
+sensitivities; no claim of local surrogate fidelity at those slices is allowed
+without separately sealed local masks.
 
 Report global and budget-local LDS/Spearman and RMSE against the fit-target-mean
 constant separately. Undefined local LDS, a local LDS below `0.5`, or local
@@ -436,28 +491,37 @@ developmental pilot or restore the superseded identity-Jaccard gate.
 
 Full-set Jaccard remains a descriptive coefficient/identity diagnostic. It is
 not an admission gate because the deployed budget reaches into a weak tail in
-which refits can exchange regions without changing answer quality. Directly
-evaluate the canonical selected mask and the five existing refit-selected
-masks at the exact achieved budget. For each set, record accepted-answer
-normalized log-likelihood, greedy generated-answer F1, EM, retained tokens,
-and selected-region identity.
+which refits can exchange regions without changing answer quality. At every
+budget, directly evaluate the robust-median mask, canonical 256-fit mask, and
+the five 80%-without-replacement refit-selected masks. For each set, record
+accepted-answer normalized log-likelihood, greedy generated-answer F1, EM,
+retained tokens, and selected-region identity.
 
 For each refit `b`, report budgeted selection regret
 
-`R_b = M(S_canonical) - M(S_b)`.
+`R_b = M(S_robust) - M(S_b)`.
 
 Use generated-answer token F1 as `M` for the primary functional result and
-accepted-answer log-likelihood as a secondary mechanism result. Identity
-instability with negligible downstream regret is benign; material downstream
-regret is a limitation of the oracle. Repeated 80%-without-replacement
-subsamples may be added as a secondary calibration after the required six-set
-evaluation, but they cannot change the canonical 256-mask coefficients.
+accepted-answer log-likelihood as a secondary mechanism result. Also report
+canonical-versus-robust regret. Identity instability with negligible
+downstream regret is benign; material downstream regret is a limitation of the
+oracle. Classical with-replacement bootstrap summaries may remain uncertainty
+diagnostics, but they do not choose the deployed set.
+
+On a prespecified 16-question calibration subset balanced four per primary
+stratum, refit nested prefixes/subsets of 64, 128, 192, and 256 masks and run
+their budgeted selections. This adds no perturbation masks. It calibrates later
+compute only; 256 remains the reference for this pilot. A smaller count may be
+proposed later only if it preserves the direction of the 256-vs-query gap and
+changes that gap by no more than `0.5 F1` (and recovers at least 95% when the
+reference gap magnitude is at least `1.0 F1`).
 
 ### Estimands and outcomes
 
 Primary outcome is paired generated-answer token F1. Secondary outcomes are
 accepted-answer normalized log-likelihood, EM, answer length/invalid-answer
-rate, retained tokens, decoder time, and peak memory. The primary total
+rate, retained tokens, decoder time, and peak memory. At the primary 65%
+budget, report the following separately within every stratum. The selector
 headroom estimand is
 
 `H_total = F1(ContextCite-region) - F1(query-only DocPrune attention-region)`.
@@ -470,10 +534,27 @@ and
 
 `H_intervention = F1(ContextCite-region) - F1(gold-attention-region)`.
 
+For traceable distractor errors, also report:
+
+- rescue-rate difference between ContextCite and query-only attention among
+  baseline-wrong cases;
+- the change from unpruned in the normalized gold-versus-wrong-answer
+  teacher-forced log-likelihood margin;
+- whether each selector retained the audited gold region and removed the
+  mapped wrong-answer region; and
+- whether the audited gold/distractor-constrained control can rescue the case.
+
+For baseline-correct questions, report harm rate: the fraction changed from
+correct unpruned to incorrect pruned. Report rescue, harm, likelihood margin,
+and the four gold/distractor retention states at all three budgets. A result
+must not be called distractor removal merely because a signed coefficient is
+negative; it requires the mapped region and downstream intervention evidence.
+
 Use paired support-document-component inference and the existing `±1.0 F1`
-practical margin. Because this is a 16-question developmental pilot, intervals
-are descriptive and cannot authorize a confirmatory claim or method-holdout
-run without a later approved handoff.
+practical margin. Cluster by document/support component when questions share
+pages. Because this is an enriched 48-question developmental pilot, intervals
+are descriptive and cannot authorize a population claim, confirmatory claim,
+or method-holdout run without a later approved handoff.
 
 ### Superseded admission gate and current progression rule
 

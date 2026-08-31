@@ -24,22 +24,26 @@ This is the canonical append-oriented ledger for this experiment.
 
 ## Current state
 
-Status: implementation Tasks 1–5 complete; Task 3 seven-boundary L40S all-kept
-parity is complete and admitted by job `62265662`; Task 4 CPU ranking and
-coverage controls and Task 5 corrected-runtime policy integration are
-independently accepted. No current experiment job is active.
+Status: Tasks 1–5 and Task 8 are complete. Task 9's four-mask smoke, original
+64+32 development run, B13/input 256+64 diagnostics, and unified generated-
+response and accepted-answer analyses are complete. The accepted-answer B13
+surrogate has sufficient global predictive fidelity for a controlled oracle
+pilot. On 2026-08-31 the user superseded the old `0.8` exact selected-set
+Jaccard admission rule and approved preparation of a 48-question
+answer-conditioned causal-selection pilot. No current experiment job is active.
 
-Next action: stop before Task 6 and obtain a new continuation decision. No
-retrieval/index access, feature work, holdout sealing, model run, GPU,
-launcher, job, or Task 6 experiment is authorized. Geometry-aware controls
-remain fail-closed until truthful post-QTP geometry is supplied. No retry or
-other Task 3 action is authorized; the draft launcher remains unauthorized and
-superseded.
-Final holdout membership and sealing remain deferred to Task 6. Task 10 remains
-separately approval gated after Tasks 1 and 3.
+The separate Task 6 fixed-page holdout root contains 1,213 sealed QIDs and
+1,213 result files, each intended to hold the aggregate-score-versus-20-random
+matrix. It is existing random-versus-DocPrune evidence, not a Task 9 comparator
+arm; Task 9 will not rerun uniform or coverage-matched random pruning. Its
+branch/code and final analysis authority are consolidated separately.
 
-No random/coverage/attribution/dependence result has been generated under the
-revised experiment contract.
+Next action: complete and verify the Task 9 documentation amendment, merge all
+unique accepted Task 6–9 work onto the active Task 9 branch, then implement and
+smoke the frozen cohort, region mappings, budget-local masks, gold-conditioned
+attention, robust/canonical ContextCite selectors, and unified pilot analysis.
+No 48-question pilot, method holdout, retrieval, feature rebuild, or Task 10
+job is currently authorized. Task 10 remains separately approval gated.
 
 ## Frozen local provenance
 
@@ -1092,3 +1096,98 @@ Corrected successor job `62424211` was submitted and initially queued for
 priority with the frozen L40S/8-CPU/24-GiB/10-minute contract. B13 job
 `62423463` completed `0:0` in `00:07:23` and terminally admitted all 320 masks;
 no attribution metrics were computed during this admission check.
+
+### Task 9 paired diagnostic completion and analyses — 2026-08-31
+
+Corrected input job `62424211` completed `0:0` in `00:04:23` on `scg027` and
+terminally admitted all 320 masks. Its completion-manifest file SHA-256 is
+`8c2051e559064fcbc47ae317e123aaccb2cb685a3930c39c61b6ea9a6efe752e`.
+The B13 completion-manifest file SHA-256 is
+`db46773f64c45fdbcbc9109af6f92458a96378ec177e6a3c61c978b61d0dec86`.
+The failed input attempt `62423876` remains a preserved six-second preflight
+failure with no model load or output; it is not silently replaced.
+
+The canonical generated-response comparison is:
+
+```text
+path: /scratch/lmalveau/docprune/task9-paired-256-diagnostics-c49abb5-v2/analysis.json
+analysis runtime: c49abb5eac5bd800d75efcca2e4fc571024ef2b7
+file SHA-256: cfe9b9456b0040aa9bcee1ce7f332d67401f203a8a53646402a905f009798a18
+internal analysis SHA-256: 4d5f27cfd8a069ed8fff976a24b1529780b6f0a9430c5b53949bd9ddf3e40605
+B13 LDS / RMSE / constant: 0.7159341 / 0.979053 / 1.340796
+B13 selection Jaccard mean / minimum: 0.622318 / 0.546667
+B_input LDS / RMSE / constant: 0.6488553 / 0.889320 / 1.196005
+B_input selection Jaccard mean / minimum: 0.610084 / 0.530864
+```
+
+Both boundaries pass the predictive-fidelity checks and fail the old exact-set
+stability check. Moving deletion to `B_input` does not improve the diagnostic,
+so B13 remains the controlled-pilot boundary.
+
+The accepted-answer reconstruction uses the same terminally admitted raw rows:
+
+```text
+path: /scratch/lmalveau/docprune/task9-paired-256-accepted-answer-0d40fad-v1/analysis.json
+analysis runtime: 0d40fadb3de6001b4ab3974c7053443552e1f749
+file SHA-256: 5c67c85a0223bbd8ee84d8787a40789ac2f3cf19a4bde8dd706fcde1ad8e8d98
+internal analysis SHA-256: 2e695fbb4413392bf8dae633294174881458c4d2fcfe3ced67a3996cdd3e65fc
+B13 LDS / RMSE / constant: 0.9148352 / 0.193681 / 0.994279
+B13 coefficient Spearman mean / minimum: 0.669753 / 0.574119
+B13 selection Jaccard mean / minimum: 0.707792 / 0.650000
+B13 nonzero / selected / sources: 44 / 71 / 95
+B_input LDS / RMSE / constant: 0.8995421 / 0.219347 / 1.009503
+B_input coefficient Spearman mean / minimum: 0.652819 / 0.589037
+B_input selection Jaccard mean / minimum: 0.683227 / 0.626506
+B_input nonzero / selected / sources: 50 / 68 / 95
+solver warnings: none
+```
+
+This result validates the accepted-answer intervention function globally on
+the one development question. It does not validate a population effect, a
+deployable selector, or the exact identity of the large weak-tail keep set.
+
+### Approved Task 9 oracle-pilot amendment — 2026-08-31
+
+The user supplied two external recommendations and explicitly approved an
+experiment-level revision before any new question-level ContextCite outcomes.
+The source file SHA-256 values are
+`ffeaa63b8dbb0f989c31862beec838376176254c438d4d8f77631c16d990141b`
+for the oracle-progression review and
+`64fac4a15f971390c64b337144a2453be9cfd5efe330eca582056d686c855699`
+for the distractor-enriched pilot review. They are advisory inputs; project-
+specific user decisions and authenticated prior results control conflicts.
+
+Accepted changes:
+
+1. Treat the accepted-answer B13 procedure as a privileged causal-selection
+   reference oracle and bypass the old minimum `0.8` support-identity Jaccard.
+   Preserve Jaccard descriptively and evaluate actual budgeted-set outcomes.
+2. Keep physical deletion, B13, original positions, whole-region actions, exact
+   region-cost knapsack, and 256 fit masks. Add 32 global and 32 primary-budget-
+   local holdouts, five deterministic 80% refits, direct selected-set regret,
+   and nested 64/128/192/256 calibration on a sealed subset.
+3. Seal a 48-question panel before ContextCite scoring: 16 uniformly sampled
+   eligible questions, 16 traceable distractor errors, 8 high-ambiguity correct
+   questions, and 8 clean controls. Sampling within frozen pools is random;
+   attention and ContextCite outcomes cannot define eligibility.
+4. Compare query-only attention-region, privilege-matched gold-answer attention-
+   region, robust and canonical accepted-answer ContextCite-region, reverse
+   ContextCite, unpruned, and a traceable-only audited gold-in/distractor-out
+   diagnostic at matched 55%, 65%, and 80% budgets. Generated-answer F1 is the
+   primary outcome; rescue, harm, gold-vs-wrong likelihood margin, and region
+   retain/remove states diagnose distractor removal.
+5. Keep mechanism and population estimands separate. The enriched pilot cannot
+   estimate population prevalence. The completed 1,213-question Task 6
+   random-versus-DocPrune run stays separate and will not be rerun in Task 9.
+
+Rejected as redundant or out of scope for this pilot: FastV, a new uniform-
+random pruning arm, and a new coverage-matched-random pruning arm. The uniform
+anchor in item 3 is a sampling stratum, not a pruning comparator. No pilot GPU
+job is authorized until the consolidated implementation passes a bounded smoke
+and a fresh exact handoff is reviewed.
+
+This amendment supersedes only the 2026-08-26 prohibition on the phrase
+`oracle gap`: `answer-conditioned causal-selection reference oracle` and
+`oracle headroom` are now allowed when the answer privilege and nondeployable
+claim boundary appear with the result. An unqualified `oracle`, token oracle,
+or deployable-method claim remains prohibited.

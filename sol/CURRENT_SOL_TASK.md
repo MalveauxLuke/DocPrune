@@ -1,32 +1,36 @@
 # Current SOL Task
 
-## Active authority — Task 9 one-question regional development, 2026-08-28
+## Active authority — Task 9 oracle-pilot preparation, 2026-08-31
 
-The only new executable authority is
-[`handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
-The user explicitly approved it, and exact HTC job `62323129` completed `0:0`
-in `00:01:15` on `scg027`. The terminal validator admitted all 96 masks and
-both replayed targets. Do not run `sbatch` again or submit an automatic retry.
+There is no active `sbatch` authority. Historical Task 9 handoffs are completed
+provenance and must not be resubmitted. Original 64+32 job `62323129`, B13
+256+64 job `62423463`, and corrected input 256+64 job `62424211` completed and
+were terminally admitted. Failed input preflight `62423876` produced no model
+output and remains preserved.
 
-The sealed runtime is the clean detached checkout
-`/home/lmalveau/DocPrune-task9-development-runtime-7616b29` at
-`7616b29b4dc5ba33584a6e26371281be6886188f`. The launcher SHA-256 is
-`963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
-The proposed HTC job is exactly one NVIDIA L40S, 8 CPUs, 24 GiB RAM, a
-10-minute limit, no array, and no shards. It scores one fixed QID at `B_13`
-with 64 fit and 32 held-out masks in one shared-prefix scoring call. The
-additional unpruned generation that defines the secondary target occurs
-internally.
+Accepted-answer B13 analysis has held-out LDS `0.91484` and RMSE `0.19368`
+versus constant `0.99428`. Its exact-set Jaccard minimum is `0.65`; on
+2026-08-31 the user superseded the old `0.8` identity gate because direct
+budgeted-set behavior is the deployment estimand. B13 is the approved pilot
+boundary. The procedure remains a privileged answer-conditioned whole-region
+reference oracle, not vanilla ContextCite, a token oracle, or a deployable
+query-only method.
 
-Frozen CPU analysis completed at `M=2689`. Primary LDS/Spearman was `0.88783`
-and beat the constant in RMSE (`0.24044` versus `1.01629`), but its minimum
-five-refit selection Jaccard was `0.63636`. Secondary LDS/Spearman was
-`0.58798`, its RMSE was worse than the constant (`0.98257` versus `0.93324`),
-and its minimum selection Jaccard was `0.71111`. The analysis has no LDS
-interval. The dual-target one-question reliability prerequisite therefore
-failed. No additional Task 9 development question, large holdout, A100
-portability run, automatic retry, retrieval/index run, or method comparison is
-authorized.
+Current authority is CPU/documentation/implementation only: finish and verify
+the canonical Task 9 amendment, consolidate unique accepted Task 6–9 branches,
+then implement the sealed 48-question stratified cohort, 256+32+32 mask design,
+gold-conditioned attention control, robust/canonical ContextCite selectors,
+matched 55/65/80% budgeted evaluation, distractor mechanism metrics, and a
+unified analysis JSON. FastV and new random/coverage pruning arms are excluded;
+the completed 1,213-question Task 6 random-versus-DocPrune evidence is separate.
+The binding non-executable preparation handoff is
+[`handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`](handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md).
+
+After test and bounded real-input smoke acceptance, create a new exact handoff
+for question-level L40S shards with 24 GiB host RAM, fresh roots, no requeue,
+and no partial-outcome inspection. Until that handoff is reviewed, do not
+submit the pilot, rerun historical Task 9 jobs, start a method holdout, run
+retrieval, rebuild features, or activate Task 10.
 
 The older Task 6 and historical authorities below are retained for provenance
 and are superseded for the current next action.

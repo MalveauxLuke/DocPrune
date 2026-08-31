@@ -219,3 +219,18 @@ holdout are authorized by this handoff.
 The next action is a separate pre-outcome scientific decision: reject Task 9
 under this contract or approve a newly reviewed diagnostic without tuning it
 against this question's observed outcomes. This handoff authorizes neither.
+
+## Later supersession — 2026-08-31
+
+The required separate decision occurred after two newly approved, terminally
+admitted 256+64 diagnostics and their accepted-answer reconstruction. The B13
+accepted-answer surrogate achieved LDS `0.91484` and RMSE `0.19368` versus
+constant `0.99428`, while exact selected-set Jaccard remained below the old
+threshold. The user approved bypassing that identity gate for a controlled
+answer-conditioned oracle pilot whose stability is evaluated through
+budget-local fidelity and direct budgeted-set outcomes.
+
+This does not change the historical failure recorded above and does not make
+this handoff executable again. It remains completed provenance. Current pilot
+preparation authority is documented separately; no command in this file may be
+resubmitted.

@@ -5,13 +5,15 @@
 > checked step at a time, update the log with evidence, and stop at every
 > approval or SOL-handoff gate.
 
-Status: Tasks 1–5 and Task 8 are complete. Task 9's L40S four-mask smoke is
-admitted; its one-question 96-mask development run and frozen CPU analysis are
-complete. The dual-target reliability prerequisite failed, so Task 9 cannot
-advance under the current contract.
+Status: Tasks 1–5 and Task 8 are complete. Task 9's four-mask smoke, original
+64+32 run, paired 256+64 B13/input diagnostics, and accepted-answer analysis
+are complete. The original identity-Jaccard gate is superseded. Task 9 is now
+authorized for implementation and sealing of a 48-question answer-conditioned
+causal-selection oracle pilot; no pilot job or method holdout is yet authorized.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
-review amendment, 2026-08-26
+review amendment, 2026-08-26; approved Task 9 oracle-pilot amendment,
+2026-08-31
 
 ## Goal and implementation shape
 
@@ -335,72 +337,126 @@ standalone token information.
 Acceptance: regions are whole binary sources over actual deep visual tokens;
 they are never substituted for tokens or treated as evidence labels.
 
-## Task 9 — Implement exploratory regional attribution
+## Task 9 — Implement the answer-conditioned regional oracle pilot
 
-Preparation status (2026-08-28): the exact physical-deletion and surrogate
-contracts are accepted through `e9310cd`. L40S smoke job `62315446` completed
-`0:0` and was admitted; A100 portability job `62315546` was canceled while
-pending at elapsed zero after the L40S gate passed. Clean successor commit
-`7616b29b4dc5ba33584a6e26371281be6886188f` adds a distinct 96-mask runner,
-dual-target completion-manifest-last publisher, terminal validator, and
-post-validation one-question CPU analysis. Its sealed executable checkout is
-the clean detached worktree
-`/home/lmalveau/DocPrune-task9-development-runtime-7616b29`. The development
-job was submitted exactly once as `62323129` after explicit user approval.
-
-The runner makes one shared-prefix scoring call for exact seeds `0..95`; the
-additional unpruned no-CTP generation needed for the secondary target occurs
-inside that call. The validator replays both target vectors from raw sequence
-likelihood rows and authenticates all 96 physical cache/M-RoPE records. The
-one-question analysis reports per-question LDS/Spearman, fit-target-mean
-constant RMSE, and five-refit stability for both targets. It intentionally
-reports no LDS confidence interval; the official interval is deferred to the
-later multi-question support-component analysis.
-
-Verification: production environment `110 passed, 12 skipped`; pinned solver
-environment `24 passed`; Ruff, changed-file formatting, compile, shell, and
-diff checks passed. The exact real-input `--validate-only` path authenticated
-all 96 seeds and created no output. Launcher SHA-256 is
-`963522965d13c530ab9f4a2ecc8c424882919cdbe00025e25f76ad57409753df`.
-Exact prepared handoff:
+Historical preparation (2026-08-28): the exact physical-deletion and
+surrogate contracts are accepted through `e9310cd`. L40S smoke job `62315446`
+completed `0:0` and was admitted; A100 portability job `62315546` was canceled
+while pending at elapsed zero after the L40S gate passed. Clean successor
+`7616b29b4dc5ba33584a6e26371281be6886188f` added the original 96-mask runner,
+dual-target completion-manifest-last publisher, terminal validator, and frozen
+one-question CPU analysis. Exact historical authority remains in
 [`DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`](../../../sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md).
 
-Result (2026-08-31): job `62323129` completed and terminally admitted all 96
-physical interventions. At `M=2689`, primary LDS/Spearman was `0.88783` and
+Original result (2026-08-31): job `62323129` terminally admitted all 96
+physical interventions. At `M=2689`, accepted-answer LDS was `0.88783` and
 held-out RMSE was `0.24044` versus constant `1.01629`, but minimum five-refit
-selection Jaccard was `0.63636`. Secondary LDS/Spearman was `0.58798`, held-out
+selection Jaccard was `0.63636`. Generated-response LDS was `0.58798`, held-out
 RMSE was `0.98257` versus constant `0.93324`, and minimum selection Jaccard was
-`0.71111`. Thus secondary failed the constant baseline and neither target met
-the `0.8` stability requirement. No one-question interval was computed.
+`0.71111`. The then-active dual-target reliability gate failed. This historical
+decision and its absence of a one-question interval remain unchanged.
 
-- [x] Generate 64 deterministic Bernoulli-0.5 fit masks plus 32 independent
-  held-out whole-region masks.
-- [x] Cache full `B_K` states and physically delete each selected union mask
-  before continuing later blocks.
-- [x] Compute per-reference normalized teacher-forced full-answer
-  log-likelihood and save the maximum accepted-reference target.
-- [x] Compute the normalized full-sequence likelihood of the unpruned model
-  response as a separate contributive target.
-- [x] Fit the pinned ContextCite Lasso surrogate; log every interface change.
-- [x] Report held-out LDS/Spearman, error versus constant, and five-refit
-  coefficient/selection stability. The first one-question run has no official
-  interval; add the support-component interval only for the later sealed
-  multi-question development phase.
-- [x] Implement whole-region knapsack: maximize attainable cost `M′ <= M`, then
-  maximize coefficient sum at `M′`; reverse attribution minimizes coefficient
-  sum at the same `M′`.
-- [ ] Compare aggregate-score, literal-score, and random at exact achieved `M′`.
-  Never broadcast coefficients, split regions, or use token index tie-breaking.
-- [ ] Directly validate held-out deployed whole-region physical masks.
-- [ ] Apply the full admission gate before examining attribution QA outcomes:
-  the per-question LDS/Spearman point at least `0.5`, the later multi-question
-  LDS lower bound above `0.2`, better than constant, selection Jaccard at least
-  `0.8`, and deployed top masks above reverse masks on at least 80% of
-  development questions with a positive mean paired difference whose 95%
-  interval excludes zero.
+Paired diagnostics (2026-08-31): B13 job `62423463` completed `0:0` in
+`00:07:23`; corrected input job `62424211` completed `0:0` in `00:04:23`.
+Each terminally admitted all 320 masks. Failed input preflight attempt
+`62423876` created no output and loaded no model. Generated-response analysis
+showed B13 LDS `0.71593` and RMSE `0.97905` versus constant `1.34080`; input
+LDS `0.64886` and RMSE `0.88932` versus constant `1.19600`. Input deletion did
+not improve stability or fidelity, so `B_13` remains primary.
 
-Acceptance: either the exploratory regional procedure passes every gate or is
-logged as rejected. It is never called a token oracle or deployable selector.
+The accepted-answer reconstruction on the same admitted raw rows is the pilot
+progression evidence. At B13 it produced held-out LDS `0.91484`, RMSE `0.19368`
+versus constant `0.99428`, and coefficient-refit Spearman mean/min
+`0.66975`/`0.57412`; selected-set Jaccard mean/min was `0.70779`/`0.65`. The
+user approved bypassing the old `0.8` identity gate because exact support
+identity is not the deployment estimand. Direct budgeted-set outcomes and
+budget-local fidelity replace it for this developmental pilot.
+
+Completed foundations:
+
+- [x] Generate and admit the original 64 Bernoulli-0.5 fit masks plus 32 global
+  holdouts, then generate and admit 256 fit plus 64 global holdouts at both
+  `B_13` and `B_input` on the same question.
+- [x] Cache full boundary states and physically delete selected whole-region
+  unions before later blocks while retaining original M-RoPE positions.
+- [x] Compute accepted-answer and exact unpruned generated-response normalized
+  full-sequence likelihood targets from the same raw intervention rows.
+- [x] Fit the pinned ContextCite Lasso surrogate and report held-out
+  LDS/Spearman, RMSE versus the fit-target-mean constant, coefficient stability,
+  selection stability, and solver warnings without inventing a one-question
+  confidence interval.
+- [x] Implement exact whole-region knapsack: first maximize attainable cost
+  `M′ <= M`, then maximize coefficient sum at `M′`; reverse attribution
+  minimizes coefficient sum at the same `M′`.
+- [x] Record the old dual-target/Jaccard rejection without deleting or
+  reinterpreting it, and approve the new oracle-pilot claim boundary.
+
+Pilot preparation and implementation:
+
+- [ ] Implement and test an outcome-blind cohort sealer for 48 unique questions:
+  16 uniform-anchor, 16 traceable distractor-error, 8 high-ambiguity/correct,
+  and 8 clean-control questions. It may read accepted and already-observed
+  unpruned answers and region text, but must reject ContextCite and attention
+  outcomes. Randomly sample within frozen pools and seal a balanced 16-question
+  mask-count calibration subset.
+- [ ] Define and audit deterministic same-type candidate extraction, wrong-
+  answer/gold-region mappings, ambiguity score/tier, clean-control confidence
+  threshold, primary-stratum precedence, insufficient-pool failure, and a
+  frozen manual-annotation schema before cohort sealing.
+- [ ] Extend the cached MinerU-to-post-QTP mapping path across all sealed pilot
+  pages without retrieval or feature rebuilding. Require 100% assignment to a
+  whole MinerU region or bounded residual cell and publish mapping manifests
+  before scoring outcomes.
+- [ ] Generate per question 256 unique Bernoulli-0.5 fit masks, 32 unique global
+  holdouts, and 32 unique primary-budget-local holdouts within 65% `M′ ± 5%`.
+  Seal vectors and hashes before model scoring. Keep 55% and 80% as secondary
+  budget sensitivities without claiming local fidelity there.
+- [ ] Add teacher-forced accepted-answer attention capture at `B_13`. Produce
+  privilege-matched whole-region scores by summing answer-token attention over
+  member visual tokens and averaging references; keep mean-over-member-token
+  and literal-score variants as named sensitivities.
+- [ ] Aggregate the existing query-only aggregate-logit score over the identical
+  whole regions. Do not add FastV, uniform-random pruning, or coverage-matched
+  pruning arms. The completed 1,213-question Task 6 random-versus-DocPrune
+  holdout remains separate evidence and is never recomputed for Task 9.
+- [ ] Convert ContextCite coefficients to signed raw inclusion-feature space.
+  Fit the canonical 256-row surrogate plus five deterministic 80%-without-
+  replacement refits; use their elementwise coefficient median for the primary
+  robust selector and retain the canonical fit as a required sensitivity.
+- [ ] At deterministic 55%, 65%, and 80% requested budgets, use the existing
+  exact two-stage whole-region knapsack for every scored arm. Add reverse robust
+  ContextCite and the audited gold-in/distractor-out diagnostic on the
+  traceable stratum. Never broadcast coefficients or split regions.
+- [ ] Directly generate answers for unpruned, query-attention, gold-attention,
+  robust ContextCite, canonical ContextCite, reverse ContextCite, the five
+  refit-selected sets, and the traceable-only audited constraint at each
+  applicable budget using identical physical deletion and original M-RoPE.
+- [ ] Report global and primary-budget-local LDS/Spearman and RMSE/constant,
+  treating failures as warnings rather than reinstating the superseded
+  identity gate. Report token-weighted overlap, signed distractor behavior,
+  direct set regret, generated F1/EM, accepted-answer likelihood, retained
+  tokens, runtime, and memory.
+- [ ] Report selector headroom and its privilege/intervention decompositions by
+  stratum. On traceable errors report rescue, gold-vs-wrong likelihood-margin
+  change, and gold/distractor retain/remove states; on baseline-correct cases
+  report harm. Cluster descriptive intervals by support-document component.
+  Never report the enriched panel as a population estimate.
+- [ ] Refit nested 64/128/192/256 mask subsets on the sealed 16-question
+  calibration subset and directly evaluate their selected sets. This may
+  inform a later mask-count amendment but cannot reduce this pilot below 256.
+- [ ] Implement terminal manifest-last admission and a unified analysis JSON
+  containing question rows, strata, arm/budget contrasts, model-readable metric
+  definitions, artifact hashes, and claim limits.
+- [ ] Run a bounded real-input smoke, then write one reviewed HTC handoff. Use
+  exact L40S question-level shards (not mask-level shards), 24 GiB host RAM,
+  no requeue, fresh roots, and no partial-outcome inspection. Do not submit the
+  48-question pilot until the handoff binds a clean consolidated commit.
+
+Acceptance: the pilot is sealed and reproducible, and every selected set is
+evaluated through the actual deletion operator. The old identity-Jaccard
+failure is reported but does not block. The result remains a privileged
+answer-conditioned regional oracle diagnostic, never vanilla ContextCite, a
+token oracle, a deployable selector, or a population/holdout claim.
 
 ## Task 10 — Conditional Wang standalone-contribution study
 
@@ -477,9 +533,10 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-The user approved paired one-question diagnostics before any new outcomes:
-256 fit plus 64 held-out masks at existing `B_13`, and the identical schedule
-at `B_input`. B13 job `62423463` is running; input job `62423876` is queued.
-Require terminal admission before analysis, use only the exact generated-
-response ContextCite target for the decision, and do not add questions or
-advance to a method holdout. Task 10 remains inactive and separately gated.
+Finish the Task 9 documentation amendment and consolidate all unique accepted
+Task 6–9 implementation work onto this branch. Then implement the frozen
+48-question cohort/mapping/mask contracts and controlled pilot arms test-first,
+publish one unified analysis schema, and pass a bounded real-input smoke. The
+next GPU action after those steps is a newly reviewed question-sharded L40S
+pilot handoff; no pilot submission or method-holdout run is currently
+authorized. Task 10 remains inactive and separately gated.

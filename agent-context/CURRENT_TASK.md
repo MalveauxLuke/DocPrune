@@ -7,32 +7,34 @@ grounded in the CVPR 2026 paper and supplement.
 
 ## State
 
-Task 9 one-question regional attribution completed under runtime
-`7616b29b4dc5ba33584a6e26371281be6886188f`. Exact-L40S HTC job `62323129`
-completed `0:0` in `00:01:15` on `scg027`; its terminal validator admitted all
-96 masks and both replayed targets. Frozen CPU analysis at requested budget
-`M=2689` is sealed at
-`/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json`
-with file SHA-256
-`1dd375f5e52374b17b3efc3b8cad97e50e159e138f90a8270d406641e752de40`.
+Task 9 one-question development is complete. Historical job `62323129`
+admitted the original 64+32 B13 masks and failed its then-active dual-target
+gate. The later paired 256+64 diagnostics are also complete: B13 job `62423463`
+and corrected input job `62424211` admitted all 320 masks; input preflight
+attempt `62423876` created no output. Generated-response analysis is sealed at
+`/scratch/lmalveau/docprune/task9-paired-256-diagnostics-c49abb5-v2/analysis.json`.
+Accepted-answer analysis is sealed at
+`/scratch/lmalveau/docprune/task9-paired-256-accepted-answer-0d40fad-v1/analysis.json`.
 
-The dual-target one-question reliability prerequisite failed. Primary
-accepted-reference fidelity was LDS/Spearman `0.88783`, held-out RMSE `0.24044`
-versus constant RMSE `1.01629`, but minimum five-refit selection Jaccard was
-only `0.63636`. Secondary generated-response fidelity was LDS/Spearman
-`0.58798`, held-out RMSE `0.98257` versus constant RMSE `0.93324`, so it did
-not beat the constant; its minimum selection Jaccard was `0.71111`. One
-secondary bootstrap refit reached the pinned upstream `max_iter=1000`, but the
-canonical secondary fit and every primary fit converged, so this warning does
-not account for either decisive failure. The analysis contains no LDS interval.
-Exact execution authority is
-`sol/handoffs/DOCPRUNE_TASK9_REGIONAL_DEVELOPMENT_L40S_2026-08-28.md`.
-The user subsequently approved two new pre-outcome diagnostics on this same
-development question. First submit the frozen B13 256-fit/64-held-out run under
-`sol/handoffs/DOCPRUNE_TASK9_B13_256_DIAGNOSTIC_L40S_2026-08-31.md`. Then
-prepare the same schedule and target with an input-level regional intervention
-under a separate correctness smoke and handoff. Neither authorizes additional
-questions or a method holdout.
+The accepted-answer B13 result has LDS `0.91484` and held-out RMSE `0.19368`
+versus constant `0.99428`; coefficient-refit Spearman mean/min is
+`0.66975`/`0.57412`, while selected-set Jaccard mean/min is `0.70779`/`0.65`.
+The user approved bypassing the old `0.8` exact-set identity gate and proceeding
+with a controlled answer-conditioned oracle pilot whose stability is judged by
+budget-local fidelity and actual budgeted-set outcomes. B13 stays primary;
+`B_input` and the generated-response target remain diagnostics.
+
+The approved pilot is a frozen 48-question developmental mechanism panel: 16
+uniformly sampled eligible questions, 16 traceable distractor errors, 8 high-
+ambiguity correct questions, and 8 clean controls. It uses 256 fit masks, 32
+global and 32 primary-budget-local holdouts, B13 physical deletion, matched
+55/65/80% whole-region budgets, query-only attention, gold-conditioned
+attention, robust/canonical accepted-answer ContextCite, reverse ContextCite,
+unpruned, and a traceable-only audited constraint. FastV and new random or
+coverage pruning arms are excluded. The existing 1,213-question Task 6
+random-versus-DocPrune evidence remains separate and is not rerun.
+Current non-executable preparation authority is
+`sol/handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`.
 
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
@@ -155,7 +157,9 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Submit and terminally validate the exact B13 256-fit/64-held-out diagnostic in
-`sol/handoffs/DOCPRUNE_TASK9_B13_256_DIAGNOSTIC_L40S_2026-08-31.md`. While it is
-queued or running, prepare the separately approved input-level diagnostic. Do
-not inspect partial outcomes, add questions, or start a method holdout.
+Complete and verify all Task 9 documentation, merge unique accepted Task 6–9
+work onto this branch, then implement and test the cohort sealer, mappings,
+mask design, gold-conditioned attention, robust selector, matched-budget
+evaluation, and unified analysis JSON. After a bounded real-input smoke, write
+a fresh question-sharded L40S handoff. No pilot or method-holdout submission is
+currently authorized.
