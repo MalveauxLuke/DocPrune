@@ -1,9 +1,10 @@
 # DocPrune Random, Coverage, Attribution, and Visual-State Dependence Experiment
 
-Status: approved amended design; Tasks 2–3 authorized, with Task 2 active
+Status: approved amended design; Task 9 answer-conditioned oracle pilot active
 Canonical date: 2026-08-26
 Revision: Wang semantics amendment approved 2026-08-27; review-driven
-amendment approved 2026-08-26
+amendment approved 2026-08-26; Task 9 oracle-pilot amendment approved
+2026-08-31
 Execution anchor: [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 Result ledger: [`EXPERIMENT_LOG.md`](EXPERIMENT_LOG.md)
 
@@ -51,8 +52,10 @@ Failure of phases 4 or 5 does not invalidate or delay phases 1–3.
    removed within a prespecified quality margin?
 4. On questions where retrieved/post-QTP visual evidence can affect behavior,
    are the random-versus-attention conclusions different?
-5. Exploratorily, can a validated answer-conditioned regional attribution
-   procedure select a better whole-region mask at a matched achieved budget?
+5. In a controlled developmental pilot, how much generated-answer headroom
+   does an accepted-answer-conditioned ContextCite whole-region selector show
+   over query-only DocPrune attention, and how much of that gap remains after
+   comparison with privilege-matched gold-answer-conditioned attention?
 
 The experiment does not ask whether MinerU regions are evidence annotations,
 whether the method provides localization, or whether a privileged gold-answer
@@ -333,10 +336,13 @@ Earlier blocks may have transferred visual information into text states. Use
 “Wang-style information horizon” only if a separately approved study also
 reproduces the near-zero standalone token-information condition.
 
-## Experiment family D — Exploratory regional attribution
+## Experiment family D — Answer-conditioned causal-selection oracle pilot
 
 This is **not vanilla ContextCite**, **not a token-level oracle**, and **not a
-deployable selector**. MinerU is independent tooling.
+deployable selector**. MinerU is independent tooling. ContextCite sees accepted
+answers and is therefore a privileged reference oracle. Its result measures
+potential selection headroom; it does not show that a query-only learned
+selector can recover that headroom.
 
 ### Region masks
 
@@ -359,25 +365,120 @@ For accepted gold answers `A`, the primary target under mask `z` is:
 
 The secondary contributive target is the same normalized full-sequence
 log-likelihood for the model's unpruned generated response. Save per-reference
-values and target identity. First-token probability may be reported only as a
-Wang comparability diagnostic.
+values and target identity. The accepted-answer target is primary for the
+oracle pilot. The generated-response target and the completed `B_input`
+diagnostic remain mechanistic diagnostics and do not decide pilot eligibility.
+First-token probability may be reported only as a Wang comparability
+diagnostic.
 
-### Surrogate and deployment
+### Reference surrogate and deployment
 
-1. Use 64 deterministic fit masks with region keep probability `0.5` and an
-   independent 32-mask held-out set.
+1. Use 256 deterministic global fit masks with region keep probability `0.5`
+   and 64 independent global held-out masks. Keep these masks and the pinned
+   solver unchanged for the reference oracle.
 2. Fit the pinned ContextCite Lasso-style surrogate; log adaptations.
 3. Treat each coefficient as the estimated total value of its entire region.
 4. Let each region's cost be its post-QTP token count.
 5. Find the maximum attainable whole-region cost `M′ <= M`; among subsets with
    that cost, select the maximum total coefficient. Reverse attribution selects
    the minimum total coefficient at the same `M′`.
-6. Compare aggregate-score, literal-score, and random masks at the identical
-   achieved `M′`. Report `M′`, `M`, and the gap.
+6. Use hard physical deletion for both perturbation scoring and deployed-mask
+   evaluation. Preserve surviving state order and original M-RoPE positions.
+7. Report `M′`, requested `M`, and the gap. Never standardize coefficients a
+   second time, broadcast them to tokens, or split a whole region.
 
-### Admission gate
+### Controlled pilot arms
 
-Before attribution QA outcomes are examined, all must pass:
+Seal an outcome-blind 16-question developmental panel before creating new
+question-level attribution outcomes. The primary controlled comparison is at
+`B_13`. Every arm uses identical cached pages, BTP/QTP output, post-QTP visual
+population, 95-source-style whole-region action space, physical-deletion
+operator, achieved whole-region budget `M′`, model, positions, decoding, and
+evaluator. The arms are:
+
+1. **Query-only DocPrune attention-region.** Aggregate the existing local
+   aggregate-logit attention score over each whole region and solve the same
+   region-cost knapsack. Literal attention-region is a secondary sensitivity.
+2. **Gold-answer-conditioned attention-region.** Teacher-force every accepted
+   answer, aggregate answer-token-to-visual attention at `B_13`, average the
+   per-reference region scores, and solve the same knapsack. Sum over member
+   token attention is primary; mean-over-member-token aggregation is a
+   region-size sensitivity analysis.
+3. **Accepted-answer ContextCite-region.** Use the canonical 256-mask
+   coefficients and the same knapsack.
+4. **Reverse ContextCite-region.** Use the minimum-coefficient solution at the
+   identical achieved budget as a manipulation check, not a competing method.
+5. **Unpruned.** Preserve all post-QTP tokens as the quality ceiling/reference.
+
+FastV is excluded. Uniform random and coverage-matched random are not rerun in
+Task 9; the already established random/coverage work remains part of the
+broader experiment and may be cited only within its authenticated boundary,
+budget, action-space, and cohort limits. Native token-level policies may be
+reported as contextual secondary results but cannot be mixed into the
+same-action-space primary contrast.
+
+### Budget-local validation
+
+The global Bernoulli-0.5 holdout validates interventions near half of the
+regions, while deployment retains a larger budgeted set. Add 32 deterministic
+budget-local held-out masks per pilot question whose physical retained-token
+counts lie within `M′ ± 5%`. These masks are validation-only and never enter
+the canonical 256-mask fit. They must be unique, outcome-blind, sealed before
+scoring, and physically delete the same whole regions at `B_13`.
+
+Report global and budget-local LDS/Spearman and RMSE against the fit-target-mean
+constant separately. Undefined local LDS, a local LDS below `0.5`, or local
+RMSE that does not beat the constant is a fidelity warning that must be
+reported; it does not retroactively invalidate the already-authorized
+developmental pilot or restore the superseded identity-Jaccard gate.
+
+### Functional selection stability
+
+Full-set Jaccard remains a descriptive coefficient/identity diagnostic. It is
+not an admission gate because the deployed budget reaches into a weak tail in
+which refits can exchange regions without changing answer quality. Directly
+evaluate the canonical selected mask and the five existing refit-selected
+masks at the exact achieved budget. For each set, record accepted-answer
+normalized log-likelihood, greedy generated-answer F1, EM, retained tokens,
+and selected-region identity.
+
+For each refit `b`, report budgeted selection regret
+
+`R_b = M(S_canonical) - M(S_b)`.
+
+Use generated-answer token F1 as `M` for the primary functional result and
+accepted-answer log-likelihood as a secondary mechanism result. Identity
+instability with negligible downstream regret is benign; material downstream
+regret is a limitation of the oracle. Repeated 80%-without-replacement
+subsamples may be added as a secondary calibration after the required six-set
+evaluation, but they cannot change the canonical 256-mask coefficients.
+
+### Estimands and outcomes
+
+Primary outcome is paired generated-answer token F1. Secondary outcomes are
+accepted-answer normalized log-likelihood, EM, answer length/invalid-answer
+rate, retained tokens, decoder time, and peak memory. The primary total
+headroom estimand is
+
+`H_total = F1(ContextCite-region) - F1(query-only DocPrune attention-region)`.
+
+Required interpretive decompositions are
+
+`H_privilege = F1(gold-attention-region) - F1(query-only attention-region)`
+
+and
+
+`H_intervention = F1(ContextCite-region) - F1(gold-attention-region)`.
+
+Use paired support-document-component inference and the existing `±1.0 F1`
+practical margin. Because this is a 16-question developmental pilot, intervals
+are descriptive and cannot authorize a confirmatory claim or method-holdout
+run without a later approved handoff.
+
+### Superseded admission gate and current progression rule
+
+The original gate required all of the following before attribution QA outcomes
+could be examined:
 
 - deterministic token mapping covers 100% of tokens;
 - held-out LDS and held-out Spearman point estimates are each at least `0.5`;
@@ -390,10 +491,19 @@ Before attribution QA outcomes are examined, all must pass:
   development questions and a positive mean paired difference whose 95%
   interval excludes zero.
 
-These are experiment admission thresholds, not universal ContextCite standards.
-Failure is a valid negative feasibility result. A passing advantage supports
-only that a privileged answer-conditioned regional procedure found a better
-mask in this local setup.
+The one-question accepted-answer 256-mask result passed global predictive
+fidelity but failed the `0.8` selected-region Jaccard threshold. On 2026-08-31
+the user explicitly approved bypassing that identity gate for the controlled
+developmental oracle pilot. The LDS and RMSE checks remain fidelity evidence;
+the cross-question interval is computed only on the sealed panel; direct
+budget-local fidelity and deployed-mask outcomes replace exact-set identity as
+the scientifically relevant stability assessment. Top-versus-reverse remains
+a manipulation check, not a prerequisite for looking at the other controlled
+pilot arms.
+
+A pilot advantage supports only that a privileged accepted-answer-conditioned
+regional procedure found a better mask in this local setup. It does not
+authorize a deployable selector or method-holdout evaluation.
 
 ### 2026-08-31 diagnostic amendment
 
@@ -401,9 +511,12 @@ After the original 64-fit/32-held-out one-question gate failed, the user
 approved two outcome-blind diagnostics on that same development question:
 (1) the existing `B_13` intervention with 256 fit masks and 64 unseen masks,
 and (2) the same 256+64 schedule with those regions ablated at model input.
-Only the exact generated-response ContextCite target decides these diagnostics.
-Run B13 first; input-level requires a mechanical smoke and separate handoff.
-Neither diagnostic authorizes another question or method-holdout evaluation.
+Only the exact generated-response ContextCite target decided those boundary
+diagnostics. Both are now complete. Moving the intervention to `B_input` did
+not improve predictive or selection stability, so `B_13` remains the pilot
+boundary. The later accepted-answer 256-mask analysis is the evidence used for
+the oracle-pilot amendment. Neither completed diagnostic by itself authorizes
+a method-holdout evaluation.
 
 ## Conditional Wang standalone-contribution study
 
