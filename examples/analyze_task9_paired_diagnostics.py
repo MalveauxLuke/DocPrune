@@ -168,6 +168,14 @@ def _condition_summary(
 def _diagnosis(b13_summary: dict[str, object], input_summary: dict[str, object]) -> dict[str, str]:
     b13_pass = bool(b13_summary["one_question_reliability_pass"])
     input_pass = bool(input_summary["one_question_reliability_pass"])
+    b13_criteria = b13_summary["criteria"]
+    input_criteria = input_summary["criteria"]
+    b13_predictive = bool(b13_criteria["heldout_lds_at_least_0_5"]) and bool(
+        b13_criteria["heldout_rmse_beats_fit_mean_constant"]
+    )
+    input_predictive = bool(input_criteria["heldout_lds_at_least_0_5"]) and bool(
+        input_criteria["heldout_rmse_beats_fit_mean_constant"]
+    )
     if b13_pass and input_pass:
         return {
             "code": "both-pass-mask-count-likely",
@@ -183,6 +191,16 @@ def _diagnosis(b13_summary: dict[str, object], input_summary: dict[str, object])
             "plain_language": (
                 "Only decoder-input ablation passes. Information mixing before the B13 deletion "
                 "is the leading explanation, rather than mask count alone."
+            ),
+        }
+    if not b13_pass and not input_pass and b13_predictive and input_predictive:
+        return {
+            "code": "both-predictive-fidelity-pass-selection-unstable",
+            "plain_language": (
+                "With 256 fitting masks, both boundaries predict unseen intervention outcomes "
+                "well enough to clear the fidelity checks, but neither produces a stable selected "
+                "region set across refits. More masks repaired the earlier prediction failure, "
+                "while the dense or weakly separated regional ranking remains unreliable."
             ),
         }
     if not b13_pass and not input_pass:
