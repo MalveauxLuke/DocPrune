@@ -163,6 +163,23 @@ def test_b13_256_launcher_freezes_256_fit_and_64_holdout_masks() -> None:
     assert "--holdout-mask-count 64" in launcher
 
 
+def test_input_256_launcher_freezes_matching_schedule_before_decoder_blocks() -> None:
+    launcher = (
+        Path(__file__).parents[1]
+        / "examples"
+        / "sbatch"
+        / "41_docprune_task9_input_256_diagnostic.sbatch"
+    ).read_text()
+
+    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --mem=24G" in launcher
+    assert "#SBATCH --no-requeue" in launcher
+    assert "--boundary input" in launcher
+    assert "--boundary B_input" in launcher
+    assert "--fit-mask-count 256" in launcher
+    assert "--holdout-mask-count 64" in launcher
+
+
 def test_development_admission_requires_completion_authority(tmp_path: Path) -> None:
     """Catch admission of a partial development publication after an interrupted run."""
 
