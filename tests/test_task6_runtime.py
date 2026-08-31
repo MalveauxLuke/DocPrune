@@ -69,9 +69,14 @@ def test_task6_policy_matrix_closes_names_and_uses_ten_native_three_fixed_repeti
     native = task6_policy_matrix("native")
     extension = task6_policy_matrix("native-extension")
     fixed = task6_policy_matrix("fixed")
+    holdout = task6_policy_matrix("holdout-primary")
     assert len(native) == 45
     assert len(extension) == 40
     assert len(fixed) == 42
+    assert len(holdout) == 21
+    assert holdout[0].policy.name == "aggregate-score-top-m"
+    assert [cell.repetition for cell in holdout[1:]] == list(range(20))
+    assert {cell.policy.name for cell in holdout[1:]} == {"global-uniform-random"}
     assert [
         cell.repetition for cell in native if cell.policy.name == "global-uniform-random"
     ] == list(range(10))
@@ -674,6 +679,40 @@ def test_gate_manifest_seals_qid_shards_policy_matrices_and_gpu_roles(tmp_path: 
     }
 
 
+def test_holdout_gate_binds_sealed_selection_and_only_primary_policy_matrix(
+    tmp_path: Path,
+) -> None:
+    from docprune.task6_runtime import build_task6_holdout_gate_manifest
+
+    fixture, _ = _fixture(tmp_path)
+    holdout = {
+        "schema_version": 1,
+        "status": "sealed",
+        "selected_qids": ["q1"],
+        "selection_sha256": "b" * 64,
+        "manifest_sha256": "c" * 64,
+    }
+    manifest = build_task6_holdout_gate_manifest(
+        fixture,
+        fixture_path=(tmp_path / "fixture.json").resolve(),
+        fixture_sha256="a" * 64,
+        holdout_manifest=holdout,
+        holdout_manifest_path=(tmp_path / "holdout" / "manifest.json").resolve(),
+        holdout_manifest_file_sha256="d" * 64,
+    )
+
+    assert manifest["status"] == "sealed-holdout-gate"
+    assert manifest["qid_shards"] == [{"shard": 0, "qid": "q1"}]
+    assert manifest["holdout_manifest_sha256"] == "c" * 64
+    assert manifest["holdout_manifest_file_sha256"] == "d" * 64
+    assert len(manifest["holdout_primary_cells"]) == 21
+    assert set(manifest).isdisjoint({"native_cells", "fixed_cells", "smoke_cells"})
+    assert manifest["generation_counts"] == {
+        "holdout_primary_per_qid": 21,
+        "holdout_primary_total": 21,
+    }
+
+
 def test_task6_smoke_launcher_binds_execution_checkout_and_exact_a100_40_memory() -> None:
     matrix = Path("examples/run_task6_matrix.py").read_text(encoding="utf-8")
     launcher = Path("examples/sbatch/34_docprune_task6_smoke.sbatch").read_text(encoding="utf-8")
@@ -717,6 +756,25 @@ def test_task6_l40s_launcher_rejects_existing_shard_before_runtime_access(
     assert completed.returncode == 2
     assert "Task 6 shard output already exists" in completed.stderr
     assert "missing-runtime" not in completed.stderr
+
+
+def test_task6_holdout_batched_launcher_covers_only_held_qids_with_small_memory() -> None:
+    """Catch re-running completed QIDs or retaining the 96-GiB fair-share request."""
+
+    launcher = Path("examples/sbatch/42_docprune_task6_holdout_batched_l40s.sbatch").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#SBATCH --array=0-98%12" in launcher
+    assert "#SBATCH --mem=24G" in launcher
+    assert "#SBATCH --time=00:20:00" in launcher
+    assert "START_SHARD=$((36 + SLURM_ARRAY_TASK_ID * 12))" in launcher
+    assert "if (( END_SHARD > 1212 )); then END_SHARD=1212; fi" in launcher
+    assert "for (( SHARD=START_SHARD; SHARD<=END_SHARD; SHARD++ )); do" in launcher
+    assert '--shard "$SHARD"' in launcher
+    assert '--kind holdout-primary' in launcher
+    assert 'OUTPUT_DIR="$BATCH_ROOT/$SHARD_NAME"' in launcher
+    assert "--mem=96G" not in launcher
 
 
 def test_task6_l40s_launcher_pins_python_and_all_mutable_input_bytes() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import importlib.util
 import json
@@ -759,6 +760,46 @@ def test_equivalence_power_selects_smallest_n_and_fails_closed_when_pool_is_shor
     assert result["launch_admissible"] is launch_admissible
 
 
+def test_maximum_available_amendment_preserves_failed_power_plan_and_admits_full_pool() -> None:
+    """Catch rewriting the planned N or silently calling the reduced cohort powered."""
+
+    original = experiment_design.plan_equivalence_power(
+        developmental_mean_f1=0.4945312500000001,
+        developmental_sd_f1=9.532151596701555,
+        cluster_design_effect=1.0,
+        eligible_pool_size=1213,
+    )
+
+    amended = experiment_design.approve_maximum_available_power(original)
+
+    assert original["status"] == "underpowered_full_pool"
+    assert original["required_n"] == 2199
+    assert amended["status"] == "approved-maximum-available"
+    assert amended["planned_required_n"] == 2199
+    assert amended["required_n"] == amended["selected_n"] == 1213
+    assert amended["achieved_power"] == pytest.approx(0.5799759173834684)
+    assert amended["launch_admissible"] is True
+    assert amended["original_power"] == original
+    assert amended["claim_rule"] == (
+        "passing the frozen TOST establishes equivalence; failing it is unresolved"
+    )
+
+
+def test_maximum_available_amendment_rejects_resigned_tampered_original() -> None:
+    """Catch prospective approval being attached to a changed margin or required N."""
+
+    original = experiment_design.plan_equivalence_power(
+        developmental_mean_f1=0.4945312500000001,
+        developmental_sd_f1=9.532151596701555,
+        cluster_design_effect=1.0,
+        eligible_pool_size=1213,
+    )
+    original["equivalence_margin_f1"] = 2.0
+
+    with pytest.raises(ValueError, match="canonical digest"):
+        experiment_design.approve_maximum_available_power(original)
+
+
 def test_development_registry_records_relationships_and_union_digest() -> None:
     """Catch incomplete union exclusion or undocumented overlap between diagnostics."""
 
@@ -832,6 +873,83 @@ def test_holdout_seal_publishes_nothing_when_power_is_underpowered(tmp_path: Pat
         )
 
     assert not destination.exists()
+
+
+def test_holdout_seal_accepts_authenticated_maximum_available_amendment(tmp_path: Path) -> None:
+    """Catch approving the plan on paper while the launch validator still rejects it."""
+
+    registry_path, labels, original = _seal_prerequisites(tmp_path, eligible_pool_size=2)
+    power = experiment_design.approve_maximum_available_power(original)
+    calibration = experiment_design.calibrate_random_repetitions({"dev-qid": [1.0] * 10})
+    rows, input_hashes = _authenticated_eligible_rows(
+        tmp_path / "amended-inputs", ("holdout-a", "holdout-b")
+    )
+    rows[0]["metadata"]["supporting_document_ids"] = ["support-a"]
+    rows[1]["metadata"]["supporting_document_ids"] = ["support-b"]
+    destination = tmp_path / "method-holdout"
+
+    sealed = experiment_design.seal_holdout(
+        rows,
+        development_registry_path=registry_path,
+        required_registry_labels=labels,
+        power=power,
+        calibration=calibration,
+        runtime_pins={"runtime_commit": "d" * 40},
+        input_file_hashes=input_hashes,
+        destination=destination,
+    )
+
+    validated = experiment_design.validate_holdout_for_launch(
+        destination,
+        required_registry_path=registry_path,
+        required_registry_labels=labels,
+    )
+    assert validated == sealed
+    assert validated["power"]["planned_required_n"] > validated["required_n"] == 2
+
+
+def test_holdout_seal_uses_manifest_last_commit_on_filesystem_without_renameat2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch BeeGFS/NFS EINVAL leaving a valid holdout impossible or partially admitted."""
+
+    registry_path, labels, _ = _seal_prerequisites(tmp_path, eligible_pool_size=2)
+    power = experiment_design.plan_equivalence_power(
+        developmental_mean_f1=0.0,
+        developmental_sd_f1=0.01,
+        cluster_design_effect=1.0,
+        eligible_pool_size=2,
+    )
+    rows, input_hashes = _authenticated_eligible_rows(
+        tmp_path / "fallback-inputs", ("holdout-a", "holdout-b")
+    )
+    rows[0]["metadata"]["supporting_document_ids"] = ["support-a"]
+    rows[1]["metadata"]["supporting_document_ids"] = ["support-b"]
+    destination = tmp_path / "method-holdout"
+
+    def unsupported(*args: object) -> None:
+        raise OSError(errno.EINVAL, "renameat2 unsupported")
+
+    monkeypatch.setattr(experiment_design, "_renameat2_noreplace", unsupported)
+    sealed = experiment_design.seal_holdout(
+        rows,
+        development_registry_path=registry_path,
+        required_registry_labels=labels,
+        power=power,
+        calibration=experiment_design.calibrate_random_repetitions(
+            {"dev-qid": [1.0] * 10}
+        ),
+        runtime_pins={"runtime_commit": "d" * 40},
+        input_file_hashes=input_hashes,
+        destination=destination,
+    )
+
+    assert experiment_design.validate_holdout_for_launch(
+        destination,
+        required_registry_path=registry_path,
+        required_registry_labels=labels,
+    ) == sealed
+    assert not list(tmp_path.glob(".method-holdout-*"))
 
 
 def test_holdout_seal_is_atomic_no_replace_and_launch_validated(tmp_path: Path) -> None:
