@@ -477,10 +477,9 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Task 9's one-question dual-target reliability prerequisite failed. Preserve job
-`62323129`, the admitted raw artifact, and `analysis.json`; do not submit an
-A100 portability job, additional development questions, a retry, or a large
-holdout under the current contract. A separate pre-outcome scientific decision
-is required before rejecting Task 9 permanently or proposing a newly reviewed
-diagnostic. Do not tune a replacement against this question's observed
-outcomes. Task 10 remains inactive and separately approval gated.
+The user approved paired one-question diagnostics before any new outcomes:
+256 fit plus 64 held-out masks at existing `B_13`, and the identical schedule
+at `B_input`. B13 job `62423463` is running; input job `62423876` is queued.
+Require terminal admission before analysis, use only the exact generated-
+response ContextCite target for the decision, and do not add questions or
+advance to a method holdout. Task 10 remains inactive and separately gated.

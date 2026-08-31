@@ -1067,3 +1067,18 @@ Decision: the first one-question dual-target reliability prerequisite failed.
 Do not seal additional Task 9 development questions, launch a large holdout,
 retry the job, or tune a replacement surrogate against this question. A new
 pre-outcome scientific decision is required before any further Task 9 work.
+
+### Task 9 paired 256-mask diagnostics — 2026-08-31
+
+Before new outcomes, the user approved two same-question diagnostics with 256
+fit masks and 64 unseen masks. Runtime `39aa5f5142cd1ef87291e72f30bcfb23d813195f`
+implements variable frozen mask counts and the B13 launcher; exact-L40S job
+`62423463` was submitted to fresh root
+`/scratch/lmalveau/docprune/task9-b13-256-39aa5f5-v1`. Runtime
+`f1d163c8ef3922311f35db4deabd8420621c4e58` adds the paired `B_input`
+launcher; job `62423876` was submitted to fresh root
+`/scratch/lmalveau/docprune/task9-input-256-f1d163c-v1`. Each requests one
+L40S, 8 CPUs, 24 GiB, 10 minutes, and no requeue or shards. At the first joint
+check, B13 was running on `scg027` and B_input was pending for priority. Do not
+inspect partial outputs; the decision target is the exact generated-response
+ContextCite scale reconstructed from terminally admitted raw results.
