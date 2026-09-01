@@ -206,6 +206,46 @@ def test_intervention_plan_retains_exact_union_selected_by_contextcite_mask() ->
     assert len(plan) == 64
 
 
+def test_preliminary_intervention_plan_appends_budget_local_masks() -> None:
+    sources = tuple(_source(f"region-{index:02d}", (index,)) for index in range(12))
+    mapping = RegionTokenMapping(
+        artifacts=(),
+        geometry=tuple(VisualTokenGeometry(0, 0, index, 1, 12) for index in range(12)),
+        geometry_count=12,
+        geometry_sha256="1" * 64,
+        residual_grid_size=4,
+        assignment_contract="test-partition",
+        audited_regions=(),
+        empty_region_source_ids=(),
+        sources=sources,
+        token_to_source=tuple(source.source_id for source in sources),
+        sha256="2" * 64,
+    )
+    design = task9_attribution.build_task9_preliminary_mask_design(
+        [{"source_id": source.source_id, "token_cost": 1} for source in sources],
+        question_id="qid",
+        forced_boundary="B_13",
+        mapping_artifact_sha256="a" * 64,
+        prompt_input_sha256="b" * 64,
+        target_kind="max-accepted-reference-mean-loglikelihood",
+        reference_set_token_ids_sha256="c" * 64,
+        generated_response_token_ids_sha256=None,
+        fit_mask_count=8,
+        global_holdout_mask_count=4,
+        budget_local_holdout_mask_count=3,
+    )
+
+    plan = task9_attribution.build_task9_preliminary_intervention_plan(
+        mapping, design, mapping_artifact_sha256="a" * 64
+    )
+
+    assert len(plan) == 15
+    assert [row["split"] for row in plan] == ["fit"] * 8 + ["holdout"] * 4 + [
+        "budget_local_holdout"
+    ] * 3
+    assert all(row["forced_intervention"].boundary == 13 for row in plan)
+
+
 def test_intervention_plan_translates_input_boundary_without_changing_mask() -> None:
     """Catch passing the report label B_input to the decoder's input-boundary API."""
 

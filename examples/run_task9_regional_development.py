@@ -29,6 +29,8 @@ from docprune.task9_attribution import (
     build_regional_development_plan,
     build_regional_development_targets,
     build_regional_intervention_plan,
+    build_task9_preliminary_intervention_plan,
+    build_task9_preliminary_mask_design,
 )
 from docprune.task9_live import (
     publish_task9_regional_development,
@@ -83,6 +85,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-commit", required=True)
     parser.add_argument("--fit-mask-count", type=int, default=64)
     parser.add_argument("--holdout-mask-count", type=int, default=32)
+    parser.add_argument("--budget-local-holdout-mask-count", type=int, default=0)
     parser.add_argument("--validate-only", action="store_true")
     return parser
 
@@ -108,9 +111,14 @@ def _runtime_identity(runtime_dir: Path, runtime_commit: str) -> None:
 
 def main() -> None:
     args = _parser().parse_args()
-    if args.fit_mask_count <= 0 or args.holdout_mask_count <= 0:
+    if (
+        args.fit_mask_count <= 0
+        or args.holdout_mask_count <= 0
+        or args.budget_local_holdout_mask_count < 0
+    ):
         raise ValueError("Task 9 mask counts must be positive")
-    mask_count = args.fit_mask_count + args.holdout_mask_count
+    global_mask_count = args.fit_mask_count + args.holdout_mask_count
+    mask_count = global_mask_count + args.budget_local_holdout_mask_count
     for path in (
         args.config,
         args.run_config,
@@ -227,32 +235,50 @@ def main() -> None:
         {"source_id": source.source_id, "token_cost": len(source.token_ids)}
         for source in mapping.sources
     ] + [{"source_id": source_id, "token_cost": 0} for source_id in mapping.empty_region_source_ids]
-    primary_design = build_region_mask_design(
-        regions,
-        question_id=args.qid,
-        forced_boundary=boundary_label,
-        mapping_artifact_sha256=args.mapping_sha256,
-        prompt_input_sha256=input_sha256,
-        target_kind="max-accepted-reference-mean-loglikelihood",
-        reference_set_token_ids_sha256=reference_hash,
-        generated_response_token_ids_sha256=None,
-        fit_mask_count=args.fit_mask_count,
-        holdout_mask_count=args.holdout_mask_count,
-    )
-    primary_plan = (
-        *build_regional_intervention_plan(
+    design_kwargs = {
+        "question_id": args.qid,
+        "forced_boundary": boundary_label,
+        "mapping_artifact_sha256": args.mapping_sha256,
+        "prompt_input_sha256": input_sha256,
+        "target_kind": "max-accepted-reference-mean-loglikelihood",
+        "reference_set_token_ids_sha256": reference_hash,
+        "generated_response_token_ids_sha256": None,
+        "fit_mask_count": args.fit_mask_count,
+    }
+    preliminary_design = None
+    if args.budget_local_holdout_mask_count:
+        preliminary_design = build_task9_preliminary_mask_design(
+            regions,
+            **design_kwargs,
+            global_holdout_mask_count=args.holdout_mask_count,
+            budget_local_holdout_mask_count=args.budget_local_holdout_mask_count,
+        )
+        primary_design = preliminary_design["global_design"]
+        primary_plan = build_task9_preliminary_intervention_plan(
             mapping,
-            primary_design,
+            preliminary_design,
             mapping_artifact_sha256=args.mapping_sha256,
-            split="fit",
-        ),
-        *build_regional_intervention_plan(
-            mapping,
-            primary_design,
-            mapping_artifact_sha256=args.mapping_sha256,
-            split="holdout",
-        ),
-    )
+        )
+    else:
+        primary_design = build_region_mask_design(
+            regions,
+            **design_kwargs,
+            holdout_mask_count=args.holdout_mask_count,
+        )
+        primary_plan = (
+            *build_regional_intervention_plan(
+                mapping,
+                primary_design,
+                mapping_artifact_sha256=args.mapping_sha256,
+                split="fit",
+            ),
+            *build_regional_intervention_plan(
+                mapping,
+                primary_design,
+                mapping_artifact_sha256=args.mapping_sha256,
+                split="holdout",
+            ),
+        )
     shared = score_task9_regional_development_once(
         answerer,
         images=images,
@@ -292,9 +318,10 @@ def main() -> None:
         secondary_design,
         mapping_artifact_sha256=args.mapping_sha256,
     )
-    raw_likelihoods = [
+    all_raw_likelihoods = [
         list(branch.teacher_forced_loglikelihoods) for branch in shared.result.branches
     ]
+    raw_likelihoods = all_raw_likelihoods[:global_mask_count]
     targets = build_regional_development_targets(
         primary_design,
         secondary_design,
@@ -302,14 +329,22 @@ def main() -> None:
         mean_sequence_loglikelihoods=raw_likelihoods,
         reference_sequence_count=len(reference_ids),
     )
+    query_scores = list(shared.result.query_aggregate_attention_scores)
+    if len(query_scores) != mapping.geometry_count:
+        raise ValueError("Task 9 query-attention scores do not match the regional mapping")
+    query_region_scores = {
+        source.source_id: sum(query_scores[token_id] for token_id in source.token_ids)
+        for source in mapping.sources
+    }
     manifest: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2 if preliminary_design is not None else 1,
         "status": "configured-task9-regional-development",
         "runtime_commit": args.runtime_commit,
         "qid": args.qid,
         "boundary": boundary_label,
         "mask_count": mask_count,
-        "seed_order": list(range(mask_count)),
+        "seed_order": [row["seed"] for row in primary_plan],
+        "budget_local_holdout_mask_count": args.budget_local_holdout_mask_count,
         "config_path": str(args.config),
         "fixed_page_fixture_path": str(args.fixture),
         "mapping_path": str(args.mapping),
@@ -328,6 +363,9 @@ def main() -> None:
         "secondary_attribution_identity_sha256": secondary_design["attribution_identity_sha256"],
         "primary_target_dataset_sha256": targets["primary"]["target_dataset_sha256"],
         "secondary_target_dataset_sha256": targets["secondary"]["target_dataset_sha256"],
+        "preliminary_design_sha256": (
+            None if preliminary_design is None else preliminary_design["design_sha256"]
+        ),
         "fixed_page_provenance": True,
         "cached_retrieved_pages_reused": True,
         "global_index_loaded": False,
@@ -335,11 +373,24 @@ def main() -> None:
     }
     manifest["run_manifest_sha256"] = _canonical_sha256(manifest)
     raw_result: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2 if preliminary_design is not None else 1,
         "status": "completed-task9-regional-development",
         "run_manifest_sha256": manifest["run_manifest_sha256"],
         "reference_sequence_count": len(reference_ids),
         "raw_mean_sequence_loglikelihoods": raw_likelihoods,
+        "budget_local_mean_sequence_loglikelihoods": all_raw_likelihoods[
+            global_mask_count:
+        ],
+        "budget_local_plan": (
+            []
+            if preliminary_design is None
+            else [
+                {key: value for key, value in row.items() if key != "forced_intervention"}
+                for row in primary_plan[global_mask_count:]
+            ]
+        ),
+        "query_aggregate_attention_scores": query_scores,
+        "query_region_aggregate_logit_sums": query_region_scores,
         "development_plan": [
             {key: value for key, value in row.items() if key != "forced_intervention"}
             for row in development_plan

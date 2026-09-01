@@ -461,6 +461,95 @@ def build_regional_intervention_plan(
     return tuple(plan)
 
 
+def build_task9_preliminary_intervention_plan(
+    mapping: RegionTokenMapping,
+    preliminary_design: Mapping[str, object],
+    *,
+    mapping_artifact_sha256: str,
+) -> tuple[dict[str, object], ...]:
+    """Append the preliminary pilot's budget-local masks to its global plan."""
+
+    if not isinstance(preliminary_design, Mapping):
+        raise ValueError("Task 9 preliminary design is invalid")
+    unsigned = dict(preliminary_design)
+    supplied_sha = unsigned.pop("design_sha256", None)
+    if supplied_sha != _canonical_sha256(unsigned):
+        raise ValueError("Task 9 preliminary design digest is invalid")
+    global_design = preliminary_design.get("global_design")
+    local_masks = preliminary_design.get("budget_local_holdout_masks")
+    if not isinstance(global_design, Mapping) or not isinstance(local_masks, list):
+        raise ValueError("Task 9 preliminary design schema is invalid")
+    global_rows = (
+        *build_regional_intervention_plan(
+            mapping,
+            global_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="fit",
+        ),
+        *build_regional_intervention_plan(
+            mapping,
+            global_design,
+            mapping_artifact_sha256=mapping_artifact_sha256,
+            split="holdout",
+        ),
+    )
+    source_ids = list(global_design["source_ids"])
+    membership = {source.source_id: source.token_ids for source in mapping.sources}
+    costs = {source.source_id: len(source.token_ids) for source in mapping.sources}
+    identity = global_design["attribution_identity"]
+    boundary_label = identity["forced_boundary"]
+    boundary: str | int = (
+        "input" if boundary_label == "B_input" else int(str(boundary_label).removeprefix("B_"))
+    )
+    if len(local_masks) != preliminary_design.get("budget_local_holdout_mask_count"):
+        raise ValueError("Task 9 preliminary local mask count is invalid")
+    local_rows: list[dict[str, object]] = []
+    for mask in local_masks:
+        if (
+            not isinstance(mask, Mapping)
+            or mask.get("split") != "budget_local_holdout"
+            or not isinstance(mask.get("vector"), list)
+            or len(mask["vector"]) != len(source_ids)
+            or mask.get("vector_sha256") != _canonical_sha256(mask["vector"])
+        ):
+            raise ValueError("Task 9 preliminary local mask is invalid")
+        retained_sources = [
+            source_id
+            for source_id, retained in zip(source_ids, mask["vector"], strict=True)
+            if retained is True
+        ]
+        if (
+            mask.get("retained_source_ids") != retained_sources
+            or mask.get("retained_token_cost")
+            != sum(costs[source_id] for source_id in retained_sources)
+        ):
+            raise ValueError("Task 9 preliminary local mask membership is invalid")
+        retained_visual_ids = tuple(
+            sorted(token_id for source_id in retained_sources for token_id in membership[source_id])
+        )
+        local_rows.append(
+            {
+                "split": "budget_local_holdout",
+                "seed": mask["seed"],
+                "vector": list(mask["vector"]),
+                "vector_sha256": mask["vector_sha256"],
+                "attribution_identity_sha256": global_design[
+                    "attribution_identity_sha256"
+                ],
+                "retained_source_ids": retained_sources,
+                "retained_visual_ids": list(retained_visual_ids),
+                "retained_visual_count": len(retained_visual_ids),
+                "visual_population": mapping.geometry_count,
+                "forced_intervention": ForcedVisualIntervention(
+                    boundary=boundary,
+                    mode="physical_delete",
+                    retained_visual_ids=retained_visual_ids,
+                ),
+            }
+        )
+    return (*global_rows, *local_rows)
+
+
 def build_regional_development_plan(
     mapping: RegionTokenMapping,
     primary_design: Mapping[str, object],
@@ -2205,6 +2294,7 @@ __all__ = [
     "analyze_task9_preliminary_question",
     "build_region_mask_design",
     "build_task9_preliminary_arm_selections",
+    "build_task9_preliminary_intervention_plan",
     "build_task9_preliminary_mask_design",
     "build_regional_development_plan",
     "build_regional_development_targets",
