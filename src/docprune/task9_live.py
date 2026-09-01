@@ -15,6 +15,8 @@ from docprune.task9_attribution import (
     _validated_mask_design,
     build_regional_development_plan,
     build_regional_target_outcome,
+    build_task9_preliminary_intervention_plan,
+    build_task9_preliminary_mask_design,
     validate_regional_development_targets,
 )
 
@@ -218,6 +220,7 @@ def admit_task9_regional_development(
     expected_gpu_substring: str,
     expected_fit_mask_count: int = 64,
     expected_holdout_mask_count: int = 32,
+    expected_budget_local_holdout_mask_count: int = 0,
 ) -> dict[str, object]:
     """Authenticate a terminal one-question dual-target artifact."""
 
@@ -226,9 +229,13 @@ def admit_task9_regional_development(
         or expected_fit_mask_count <= 0
         or type(expected_holdout_mask_count) is not int
         or expected_holdout_mask_count <= 0
+        or type(expected_budget_local_holdout_mask_count) is not int
+        or expected_budget_local_holdout_mask_count < 0
     ):
         raise ValueError("Task 9 expected mask counts are invalid")
-    expected_mask_count = expected_fit_mask_count + expected_holdout_mask_count
+    global_mask_count = expected_fit_mask_count + expected_holdout_mask_count
+    expected_mask_count = global_mask_count + expected_budget_local_holdout_mask_count
+    preliminary = expected_budget_local_holdout_mask_count > 0
 
     output = Path(root)
     if not output.is_absolute() or output.is_symlink() or not output.is_dir():
@@ -298,15 +305,24 @@ def admit_task9_regional_development(
         "retrieval_search_run",
         "run_manifest_sha256",
     }
+    if preliminary:
+        required_manifest |= {
+            "baseline_stratum",
+            "budget_local_holdout_mask_count",
+            "preliminary_cohort_path",
+            "preliminary_cohort_sha256",
+            "preliminary_design_sha256",
+        }
     if (
         set(manifest) != required_manifest
-        or manifest["schema_version"] != 1
+        or manifest["schema_version"] != (2 if preliminary else 1)
         or manifest["status"] != "configured-task9-regional-development"
         or manifest["runtime_commit"] != expected_runtime_commit
         or manifest["qid"] != expected_qid
         or manifest["boundary"] != expected_boundary
         or manifest["mask_count"] != expected_mask_count
-        or manifest["seed_order"] != list(range(expected_mask_count))
+        or not isinstance(manifest["seed_order"], list)
+        or len(manifest["seed_order"]) != expected_mask_count
         or manifest["fixed_page_fixture_sha256"] != expected_fixture_sha256
         or manifest["mapping_artifact_sha256"] != expected_mapping_sha256
         or manifest["mapping_internal_sha256"] != expected_mapping_internal_sha256
@@ -318,6 +334,17 @@ def admit_task9_regional_development(
         or manifest["cached_retrieved_pages_reused"] is not True
         or manifest["global_index_loaded"] is not False
         or manifest["retrieval_search_run"] is not False
+        or (
+            preliminary
+            and (
+                manifest["budget_local_holdout_mask_count"]
+                != expected_budget_local_holdout_mask_count
+                or not _is_sha256(manifest["preliminary_design_sha256"])
+                or not _is_sha256(manifest["preliminary_cohort_sha256"])
+                or manifest["baseline_stratum"]
+                not in {"baseline_correct", "baseline_wrong"}
+            )
+        )
     ):
         raise ValueError("Task 9 development run manifest identity mismatch")
     for key in (
@@ -342,13 +369,16 @@ def admit_task9_regional_development(
         or shape[1] <= 0
     ):
         raise ValueError("Task 9 development prefill input identity is invalid")
-    for path_key, hash_key in (
+    path_hash_pairs = (
         ("config_path", "config_sha256"),
         ("fixed_page_fixture_path", "fixed_page_fixture_sha256"),
         ("mapping_path", "mapping_artifact_sha256"),
         ("index_manifest_path", "index_manifest_sha256"),
         ("run_config_path", "run_config_sha256"),
-    ):
+    )
+    if preliminary:
+        path_hash_pairs = (*path_hash_pairs, ("preliminary_cohort_path", "preliminary_cohort_sha256"))
+    for path_key, hash_key in path_hash_pairs:
         path = Path(str(manifest[path_key]))
         if _regular_file_sha256(path, path_key) != manifest[hash_key]:
             raise ValueError(f"Task 9 {path_key} bytes drifted")
@@ -391,9 +421,16 @@ def admit_task9_regional_development(
         "cuda_device_name",
         "raw_result_sha256",
     }
+    if preliminary:
+        required_raw |= {
+            "budget_local_mean_sequence_loglikelihoods",
+            "budget_local_plan",
+            "query_aggregate_attention_scores",
+            "query_region_aggregate_logit_sums",
+        }
     if (
         set(raw) != required_raw
-        or raw["schema_version"] != 1
+        or raw["schema_version"] != (2 if preliminary else 1)
         or raw["status"] != "completed-task9-regional-development"
         or raw["run_manifest_sha256"] != manifest_sha
         or not isinstance(raw["cuda_device_name"], str)
@@ -466,6 +503,46 @@ def admit_task9_regional_development(
         {key: value for key, value in row.items() if key != "forced_intervention"}
         for row in expected_plan
     ]
+    serialized_all_plan = serialized_plan
+    if preliminary:
+        regions = [
+            {"source_id": source.source_id, "token_cost": len(source.token_ids)}
+            for source in mapping.sources
+        ] + [
+            {"source_id": source_id, "token_cost": 0}
+            for source_id in mapping.empty_region_source_ids
+        ]
+        preliminary_design = build_task9_preliminary_mask_design(
+            regions,
+            question_id=expected_qid,
+            forced_boundary=expected_boundary,
+            mapping_artifact_sha256=expected_mapping_sha256,
+            prompt_input_sha256=manifest["prefill_input_ids_sha256"],
+            target_kind="max-accepted-reference-mean-loglikelihood",
+            reference_set_token_ids_sha256=manifest["reference_set_token_ids_sha256"],
+            generated_response_token_ids_sha256=None,
+            fit_mask_count=expected_fit_mask_count,
+            global_holdout_mask_count=expected_holdout_mask_count,
+            budget_local_holdout_mask_count=expected_budget_local_holdout_mask_count,
+        )
+        preliminary_plan = build_task9_preliminary_intervention_plan(
+            mapping,
+            preliminary_design,
+            mapping_artifact_sha256=expected_mapping_sha256,
+        )
+        serialized_all_plan = [
+            {key: value for key, value in row.items() if key != "forced_intervention"}
+            for row in preliminary_plan
+        ]
+        if (
+            preliminary_design["global_design"] != primary_design
+            or preliminary_design["design_sha256"] != manifest["preliminary_design_sha256"]
+            or raw["budget_local_plan"] != serialized_all_plan[global_mask_count:]
+            or manifest["seed_order"] != [row["seed"] for row in serialized_all_plan]
+        ):
+            raise ValueError("Task 9 preliminary mask design or local plan drifted")
+    elif manifest["seed_order"] != list(range(expected_mask_count)):
+        raise ValueError("Task 9 development seed order drifted")
     if raw["development_plan"] != serialized_plan:
         raise ValueError("Task 9 development physical plan drifted")
     validate_regional_development_targets(
@@ -475,6 +552,29 @@ def admit_task9_regional_development(
         raw["raw_mean_sequence_loglikelihoods"],
         reference_sequence_count=raw["reference_sequence_count"],
     )
+    if preliminary:
+        local_likelihoods = raw["budget_local_mean_sequence_loglikelihoods"]
+        query_scores = raw["query_aggregate_attention_scores"]
+        region_scores = raw["query_region_aggregate_logit_sums"]
+        expected_region_scores = {
+            source.source_id: sum(float(query_scores[token_id]) for token_id in source.token_ids)
+            for source in mapping.sources
+        } if isinstance(query_scores, list) and len(query_scores) == expected_geometry_count else {}
+        if (
+            not isinstance(local_likelihoods, list)
+            or len(local_likelihoods) != expected_budget_local_holdout_mask_count
+            or any(
+                not isinstance(row, list)
+                or len(row) != raw["reference_sequence_count"] + 1
+                or any(not math.isfinite(float(value)) for value in row)
+                for row in local_likelihoods
+            )
+            or not isinstance(query_scores, list)
+            or len(query_scores) != expected_geometry_count
+            or any(not math.isfinite(float(value)) for value in query_scores)
+            or region_scores != expected_region_scores
+        ):
+            raise ValueError("Task 9 preliminary local likelihood or query scores are invalid")
     forced_rows = raw["forced_interventions"]
     prefix = raw["checkpoint_cache_lengths"]
     branch_times = raw["branch_decoder_seconds"]
@@ -503,7 +603,7 @@ def admit_task9_regional_development(
         or raw["peak_allocated_gpu_bytes"] < 0
     ):
         raise ValueError("Task 9 development branch or shared-prefix count is invalid")
-    for plan, forced in zip(serialized_plan, forced_rows, strict=True):
+    for plan, forced in zip(serialized_all_plan, forced_rows, strict=True):
         logical = (
             forced.get("logical_retained_sequence_ids") if isinstance(forced, Mapping) else None
         )
@@ -530,8 +630,12 @@ def admit_task9_regional_development(
         ):
             raise ValueError("Task 9 development forced cache or M-RoPE topology is invalid")
     return {
-        "schema_version": 1,
-        "status": "admitted-task9-regional-development",
+        "schema_version": 2 if preliminary else 1,
+        "status": (
+            "admitted-task9-preliminary-attribution"
+            if preliminary
+            else "admitted-task9-regional-development"
+        ),
         "qid": expected_qid,
         "boundary": expected_boundary,
         "mask_count": expected_mask_count,

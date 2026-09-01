@@ -86,6 +86,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--fit-mask-count", type=int, default=64)
     parser.add_argument("--holdout-mask-count", type=int, default=32)
     parser.add_argument("--budget-local-holdout-mask-count", type=int, default=0)
+    parser.add_argument("--preliminary-cohort", type=Path)
+    parser.add_argument("--preliminary-cohort-sha256")
     parser.add_argument("--validate-only", action="store_true")
     return parser
 
@@ -109,6 +111,30 @@ def _runtime_identity(runtime_dir: Path, runtime_commit: str) -> None:
         raise ValueError("Task 9 execution requires the exact clean committed runtime")
 
 
+def _preliminary_cohort_record(
+    path: Path, expected_sha256: str, *, qid: str, question: str
+) -> dict[str, object]:
+    if _sha256(path) != expected_sha256:
+        raise ValueError("Task 9 preliminary cohort checksum mismatch")
+    payload = json.loads(path.read_bytes())
+    records = payload.get("selected_records") if isinstance(payload, dict) else None
+    matches = (
+        [row for row in records if isinstance(row, dict) and row.get("question_id") == qid]
+        if isinstance(records, list)
+        else []
+    )
+    if len(matches) != 1 or matches[0].get("question") != question:
+        raise ValueError("Task 9 preliminary cohort question identity mismatch")
+    answers = matches[0].get("answers")
+    if (
+        not isinstance(answers, list)
+        or not answers
+        or any(not isinstance(answer, str) or not answer for answer in answers)
+    ):
+        raise ValueError("Task 9 preliminary cohort accepted answers are invalid")
+    return matches[0]
+
+
 def main() -> None:
     args = _parser().parse_args()
     if (
@@ -130,6 +156,10 @@ def main() -> None:
     ):
         if not path.is_absolute():
             raise ValueError("Task 9 paths must be absolute")
+    if (args.preliminary_cohort is None) != (args.preliminary_cohort_sha256 is None):
+        raise ValueError("Task 9 preliminary cohort path and checksum must be provided together")
+    if args.preliminary_cohort is not None and not args.preliminary_cohort.is_absolute():
+        raise ValueError("Task 9 preliminary cohort path must be absolute")
     if args.output.exists() or args.output.is_symlink():
         raise FileExistsError(f"Task 9 output already exists: {args.output}")
     if not args.output.parent.is_dir():
@@ -152,6 +182,16 @@ def main() -> None:
         validate_external_bytes=False,
     )
     fixed_question = fixture.question(args.qid)
+    preliminary_record = (
+        None
+        if args.preliminary_cohort is None
+        else _preliminary_cohort_record(
+            args.preliminary_cohort,
+            args.preliminary_cohort_sha256,
+            qid=args.qid,
+            question=fixed_question.question,
+        )
+    )
     mapping = load_region_mapping(args.mapping, validate_raw_artifacts=True)
     if (
         mapping.geometry_count != args.expected_geometry_count
@@ -213,11 +253,16 @@ def main() -> None:
         runner.page_loader.load_page(page.doc_id, page.page_index) for page in retrieval.pages
     ]
     answerer = runner.answerer
+    accepted_references = (
+        sample.answers
+        if preliminary_record is None
+        else tuple(preliminary_record["answers"])
+    )
     target = prepare_task7_likelihood_target_for_question(
         answerer.processor,
         page_count=4,
         question=sample.question,
-        accepted_references=sample.answers,
+        accepted_references=accepted_references,
     )
     prepared = [prepare_qwen_page(answerer.processor, image) for image in images]
     prompt, batch = _prepare_batch_with_prompt(
@@ -344,7 +389,6 @@ def main() -> None:
         "boundary": boundary_label,
         "mask_count": mask_count,
         "seed_order": [row["seed"] for row in primary_plan],
-        "budget_local_holdout_mask_count": args.budget_local_holdout_mask_count,
         "config_path": str(args.config),
         "fixed_page_fixture_path": str(args.fixture),
         "mapping_path": str(args.mapping),
@@ -363,14 +407,19 @@ def main() -> None:
         "secondary_attribution_identity_sha256": secondary_design["attribution_identity_sha256"],
         "primary_target_dataset_sha256": targets["primary"]["target_dataset_sha256"],
         "secondary_target_dataset_sha256": targets["secondary"]["target_dataset_sha256"],
-        "preliminary_design_sha256": (
-            None if preliminary_design is None else preliminary_design["design_sha256"]
-        ),
         "fixed_page_provenance": True,
         "cached_retrieved_pages_reused": True,
         "global_index_loaded": False,
         "retrieval_search_run": False,
     }
+    if preliminary_design is not None:
+        manifest["budget_local_holdout_mask_count"] = args.budget_local_holdout_mask_count
+        manifest["preliminary_design_sha256"] = preliminary_design["design_sha256"]
+        if preliminary_record is None or args.preliminary_cohort is None:
+            raise ValueError("Task 9 preliminary scoring requires the sealed cohort")
+        manifest["preliminary_cohort_path"] = str(args.preliminary_cohort)
+        manifest["preliminary_cohort_sha256"] = args.preliminary_cohort_sha256
+        manifest["baseline_stratum"] = preliminary_record["baseline_stratum"]
     manifest["run_manifest_sha256"] = _canonical_sha256(manifest)
     raw_result: dict[str, object] = {
         "schema_version": 2 if preliminary_design is not None else 1,
@@ -378,19 +427,6 @@ def main() -> None:
         "run_manifest_sha256": manifest["run_manifest_sha256"],
         "reference_sequence_count": len(reference_ids),
         "raw_mean_sequence_loglikelihoods": raw_likelihoods,
-        "budget_local_mean_sequence_loglikelihoods": all_raw_likelihoods[
-            global_mask_count:
-        ],
-        "budget_local_plan": (
-            []
-            if preliminary_design is None
-            else [
-                {key: value for key, value in row.items() if key != "forced_intervention"}
-                for row in primary_plan[global_mask_count:]
-            ]
-        ),
-        "query_aggregate_attention_scores": query_scores,
-        "query_region_aggregate_logit_sums": query_region_scores,
         "development_plan": [
             {key: value for key, value in row.items() if key != "forced_intervention"}
             for row in development_plan
@@ -420,6 +456,16 @@ def main() -> None:
         "peak_allocated_gpu_bytes": shared.peak_allocated_gpu_bytes,
         "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
     }
+    if preliminary_design is not None:
+        raw_result["budget_local_mean_sequence_loglikelihoods"] = all_raw_likelihoods[
+            global_mask_count:
+        ]
+        raw_result["budget_local_plan"] = [
+            {key: value for key, value in row.items() if key != "forced_intervention"}
+            for row in primary_plan[global_mask_count:]
+        ]
+        raw_result["query_aggregate_attention_scores"] = query_scores
+        raw_result["query_region_aggregate_logit_sums"] = query_region_scores
     raw_result["raw_result_sha256"] = _canonical_sha256(raw_result)
     completion = publish_task9_regional_development(
         args.output,

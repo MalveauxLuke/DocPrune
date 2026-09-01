@@ -25,6 +25,8 @@ readonly M3DOCRAG_DIR=/home/lmalveau/src/m3docrag-task6-clean-20260828
 readonly M3DOCRAG_COMMIT=29e6ac2294d6b87075a1d45b8a8df175b214248a
 readonly FIXTURE=/scratch/lmalveau/docprune/task9-preliminary-mapping-inputs-5f7ff93-v1/fixture.json
 readonly FIXTURE_SHA256=704ca552c79263a6398a596d82dccecc0c64b07b03dec5e1acbcb13ac686b930
+readonly COHORT=/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json
+readonly COHORT_SHA256=123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273
 readonly MAPPING=/scratch/lmalveau/docprune/task9-preliminary-mappings-ecd1a87-v1/00-5fb253761e72a6048b8b759f04c3b784.json
 readonly MAPPING_SHA256=b7b3dbafc8bdcc3dbae5b0c78d555c5e0da082efccfbb851a8cf6c1b311de942
 readonly ATTEMPT_ROOT=/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
@@ -42,6 +44,7 @@ test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
 test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
 test "$(sha256sum "$FIXTURE" | cut -d' ' -f1)" = "$FIXTURE_SHA256"
+test "$(sha256sum "$COHORT" | cut -d' ' -f1)" = "$COHORT_SHA256"
 test "$(sha256sum "$MAPPING" | cut -d' ' -f1)" = "$MAPPING_SHA256"
 
 export PYTHONNOUSERSITE=1
@@ -67,6 +70,8 @@ export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
   --index-manifest "$INDEX_MANIFEST" \
   --fixture "$FIXTURE" \
   --fixture-sha256 "$FIXTURE_SHA256" \
+  --preliminary-cohort "$COHORT" \
+  --preliminary-cohort-sha256 "$COHORT_SHA256" \
   --mapping "$MAPPING" \
   --mapping-sha256 "$MAPPING_SHA256" \
   --expected-geometry-count 5549 \
@@ -79,3 +84,22 @@ export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
   --output "$OUTPUT" \
   --runtime-dir "$RUNTIME_DIR" \
   --runtime-commit "$RUNTIME_COMMIT"
+
+"$PYTHON" "$RUNTIME_DIR/examples/admit_task9_regional_development.py" \
+  --root "$OUTPUT" \
+  --runtime-commit "$RUNTIME_COMMIT" \
+  --qid "$QID" \
+  --boundary B_13 \
+  --fit-mask-count 256 \
+  --holdout-mask-count 32 \
+  --budget-local-holdout-mask-count 32 \
+  --fixture-sha256 "$FIXTURE_SHA256" \
+  --mapping-sha256 "$MAPPING_SHA256" \
+  --mapping-internal-sha256 8056cc32d15da1fda6ab4109d0c5308abac15be42011fa2be64c75f879c8ef69 \
+  --geometry-count 5549 \
+  --geometry-sha256 b21472333427046a117eebc1443bd7c899d164b5c46f3901b7e7d12860a99fc0 \
+  --original-visual-tokens 10032 \
+  --post-btp-visual-tokens 6153 \
+  --post-qtp-visual-tokens 5549 \
+  --decoder-layer-count 28 \
+  --gpu-substring NVIDIA
