@@ -7,6 +7,8 @@ import errno
 import hashlib
 import importlib.util
 import json
+import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 
@@ -22,12 +24,169 @@ DEVELOPMENT_REGISTRY = (
     / "docprune_random_oracle_horizon_2026-08-26"
     / "development-qid-registry.json"
 )
+TASK9_PRELIMINARY_SEALER = ROOT / "examples" / "seal_task9_preliminary_random48.py"
 
 
 def test_experiment_design_is_a_dedicated_module() -> None:
     """Catch coupling Task 2 back into evaluation or model-loading modules."""
 
     assert importlib.util.find_spec("docprune.experiment_design") is not None
+
+
+def test_task9_preliminary_cohort_uses_exact_seeded_correct_wrong_strata() -> None:
+    """Catch non-random ordering or leakage across the baseline-EM strata."""
+
+    rows = [
+        {
+            "question_id": qid,
+            "question": f"Question {qid}",
+            "answers": ["gold"],
+            "predicted_answer": prediction,
+            "retrieved_pages": [],
+        }
+        for qid, prediction in (
+            ("c1", "gold"),
+            ("c2", "gold"),
+            ("c3", "gold"),
+            ("c4", "gold"),
+            ("w1", "wrong"),
+            ("w2", "wrong"),
+            ("w3", "wrong"),
+            ("w4", "wrong"),
+        )
+    ]
+
+    cohort = experiment_design.build_task9_preliminary_random_cohort(
+        rows,
+        seed="seed-v1",
+        per_stratum=2,
+    )
+
+    assert cohort["eligible_counts"] == {"baseline_correct": 4, "baseline_wrong": 4}
+    assert cohort["natural_pool_weights"] == {
+        "baseline_correct": 0.5,
+        "baseline_wrong": 0.5,
+    }
+    assert cohort["selected_qids"] == {
+        "baseline_correct": ["c4", "c3"],
+        "baseline_wrong": ["w1", "w2"],
+    }
+    assert [row["question_id"] for row in cohort["selected_records"]] == [
+        "c4",
+        "c3",
+        "w1",
+        "w2",
+    ]
+    assert [row["baseline_stratum"] for row in cohort["selected_records"]] == [
+        "baseline_correct",
+        "baseline_correct",
+        "baseline_wrong",
+        "baseline_wrong",
+    ]
+
+
+def test_task9_preliminary_cohort_rejects_duplicate_or_undersized_pools() -> None:
+    """Catch a cohort seal that cannot supply unique members to both strata."""
+
+    row = {
+        "question_id": "q1",
+        "question": "Question",
+        "answers": ["gold"],
+        "predicted_answer": "gold",
+        "retrieved_pages": [],
+    }
+    with pytest.raises(ValueError, match="duplicate question_id"):
+        experiment_design.build_task9_preliminary_random_cohort(
+            [row, row], seed="seed-v1", per_stratum=1
+        )
+
+    with pytest.raises(ValueError, match="baseline_wrong.*requires 1"):
+        experiment_design.build_task9_preliminary_random_cohort(
+            [row], seed="seed-v1", per_stratum=1
+        )
+
+
+def test_task9_preliminary_sealer_authenticates_sources_and_writes_24_per_stratum(
+    tmp_path: Path,
+) -> None:
+    """Catch sealing from a partial pool or silently replacing an existing cohort."""
+
+    first64 = tmp_path / "first64.jsonl"
+    incremental_root = tmp_path / "incremental"
+    incremental_results = (
+        incremental_root / "eval-shards" / "btp-qtp" / "shard-0004" / "run" / "results.jsonl"
+    )
+    incremental_results.parent.mkdir(parents=True)
+    rows = [
+        {
+            "question_id": f"q{index:03d}",
+            "question": f"Question {index}",
+            "answers": ["gold"],
+            "predicted_answer": "gold" if index < 90 else "wrong",
+            "retrieved_pages": [],
+        }
+        for index in range(245)
+    ]
+    first64.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows[:64]), encoding="utf-8"
+    )
+    incremental_results.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows[64:]), encoding="utf-8"
+    )
+    analysis = {
+        "schema_version": 1,
+        "analysis_sha256": "a" * 64,
+        "question_count": 245,
+        "question_ids": [row["question_id"] for row in rows],
+        "question_ids_sha256": "b" * 64,
+        "retrieval_is_identical_across_stages": True,
+        "source_roots": {
+            "btp_qtp_first64": [str(first64)],
+            "incremental": str(incremental_root / "eval-shards"),
+        },
+    }
+    analysis_path = tmp_path / "stage245-analysis.json"
+    analysis_path.write_text(json.dumps(analysis), encoding="utf-8")
+    output = tmp_path / "cohort.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(TASK9_PRELIMINARY_SEALER),
+            "--analysis",
+            str(analysis_path),
+            "--output",
+            str(output),
+            "--seed",
+            "task9-preliminary-test-seed",
+        ],
+        cwd=ROOT,
+        env={"PYTHONPATH": str(ROOT / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    cohort = json.loads(output.read_text(encoding="utf-8"))
+    assert cohort["eligible_counts"] == {"baseline_correct": 90, "baseline_wrong": 155}
+    assert {name: len(qids) for name, qids in cohort["selected_qids"].items()} == {
+        "baseline_correct": 24,
+        "baseline_wrong": 24,
+    }
+    assert cohort["source_authority"]["stage_analysis_path"] == str(analysis_path)
+    assert len(cohort["source_authority"]["result_files"]) == 2
+
+    repeated = subprocess.run(
+        completed.args,
+        cwd=ROOT,
+        env={"PYTHONPATH": str(ROOT / "src")},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert repeated.returncode != 0
+    assert "already exists" in repeated.stderr
 
 
 def test_external_file_hashing_streams_multiple_chunks_without_whole_file_reader(

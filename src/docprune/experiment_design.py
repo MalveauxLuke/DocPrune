@@ -63,6 +63,109 @@ def _canonical_json_sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def build_task9_preliminary_random_cohort(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    seed: str,
+    per_stratum: int = 24,
+) -> dict[str, object]:
+    """Build the seeded baseline-correct/wrong Task 9 development cohort."""
+
+    from docprune.evaluation import list_em
+
+    if not isinstance(seed, str) or not seed:
+        raise ValueError("selection seed must be a nonempty string")
+    if type(per_stratum) is not int or per_stratum <= 0:
+        raise ValueError("per_stratum must be a positive integer")
+
+    projected: dict[str, dict[str, object]] = {}
+    strata: dict[str, list[str]] = {"baseline_correct": [], "baseline_wrong": []}
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("cohort input row must be a mapping")
+        qid = row.get("question_id")
+        question = row.get("question")
+        answers = row.get("answers")
+        prediction = row.get("predicted_answer")
+        retrieved_pages = row.get("retrieved_pages")
+        if not isinstance(qid, str) or not qid:
+            raise ValueError("question_id must be a nonempty string")
+        if qid in projected:
+            raise ValueError(f"duplicate question_id: {qid}")
+        if not isinstance(question, str) or not question:
+            raise ValueError(f"question must be a nonempty string: {qid}")
+        if (
+            not isinstance(answers, list)
+            or not answers
+            or any(not isinstance(answer, str) or not answer for answer in answers)
+        ):
+            raise ValueError(f"answers must be nonempty strings: {qid}")
+        if not isinstance(prediction, str):
+            raise ValueError(f"predicted_answer must be a string: {qid}")
+        if not isinstance(retrieved_pages, list):
+            raise ValueError(f"retrieved_pages must be a list: {qid}")
+
+        baseline_correct = list_em(prediction, answers) == 1.0
+        stratum = "baseline_correct" if baseline_correct else "baseline_wrong"
+        projected[qid] = {
+            "question_id": qid,
+            "question": question,
+            "answers": list(answers),
+            "unpruned_predicted_answer": prediction,
+            "retrieved_pages": list(retrieved_pages),
+            "baseline_em": 1.0 if baseline_correct else 0.0,
+            "baseline_stratum": stratum,
+        }
+        strata[stratum].append(qid)
+
+    eligible_counts = {name: len(qids) for name, qids in strata.items()}
+    for name, count in eligible_counts.items():
+        if count < per_stratum:
+            raise ValueError(f"{name} pool has {count} questions but requires {per_stratum}")
+
+    def selection_key(qid: str, stratum: str) -> tuple[str, str]:
+        encoded = f"{seed}\0{stratum}\0{qid}".encode()
+        return hashlib.sha256(encoded).hexdigest(), qid
+
+    eligible_order = {
+        name: sorted(qids, key=lambda qid, name=name: selection_key(qid, name))
+        for name, qids in strata.items()
+    }
+    selected_qids = {
+        name: qids[:per_stratum] for name, qids in eligible_order.items()
+    }
+    selected_records = [
+        projected[qid]
+        for name in ("baseline_correct", "baseline_wrong")
+        for qid in selected_qids[name]
+    ]
+    total_eligible = sum(eligible_counts.values())
+    cohort: dict[str, object] = {
+        "schema_version": 1,
+        "status": "selected",
+        "purpose": "Task 9 preliminary stratified-random development pilot",
+        "selection_method": (
+            "within each canonical list-EM stratum, sort ascending by "
+            "sha256(seed + NUL + stratum + NUL + question_id), then question_id"
+        ),
+        "seed": seed,
+        "per_stratum": per_stratum,
+        "eligible_count": total_eligible,
+        "eligible_counts": eligible_counts,
+        "natural_pool_weights": {
+            name: count / total_eligible for name, count in eligible_counts.items()
+        },
+        "eligible_order_sha256": {
+            name: hashlib.sha256("\n".join(qids).encode("utf-8")).hexdigest()
+            for name, qids in eligible_order.items()
+        },
+        "selected_qids": selected_qids,
+        "selected_records": selected_records,
+    }
+    cohort["cohort_sha256"] = _canonical_json_sha256(cohort)
+    return cohort
+
+
 def _open_directory_nofollow(path: Path) -> int:
     """Open an absolute directory by walking every component without symlinks."""
 

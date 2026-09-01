@@ -30,20 +30,24 @@ response and accepted-answer analyses are complete. The accepted-answer B13
 surrogate has sufficient global predictive fidelity for a controlled oracle
 pilot. On 2026-08-31 the user superseded the old `0.8` exact selected-set
 Jaccard admission rule and approved preparation of a 48-question
-answer-conditioned causal-selection pilot. No current experiment job is active.
+answer-conditioned causal-selection pilot. A preliminary 24-correct/24-wrong
+stratified-random cohort is now sealed to run before the enriched panel. No
+current experiment job is active.
 
 The separate Task 6 fixed-page holdout root contains 1,213 sealed QIDs and
 1,213 result files, each intended to hold the aggregate-score-versus-20-random
 matrix. It is existing random-versus-DocPrune evidence, not a Task 9 comparator
-arm; Task 9 will not rerun uniform or coverage-matched random pruning. Its
-branch/code and final analysis authority are consolidated separately.
+arm; Task 9 will not rerun its uniform or coverage-matched random families.
+The preliminary pilot includes only one same-action-space region-size-aware
+random comparator. Task 6 branch/code and final analysis authority are
+consolidated separately.
 
 Unique accepted Task 6–9 work is consolidated on the active Task 9 branch.
-Next action: implement and smoke the frozen cohort, region mappings, budget-
-local masks, gold-conditioned attention, robust/canonical ContextCite
-selectors, and unified pilot analysis. No 48-question pilot, method holdout,
-retrieval, feature rebuild, or Task 10 job is currently authorized. Task 10
-remains separately approval gated.
+Next action: implement and smoke the sealed preliminary cohort's region
+mappings, budget-local masks, matched selectors, and unified pilot analysis.
+The enriched cohort follows the preliminary pilot. No 48-question pilot,
+method holdout, retrieval, feature rebuild, or Task 10 job is currently
+authorized. Task 10 remains separately approval gated.
 
 ## Frozen local provenance
 
@@ -1208,3 +1212,39 @@ A repository-wide sweep exposed two stale benchmark-documentation assertions
 that incorrectly treated changing current-task files as benchmark authority;
 their scope was narrowed to the immutable benchmark documents, and both focused
 regressions pass. No experiment was launched during consolidation.
+
+### Approved preliminary stratified-random Task 9 pilot and cohort seal — 2026-08-31
+
+Before the enriched mechanism panel, the user approved a simpler 48-question
+discovery/calibration pilot: 24 baseline-correct and 24 baseline-wrong questions
+sampled randomly within stratum. The exact eligible authority is the completed
+245-question BTP+QTP/no-CTP stage-localization pool because it matches Task 9's
+unpruned post-QTP state. Canonical list EM partitions that pool into 90 correct
+and 155 wrong questions.
+
+The pilot compares unpruned, query-only DocPrune attention-region, accepted-
+answer gold-support ContextCite, conditional gold-margin ContextCite when the
+unpruned response is a distinct non-gold alternative, and one deterministic
+region-size-aware random comparator at matched 55/65/80% achieved whole-region
+costs. FastV remains excluded. The matched regional random arm is a local same-
+action-space comparator; the 1,213-question Task 6 random study is not rerun.
+Correct and wrong strata are primary reports. Any pooled descriptive estimate
+uses the frozen 90/245 and 155/245 weights; uncertainty across budgets clusters
+by question.
+
+CPU selector tests were written before implementation and pass 3/3. The cohort
+was sealed without model execution or attribution outcomes using seed
+`docprune-task9-preliminary-random48-v1`:
+
+```text
+path: /scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json
+selected: 48 unique QIDs; 24 baseline correct; 24 baseline wrong
+eligible: 245 QIDs; 90 baseline correct; 155 baseline wrong
+source result files: 14 authenticated BTP+QTP JSONL members
+file SHA-256: 123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273
+internal cohort SHA-256: 465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7c33c3c5f9
+```
+
+No pilot job is submitted. Next action is implementation of the sealed
+preliminary cohort's regional mappings, masks, matched arms, and unified
+analysis, followed by a bounded smoke and a new executable handoff.

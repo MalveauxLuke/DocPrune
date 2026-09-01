@@ -24,15 +24,24 @@ with a controlled answer-conditioned oracle pilot whose stability is judged by
 budget-local fidelity and actual budgeted-set outcomes. B13 stays primary;
 `B_input` and the generated-response target remain diagnostics.
 
-The approved pilot is a frozen 48-question developmental mechanism panel: 16
-uniformly sampled eligible questions, 16 traceable distractor errors, 8 high-
-ambiguity correct questions, and 8 clean controls. It uses 256 fit masks, 32
+The approved sequence now begins with a preliminary stratified-random
+48-question pilot drawn from the authenticated 245-question BTP+QTP/no-CTP
+pool: 24 baseline-correct and 24 baseline-wrong questions sampled randomly
+within stratum. It is sealed at
+`/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json` with file
+SHA-256 `123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`.
+The previously approved enriched 48-question developmental
+mechanism panel follows: 16 uniformly sampled eligible questions, 16 traceable
+distractor errors, 8 high-ambiguity correct questions, and 8 clean controls.
+Both use 256 fit masks, 32
 global and 32 primary-budget-local holdouts, B13 physical deletion, matched
 55/65/80% whole-region budgets, query-only attention, gold-conditioned
 attention, robust/canonical accepted-answer ContextCite, reverse ContextCite,
 unpruned, and a traceable-only audited constraint. FastV and new random or
-coverage pruning arms are excluded. The existing 1,213-question Task 6
-random-versus-DocPrune evidence remains separate and is not rerun.
+coverage pruning families are excluded. The preliminary pilot alone includes
+one matched region-size-aware random comparator required for its same-action-
+space interpretation. The existing 1,213-question Task 6 random-versus-
+DocPrune evidence remains separate and is not rerun.
 Current non-executable preparation authority is
 `sol/handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`.
 All unique accepted Task 6–9 Git work is now consolidated on
@@ -160,7 +169,8 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Implement and test the cohort sealer, mappings, mask design, gold-conditioned
-attention, robust selector, matched-budget evaluation, and unified analysis
+Implement and test the sealed preliminary cohort's mappings, mask design,
+matched selectors, evaluation, and unified analysis
 JSON. After a bounded real-input smoke, write a fresh question-sharded L40S
-handoff. No pilot or method-holdout submission is currently authorized.
+handoff. Run the enriched pilot only afterward. No pilot or method-holdout
+submission is currently authorized.

@@ -389,10 +389,48 @@ diagnostic.
 7. Report `M′`, requested `M`, and the gap. Never standardize coefficients a
    second time, broadcast them to tokens, or split a whole region.
 
-### Frozen pilot cohort
+### Preliminary stratified-random 48-question pilot
 
-Seal a 48-question developmental mechanism panel before creating any new
-question-level ContextCite outcomes. Selection may use fixed-page document
+Run a simple discovery/calibration pilot before the distractor-enriched panel.
+Its frozen eligible pool is the 245-question single-hop development set with
+authenticated BTP+QTP/no-CTP outputs from the completed stage-localization
+study. Under the repository's canonical list exact-match evaluator, that pool
+contains 90 baseline-correct and 155 baseline-wrong questions. Using a recorded
+seed, sample without replacement 24 questions from each stratum. Selection may
+read only QID, accepted answers, the already-observed BTP+QTP prediction, and
+fixed-page provenance; it may not read attention, ContextCite, or subsequent
+arm outcomes.
+
+At the same achieved whole-region token cost for every pruned arm and at the
+prespecified 55%, 65%, and 80% retention budgets, evaluate:
+
+1. the unpruned post-QTP reference;
+2. query-only aggregate-logit DocPrune attention-region;
+3. accepted-answer gold-support ContextCite-region;
+4. gold-margin ContextCite-region when the unpruned generated response is a
+   distinct non-gold alternative, using gold minus alternative normalized
+   sequence log-likelihood as the target; and
+5. one deterministic region-size-aware random comparator.
+
+FastV remains excluded. The matched regional random comparator is included only
+to make this same-question, same-action-space pilot interpretable; it does not
+rerun or replace the 1,213-question Task 6 token-level random study.
+
+Report paired normalized token-F1 and exact-match differences, per-question
+win/tie/loss, rescue rate on baseline-wrong questions, preservation on
+baseline-correct questions, gold-likelihood change, and gold-versus-alternative
+margin change where defined. Report the two strata separately. Any combined
+descriptive result is reweighted to the frozen eligible pool's natural
+90/245 correct and 155/245 wrong proportions. When multiple budgets contribute
+to uncertainty, resample by question so all budgets for a QID remain together.
+This is a developmental discovery/calibration result, not a precise estimate
+of a small average advantage or a dataset-wide population claim.
+
+### Subsequent enriched pilot cohort
+
+Only after the preliminary random pilot is complete, seal the separate
+48-question developmental mechanism panel before creating its ContextCite
+outcomes. Selection may use fixed-page document
 structure, accepted answers, already-observed unpruned answers, and region
 contents, but it may not use ContextCite outcomes, attention scores, or any
 selector comparison. Sample without replacement within each frozen pool using

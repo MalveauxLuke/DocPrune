@@ -16,12 +16,17 @@ boundary. The procedure remains a privileged answer-conditioned whole-region
 reference oracle, not vanilla ContextCite, a token oracle, or a deployable
 query-only method.
 
-Current authority is CPU/implementation only: implement the sealed 48-question
-stratified cohort, 256+32+32 mask design, gold-conditioned attention control,
-robust/canonical ContextCite selectors, matched 55/65/80% budgeted evaluation,
-distractor mechanism metrics, and a unified analysis JSON. FastV and new
-random/coverage pruning arms are excluded; the completed 1,213-question Task 6
-random-versus-DocPrune evidence is separate.
+Current authority is CPU/implementation only. The preliminary 48-question
+cohort is sealed with 24 canonical-EM-correct and 24 canonical-EM-wrong QIDs
+from the authenticated 245-question BTP+QTP/no-CTP pool at
+`/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json` (file
+SHA-256 `123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`).
+Next implement its 256+32+32 masks, matched 55/65/80% arms, gold-
+support and conditional gold-margin ContextCite, one region-size-aware random
+comparator, and unified analysis JSON. FastV remains excluded. The enriched
+48-question mechanism panel follows only after this preliminary pilot; the
+completed 1,213-question Task 6 random-versus-DocPrune evidence remains
+separate.
 The binding non-executable preparation handoff is
 [`handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`](handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md).
 

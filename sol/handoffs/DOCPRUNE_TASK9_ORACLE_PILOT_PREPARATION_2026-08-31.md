@@ -37,9 +37,38 @@ budgeted selected sets are the relevant stability evidence.
   and
   `64fac4a15f971390c64b337144a2453be9cfd5efe330eca582056d686c855699`.
 
-## Frozen cohort contract to implement
+## Preliminary stratified-random cohort contract
 
-Before any new ContextCite or selector outcome, seal 48 unique questions from
+Run this pilot before the enriched cohort below. The eligible pool is the 245
+authenticated single-hop questions with completed BTP+QTP/no-CTP outputs in
+the sealed stage-localization analysis. Canonical list EM classifies 90 as
+baseline correct and 155 as baseline wrong. With a recorded seed, sample 24
+without replacement from each stratum. Seal source paths and hashes, pool
+counts, ordered selections, and the 90/245 versus 155/245 natural-pool weights.
+Selection must not read attention, ContextCite, or subsequent arm outcomes.
+
+This cohort is now sealed at
+`/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json`. Seed is
+`docprune-task9-preliminary-random48-v1`; file SHA-256 is
+`123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`;
+internal cohort SHA-256 is
+`465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7c33c3c5f9`.
+The selected set contains 48 unique QIDs, exactly 24 per stratum; natural-pool
+weights are 90/245 correct and 155/245 wrong.
+
+At identical achieved whole-region costs and 55/65/80% retention, run unpruned,
+query-only DocPrune attention-region, gold-support ContextCite, conditional
+gold-margin ContextCite using a distinct non-gold unpruned response, and one
+deterministic region-size-aware random comparator. FastV remains excluded.
+Report correct and wrong strata separately, paired normalized token-F1/EM,
+win/tie/loss, rescue, preservation, gold-likelihood change, gold-margin change,
+and question-clustered uncertainty. Any combined descriptive result uses the
+frozen eligible-pool weights and is not labeled a dataset-wide population
+estimate.
+
+## Subsequent enriched cohort contract to implement
+
+Only after the preliminary pilot, seal 48 unique questions from
 the authenticated fixed-page eligible pool using a recorded seed:
 
 1. 16 uniform-anchor questions sampled first;
@@ -94,9 +123,10 @@ positions, decoder, generation, and evaluator:
 8. traceable-only audited gold-in/distractor-out constraint.
 
 Literal query attention, mean-over-member-token gold attention, and mask-count
-fits are named sensitivities. Do not add FastV, uniform-random pruning, or
-coverage-matched-random pruning. The existing 1,213-question Task 6 random-
-versus-DocPrune evidence is separate and must not be recomputed for Task 9.
+fits are named sensitivities. Do not add FastV or a new random/coverage family
+to the enriched panel. The preliminary pilot's single matched regional random
+comparator is separate. The existing 1,213-question Task 6 random-versus-
+DocPrune evidence is not recomputed for Task 9.
 
 ## Required analysis
 
@@ -132,7 +162,7 @@ unique accepted Task 6–9 work. No pilot job was submitted.
 
 Not authorized now:
 
-- the 48-question pilot submission;
+- either 48-question pilot submission;
 - a method holdout or larger cohort;
 - retrieval, global-index loading, or feature rebuilding;
 - inspecting partial pilot outcomes;
@@ -148,9 +178,10 @@ IDs remain unset until the bounded smoke measures the final implementation.
 
 ## Immediate next steps
 
-1. Implement the cohort sealer and mapping/mask schemas test-first.
-2. Implement the matched selectors, direct selected-set runner, validator, and
+1. Implement the sealed preliminary cohort's mapping/mask inputs and matched
+   selectors test-first.
+2. Implement the direct selected-set runner, validator, and
    unified analysis JSON test-first.
 3. Run CPU verification and one bounded L40S smoke.
-4. Write and review a new executable pilot handoff; only then request
+4. Write and review a new executable preliminary-pilot handoff; only then request
    submission.

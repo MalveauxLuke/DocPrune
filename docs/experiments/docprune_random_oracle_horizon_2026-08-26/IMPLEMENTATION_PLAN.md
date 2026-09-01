@@ -9,8 +9,10 @@ Status: Tasks 1–5 and Task 8 are complete. Task 9's four-mask smoke, original
 64+32 run, paired 256+64 B13/input diagnostics, and accepted-answer analysis
 are complete. The original identity-Jaccard gate is superseded. Task 9 is now
 authorized for implementation and sealing of a 48-question answer-conditioned
-causal-selection oracle pilot. Unique accepted Task 6–9 Git work is consolidated
-on the active Task 9 branch; no pilot job or method holdout is yet authorized.
+causal-selection oracle pilot. A preliminary 24-correct/24-wrong stratified-
+random pilot now runs before the enriched panel. Unique accepted Task 6–9 Git
+work is consolidated on the active Task 9 branch; no pilot job or method
+holdout is yet authorized.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26; approved Task 9 oracle-pilot amendment,
@@ -397,6 +399,25 @@ Pilot preparation and implementation:
 - [x] Consolidate unique accepted Task 6–9 Git work on the active Task 9
   branch: Task 6 merge `689432e`, Task 7 merge `c5b212f`, and Task 8 merge
   `c38cd9c`.
+- [x] Seal the preliminary random cohort from the authenticated 245-question
+  BTP+QTP/no-CTP pool: exactly 24 canonical-EM-correct and 24 canonical-EM-
+  wrong QIDs, sampled without replacement by a recorded seed. Persist the
+  90/155 eligible-pool counts, source paths/hashes, selected QIDs, and natural-
+  pool weights without reading attribution or arm outcomes. Canonical artifact:
+  `/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json`; file
+  SHA-256 `123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`;
+  internal cohort SHA-256
+  `465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7c33c3c5f9`.
+- [ ] For the preliminary cohort, evaluate unpruned, query-only DocPrune
+  attention-region, gold-support ContextCite, gold-margin ContextCite where a
+  distinct non-gold unpruned response exists, and one deterministic region-
+  size-aware random comparator at matched 55/65/80% whole-region costs. Keep
+  FastV excluded.
+- [ ] Report preliminary correct/wrong strata separately; paired normalized
+  token-F1 and EM differences; win/tie/loss; rescue; preservation; gold-
+  likelihood and gold-margin changes; question-clustered uncertainty; and an
+  optional 90/245 versus 155/245 reweighted descriptive result. Do not use its
+  selector outcomes to choose the subsequent enriched cohort.
 - [ ] Implement and test an outcome-blind cohort sealer for 48 unique questions:
   16 uniform-anchor, 16 traceable distractor-error, 8 high-ambiguity/correct,
   and 8 clean-control questions. It may read accepted and already-observed
@@ -537,8 +558,10 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Implement the frozen 48-question cohort/mapping/mask contracts and controlled
-pilot arms test-first, publish one unified analysis schema, and pass a bounded
-real-input smoke. The next GPU action after those steps is a newly reviewed
-question-sharded L40S pilot handoff; no pilot submission or method-holdout run
-is currently authorized. Task 10 remains inactive and separately gated.
+The preliminary 24-correct/24-wrong cohort is sealed. Implement its mapping/
+mask contracts and controlled arms test-first, publish one
+unified analysis schema, and pass a bounded real-input smoke. The preliminary
+pilot runs before the enriched panel. The next GPU action after those steps is
+a newly reviewed question-sharded L40S handoff; no pilot submission or method-
+holdout run is currently authorized. Task 10 remains inactive and separately
+gated.
