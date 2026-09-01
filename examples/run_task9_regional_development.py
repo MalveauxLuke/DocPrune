@@ -182,6 +182,10 @@ def main() -> None:
         validate_external_bytes=False,
     )
     fixed_question = fixture.question(args.qid)
+    fixed_samples = fixture.selected_samples((args.qid,))
+    if len(fixed_samples) != 1:
+        raise ValueError("Task 9 fixed fixture did not resolve one selected sample")
+    fixed_sample = fixed_samples[0]
     preliminary_record = (
         None
         if args.preliminary_cohort is None
@@ -189,7 +193,7 @@ def main() -> None:
             args.preliminary_cohort,
             args.preliminary_cohort_sha256,
             qid=args.qid,
-            question=fixed_question.question,
+            question=fixed_sample.question,
         )
     )
     mapping = load_region_mapping(args.mapping, validate_raw_artifacts=True)
