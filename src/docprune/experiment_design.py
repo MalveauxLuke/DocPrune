@@ -229,6 +229,32 @@ def build_task9_preliminary_fixture_inputs(
     return reference, eligible
 
 
+def task9_preprocessing_batch_indices(
+    array_task_id: int,
+    *,
+    question_count: int = 48,
+    completed_prefix_count: int = 1,
+    batch_size: int = 4,
+) -> tuple[int, ...]:
+    """Return one array task's contiguous remaining-question batch."""
+
+    if type(array_task_id) is not int or array_task_id < 0:
+        raise ValueError("array task ID must be a nonnegative integer")
+    if (
+        type(question_count) is not int
+        or type(completed_prefix_count) is not int
+        or type(batch_size) is not int
+        or question_count <= 0
+        or not 0 <= completed_prefix_count < question_count
+        or batch_size <= 0
+    ):
+        raise ValueError("Task 9 preprocessing batch dimensions are invalid")
+    start = completed_prefix_count + array_task_id * batch_size
+    if start >= question_count:
+        raise ValueError("array task ID exceeds the remaining-question batch count")
+    return tuple(range(start, min(start + batch_size, question_count)))
+
+
 def _open_directory_nofollow(path: Path) -> int:
     """Open an absolute directory by walking every component without symlinks."""
 

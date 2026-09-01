@@ -397,3 +397,16 @@ def test_task9_preliminary_geometry_launcher_is_question_sharded_and_hash_discov
     assert "expected_geometry_sha256=None" in wrapper
     assert "load_pinned_colpali_query_encoder" in wrapper
     assert "load_pinned_qwen_processor" in wrapper
+
+
+def test_task9_remaining_geometry_launcher_batches_four_questions_per_job() -> None:
+    launcher = Path(
+        "examples/sbatch/45_docprune_task9_preliminary_geometry_batches.sbatch"
+    ).read_text(encoding="utf-8")
+
+    assert "#SBATCH --array=0-11%6" in launcher
+    assert "#SBATCH --time=00:30:00" in launcher
+    assert "task9_preprocessing_batch_indices" in launcher
+    assert "QUESTION_INDEX" in launcher
+    assert "43_docprune_task9_preliminary_geometry.sbatch" in launcher
+    assert "#SBATCH --constraint=" not in launcher

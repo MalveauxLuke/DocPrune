@@ -34,12 +34,13 @@ test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
 test "$(sha256sum "$PREPROCESSING_MANIFEST" | cut -d' ' -f1)" = "$PREPROCESSING_MANIFEST_SHA256"
 test "$(sha256sum "$FIXTURE" | cut -d' ' -f1)" = "$FIXTURE_SHA256"
 test "$(sha256sum "$SOURCE_RESULTS" | cut -d' ' -f1)" = "$SOURCE_RESULTS_SHA256"
+readonly QUESTION_INDEX="${QUESTION_INDEX:-$SLURM_ARRAY_TASK_ID}"
 read -r QID INPUT_MANIFEST INPUT_MANIFEST_SHA256 EXPECTED_GEOMETRY_COUNT < <(
   "$PYTHON" -c 'import json,sys; row=json.load(open(sys.argv[1]))["qid_inputs"][int(sys.argv[2])]; print(row["qid"], row["input_manifest"], row["input_manifest_sha256"], row["expected_post_qtp_visual_tokens"])' \
-    "$PREPROCESSING_MANIFEST" "$SLURM_ARRAY_TASK_ID"
+    "$PREPROCESSING_MANIFEST" "$QUESTION_INDEX"
 )
 readonly QID INPUT_MANIFEST INPUT_MANIFEST_SHA256 EXPECTED_GEOMETRY_COUNT
-readonly JOB_ROOT="$BATCH_ROOT/$(printf '%02d' "$SLURM_ARRAY_TASK_ID")-$QID"
+readonly JOB_ROOT="$BATCH_ROOT/$(printf '%02d' "$QUESTION_INDEX")-$QID"
 readonly OUTPUT="$JOB_ROOT/geometry.json"
 readonly GPU_MANIFEST="$JOB_ROOT/gpu.json"
 mkdir "$JOB_ROOT"

@@ -171,9 +171,10 @@ Not authorized now:
 
 The later executable handoff must bind a clean consolidated commit, sealed
 cohort/masks/mappings, launcher and input hashes, fresh no-replace roots, and a
-terminal validator. Planned HTC shape is question-level first-available
-suitable CUDA GPU shards with recorded GPU identity, 24 GiB host RAM, no
-mask-level sharding, no requeue, no cross-family absolute timing comparison, and short independently
+terminal validator. Planned HTC shape is four-question batch jobs on first-
+available suitable CUDA GPUs with recorded GPU identity and per-question
+isolated outputs, 24 GiB host RAM, no mask-level sharding, no requeue, no
+cross-family absolute timing comparison, and short independently
 recoverable jobs. Exact wall time, questions per shard, concurrency, and job
 IDs remain unset until the bounded smoke measures the final implementation.
 

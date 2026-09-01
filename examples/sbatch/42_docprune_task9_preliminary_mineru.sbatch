@@ -44,12 +44,13 @@ readonly MODEL_INVENTORY_SHA256=5ec9100ca6d70984dfae755a8a89fd60ffac663fcc5ae9b3
 test -d "$BATCH_ROOT"
 test ! -L "$BATCH_ROOT"
 test "$(sha256sum "$PREPROCESSING_MANIFEST" | cut -d' ' -f1)" = "$PREPROCESSING_MANIFEST_SHA256"
+readonly QUESTION_INDEX="${QUESTION_INDEX:-$SLURM_ARRAY_TASK_ID}"
 read -r QID SMOKE_INPUT_MANIFEST SMOKE_INPUT_MANIFEST_SHA256 SMOKE_INPUT_DIR < <(
   "$PYTHON" -c 'import json,sys; row=json.load(open(sys.argv[1]))["qid_inputs"][int(sys.argv[2])]; print(row["qid"], row["input_manifest"], row["input_manifest_sha256"], row["input_root"])' \
-    "$PREPROCESSING_MANIFEST" "$SLURM_ARRAY_TASK_ID"
+    "$PREPROCESSING_MANIFEST" "$QUESTION_INDEX"
 )
 readonly QID SMOKE_INPUT_MANIFEST SMOKE_INPUT_MANIFEST_SHA256 SMOKE_INPUT_DIR
-readonly JOB_ROOT="$BATCH_ROOT/$(printf '%02d' "$SLURM_ARRAY_TASK_ID")-$QID"
+readonly JOB_ROOT="$BATCH_ROOT/$(printf '%02d' "$QUESTION_INDEX")-$QID"
 readonly OUTPUT_DIR="$JOB_ROOT/mineru-output"
 readonly GPU_MANIFEST="$JOB_ROOT/gpu.json"
 mkdir "$JOB_ROOT"

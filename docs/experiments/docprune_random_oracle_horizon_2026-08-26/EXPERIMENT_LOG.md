@@ -1266,3 +1266,10 @@ Task 9 mapping path accepts any authenticated CUDA GPU; the historical Task 8
 mapping default continues to require L40S, preserving its completed contract.
 Absolute runtime is not compared across GPU families. These jobs are bounded
 preprocessing smokes, not the 48-question pilot.
+
+The remaining 47 preprocessing questions are not launched as 47 independent
+array tasks. Their frozen execution shape is 12 batch jobs: four questions per
+job and three in the final job, with per-question authenticated output roots
+inside each batch. MinerU batches request 90 minutes; geometry batches request
+30 minutes. Both use at most six concurrent batch jobs and no GPU-model-name
+constraint.

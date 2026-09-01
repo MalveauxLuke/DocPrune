@@ -171,7 +171,7 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 Implement and test the sealed preliminary cohort's mappings, mask design,
 matched selectors, evaluation, and unified analysis
-JSON. After a bounded real-input smoke, write a fresh question-sharded handoff
+JSON. After a bounded real-input smoke, write a fresh four-question-batched handoff
 for first-available suitable CUDA GPUs, recording GPU identity and avoiding
 cross-family absolute timing comparisons. Run the enriched pilot only afterward. No pilot or method-holdout
 submission is currently authorized.

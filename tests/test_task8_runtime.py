@@ -538,6 +538,19 @@ def test_task9_preliminary_mineru_launcher_is_question_sharded_and_retrieval_fre
     assert "#SBATCH --no-requeue" in launcher
 
 
+def test_task9_remaining_mineru_launcher_batches_four_questions_per_job() -> None:
+    launcher = Path(
+        "examples/sbatch/44_docprune_task9_preliminary_mineru_batches.sbatch"
+    ).read_text(encoding="utf-8")
+
+    assert "#SBATCH --array=0-11%6" in launcher
+    assert "#SBATCH --time=01:30:00" in launcher
+    assert "task9_preprocessing_batch_indices" in launcher
+    assert "QUESTION_INDEX" in launcher
+    assert "42_docprune_task9_preliminary_mineru.sbatch" in launcher
+    assert "#SBATCH --constraint=" not in launcher
+
+
 def test_task8_gpu_probe_uses_the_single_cuda_visible_device_without_sigpipe(
     tmp_path: Path,
 ) -> None:

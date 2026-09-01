@@ -37,8 +37,8 @@ Unique accepted Task 6–9 Git work is consolidated on
 `c5b212f`, and Task 8 merge `c38cd9c`. No pilot job has been submitted.
 
 After test and bounded real-input smoke acceptance, create a new exact handoff
-for question-level first-available suitable CUDA GPU shards with recorded GPU
-identity, 24 GiB host RAM, fresh roots, no requeue, no cross-family absolute
+for four-question first-available suitable CUDA GPU batch jobs with recorded GPU
+identity and per-question isolated outputs, 24 GiB host RAM, fresh roots, no requeue, no cross-family absolute
 timing comparison, and no partial-outcome inspection. Until that handoff is reviewed, do not
 submit the pilot, rerun historical Task 9 jobs, start a method holdout, run
 retrieval, rebuild features, or activate Task 10.

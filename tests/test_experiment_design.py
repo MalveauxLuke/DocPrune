@@ -145,6 +145,20 @@ def test_task9_preliminary_fixture_inputs_preserve_selected_order_and_pages() ->
     assert eligible[-1] == {"qid": "q47", "question": "Question 47"}
 
 
+def test_task9_preprocessing_batches_cover_remaining_47_questions_four_at_a_time() -> None:
+    batches = [
+        experiment_design.task9_preprocessing_batch_indices(array_task_id)
+        for array_task_id in range(12)
+    ]
+
+    assert batches[0] == (1, 2, 3, 4)
+    assert batches[-1] == (45, 46, 47)
+    assert [index for batch in batches for index in batch] == list(range(1, 48))
+
+    with pytest.raises(ValueError, match="array task"):
+        experiment_design.task9_preprocessing_batch_indices(12)
+
+
 def test_task9_preliminary_sealer_authenticates_sources_and_writes_24_per_stratum(
     tmp_path: Path,
 ) -> None:
