@@ -137,7 +137,7 @@ def _load_reference_row(
 
 
 def _preliminary_reference_identity(
-    row: Mapping[str, object], *, expected_geometry_count: int
+    row: Mapping[str, object], *, expected_geometry_count: int | None
 ) -> tuple[str, list[Mapping[str, object]], Mapping[str, object]]:
     question = row.get("question")
     pages = row.get("retrieved_pages")
@@ -152,11 +152,18 @@ def _preliminary_reference_identity(
     ):
         raise ValueError("Task 9 preliminary reference structure is invalid")
     if (
-        type(expected_geometry_count) is not int
-        or expected_geometry_count <= 0
-        or trace.get("post_qtp_visual_tokens") != expected_geometry_count
-        or trace.get("post_ctp_visual_tokens") != expected_geometry_count
+        type(trace.get("post_qtp_visual_tokens")) is not int
+        or int(trace["post_qtp_visual_tokens"]) <= 0
+        or trace.get("post_ctp_visual_tokens") != trace.get("post_qtp_visual_tokens")
         or trace.get("ctp_layer") is not None
+        or (
+            expected_geometry_count is not None
+            and (
+                type(expected_geometry_count) is not int
+                or expected_geometry_count <= 0
+                or trace.get("post_qtp_visual_tokens") != expected_geometry_count
+            )
+        )
     ):
         raise ValueError("Task 9 preliminary reference geometry count is invalid")
     return question, pages, trace
@@ -356,12 +363,25 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
         )
     else:
         reference_question, reference_pages, reference_trace = _preliminary_reference_identity(
-            reference, expected_geometry_count=value["geometry_count"]
+            reference, expected_geometry_count=None
+        )
+    trace_matches = value["trace"] == reference_trace
+    if value["schema_version"] == TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION:
+        live_trace = value["trace"]
+        trace_matches = (
+            isinstance(live_trace, Mapping)
+            and live_trace.get("original_visual_tokens")
+            == reference_trace.get("original_visual_tokens")
+            and live_trace.get("post_btp_visual_tokens")
+            == reference_trace.get("post_btp_visual_tokens")
+            and live_trace.get("post_qtp_visual_tokens") == value["geometry_count"]
+            and live_trace.get("post_ctp_visual_tokens") == value["geometry_count"]
+            and live_trace.get("ctp_layer") is None
         )
     if (
         hashlib.sha256(reference_question.encode("utf-8")).hexdigest() != value["question_sha256"]
         or value["retrieved_pages"] != reference_pages
-        or value["trace"] != reference_trace
+        or not trace_matches
     ):
         raise ValueError("Task 8 geometry capture contradicts its Task 6 reference")
     masks = value["mask_sha256"]
@@ -473,8 +493,9 @@ def capture_task8_btp_qtp_geometry(
         question,
         retrieval_output,
     )
-    if capture.geometry_count != expected_geometry_count or (
-        expected_geometry_sha is not None and capture.geometry_sha256 != expected_geometry_sha
+    if not preliminary and (
+        capture.geometry_count != expected_geometry_count
+        or capture.geometry_sha256 != expected_geometry_sha
     ):
         raise ValueError(
             "live post-QTP geometry identity differs from the Task 6 reference: "
@@ -488,7 +509,18 @@ def capture_task8_btp_qtp_geometry(
         "post_ctp_visual_tokens": capture.post_qtp_visual_tokens,
         "ctp_layer": None,
     }
-    if live_trace != dict(reference_trace):
+    if (
+        (not preliminary and live_trace != dict(reference_trace))
+        or (
+            preliminary
+            and (
+                live_trace["original_visual_tokens"]
+                != reference_trace.get("original_visual_tokens")
+                or live_trace["post_btp_visual_tokens"]
+                != reference_trace.get("post_btp_visual_tokens")
+            )
+        )
+    ):
         raise ValueError("live BTP/QTP token counts differ from the Task 6 reference")
 
     gpu = None

@@ -246,14 +246,25 @@ def test_preliminary_geometry_capture_accepts_authenticated_stage_reference_with
     ):
         reference.pop(key)
     Path(inputs["reference_path"]).write_text(json.dumps(reference) + "\n")
+    # The Task 6 row seals the sampling stratum; the new capture seals the
+    # geometry shared by every pilot arm, which may differ slightly.
+    live_geometry = inputs["geometry"][:1]
+    live_geometry_sha256 = hashlib.sha256(
+        json.dumps(
+            [[token.page_index, token.row, token.column, token.height, token.width]
+             for token in live_geometry],
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     capture = BTPQTPGeometryCapture(
-        geometry=inputs["geometry"],
-        geometry_count=2,
-        geometry_sha256=inputs["geometry_sha256"],
+        geometry=live_geometry,
+        geometry_count=1,
+        geometry_sha256=live_geometry_sha256,
         image_grid_thw=((1, 2, 2), (1, 2, 2)),
         original_visual_tokens=4,
         post_btp_visual_tokens=3,
-        post_qtp_visual_tokens=2,
+        post_qtp_visual_tokens=1,
         background_keep_sha256="1" * 64,
         question_keep_sha256="2" * 64,
         combined_keep_sha256="3" * 64,
@@ -283,7 +294,8 @@ def test_preliminary_geometry_capture_accepts_authenticated_stage_reference_with
     )
 
     assert payload["schema_version"] == "docprune-task9-preliminary-btp-qtp-geometry-v1"
-    assert payload["geometry_sha256"] == inputs["geometry_sha256"]
+    assert payload["geometry_count"] == 1
+    assert payload["geometry_sha256"] == live_geometry_sha256
     assert load_task8_geometry_capture(output, expected_sha256=_sha(output)) == payload
     canonical = output.read_bytes()
     contradicted = json.loads(canonical)

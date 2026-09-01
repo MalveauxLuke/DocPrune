@@ -1273,3 +1273,13 @@ job and three in the final job, with per-question authenticated output roots
 inside each batch. MinerU batches request 90 minutes; geometry batches request
 30 minutes. Both use at most six concurrent batch jobs and no GPU-model-name
 constraint.
+
+The first batched geometry attempt (`62445270`) showed that the Task 6
+post-QTP count is not an exact replay identity for this new capture: for probe
+QID `9b17c72e6c59db83dcaeeba6be8417e2`, Task 6 recorded 5,669 tokens while a
+current A100 MIG capture produced 5,674. This is not a GPU-name effect, as both
+A100 and L40S tasks included matches and mismatches. The preliminary contract
+therefore keeps the authenticated Task 6 row as the sampling-stratum and
+fixed-page reference, but freezes the newly captured BTP/QTP geometry as the
+common action space for every pilot arm. Original and post-BTP counts must
+still match the reference; exact Task 8 replay behavior remains unchanged.
