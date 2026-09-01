@@ -162,6 +162,7 @@ def test_shared_boundary_likelihoods_match_independent_physical_interventions(
         )
 
     assert shared.boundary == "B_1"
+    assert len(shared.query_aggregate_attention_scores) == 4
     assert shared.checkpoint_cache_lengths == (8, 8)
     assert len(shared.branches) == 2
     assert shared.encoder_seconds > 0

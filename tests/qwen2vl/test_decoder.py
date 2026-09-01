@@ -52,6 +52,9 @@ def test_cached_boundary_resume_matches_independent_forced_prefill(tiny_qwen2vl)
         )
 
     assert checkpoint.boundary == "B_1"
+    assert checkpoint.query_aggregate_attention_scores is not None
+    assert len(checkpoint.query_aggregate_attention_scores) == 2
+    assert all(torch.isfinite(torch.tensor(checkpoint.query_aggregate_attention_scores)))
     assert tuple(item.shape[-2] for item in checkpoint.cache.key_cache) == (6, 6)
     assert resumed.forced == independent.forced
     assert resumed.keep_indices.tolist() == independent.keep_indices.tolist()

@@ -99,6 +99,7 @@ class ForcedBoundaryCheckpoint:
     position_ids: torch.Tensor
     original_keep_indices: torch.Tensor
     current_visual_indices: torch.Tensor
+    query_aggregate_attention_scores: tuple[float, ...] | None = None
 
 
 def _causal_mask(sequence_length: int, *, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
@@ -344,6 +345,7 @@ def capture_forced_boundary_checkpoint(
     final_layer = -1 if boundary == "input" else int(boundary)
     cache = DynamicCache()
     hidden = inputs_embeds
+    query_aggregate_attention_scores: tuple[float, ...] | None = None
     for layer_index, decoder_layer in enumerate(decoder_model.layers):
         if layer_index > final_layer:
             break
@@ -351,6 +353,16 @@ def capture_forced_boundary_checkpoint(
         attention_mask = _prefill_attention_mask(
             decoder_model, hidden.shape[1], hidden.dtype, hidden.device
         )
+        if layer_index == final_layer:
+            raw_logits = _last_query_attention_logits(
+                decoder_layer, hidden, embeddings, attention_mask
+            )
+            _, aggregate_scores = boundary_score_vectors_from_logits(
+                raw_logits, current_visual
+            )
+            query_aggregate_attention_scores = tuple(
+                float(value) for value in aggregate_scores.detach().cpu().tolist()
+            )
         hidden = decoder_layer(
             hidden,
             attention_mask=attention_mask,
@@ -368,6 +380,7 @@ def capture_forced_boundary_checkpoint(
         position_ids=position_ids,
         original_keep_indices=torch.arange(hidden.shape[1], device=hidden.device),
         current_visual_indices=current_visual,
+        query_aggregate_attention_scores=query_aggregate_attention_scores,
     )
 
 

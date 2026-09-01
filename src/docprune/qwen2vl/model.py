@@ -81,6 +81,7 @@ class SharedBoundaryLikelihoodResult:
     post_btp_visual_tokens: int
     post_qtp_visual_tokens: int
     checkpoint_cache_lengths: tuple[int, ...]
+    query_aggregate_attention_scores: tuple[float, ...]
     branches: tuple[ForcedInterventionLikelihoodBranch, ...]
     encoder_seconds: float
     prefix_decoder_seconds: float
@@ -365,6 +366,11 @@ class DocPruneQwen2VL:
             post_btp_visual_tokens=int(background.sum().item()),
             post_qtp_visual_tokens=int(combined.sum().item()),
             checkpoint_cache_lengths=tuple(item.shape[-2] for item in checkpoint.cache.key_cache),
+            query_aggregate_attention_scores=(
+                checkpoint.query_aggregate_attention_scores
+                if checkpoint.query_aggregate_attention_scores is not None
+                else ()
+            ),
             branches=tuple(branches),
             encoder_seconds=encoder_seconds,
             prefix_decoder_seconds=prefix_seconds,
