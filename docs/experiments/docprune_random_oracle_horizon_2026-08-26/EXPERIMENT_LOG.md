@@ -1385,3 +1385,42 @@ F1, selected-context accepted-answer likelihood, and win/tie/loss. A reduced
 count may be adopted only under a decision rule frozen after CPU analysis and
 before reduced-mask generation outcomes are read; 64 is not adopted merely for
 cost. No method holdout is authorized.
+A later bounded GPU step compares those sealed selections with the existing
+canonical-256 and native DocPrune responses. The required functional checks are
+the four canonical rescues, baseline-correct preservation, wrong-stratum mean
+F1, selected-context accepted-answer likelihood, and win/tie/loss. A reduced
+count may be adopted only under a decision rule frozen after CPU analysis and
+before reduced-mask generation outcomes are read; 64 is not adopted merely for
+cost. No method holdout is authorized.
+
+### Preliminary-48 mask-count CPU result and frozen GPU gate — 2026-09-01
+
+CPU-only array `62471599` ran 12 four-question batches at clean implementation
+commit `d6de9d8f2e2357ec13d6e674eddc7dc0e9a22cb5`, 4 CPUs and 8 GiB per task.
+All 12 tasks completed `0:0` in 21–37 seconds. The verifier admitted all 48
+questions and 1,008 fits. Unified result:
+
+```text
+path: /scratch/lmalveau/docprune/task9-mask-count-ablation-d6de9d8-v1/analysis.json
+internal SHA-256: 9d6a9ac6ece6712ca9cdad33bba0bc61caf122121435c3d99a6fb40e460edc51
+```
+
+Across 240 repeated fits per reduced count, mean/median token-cost-weighted
+selection Jaccard versus canonical 256 was `0.78595/0.79150` at 64,
+`0.81254/0.84820` at 96, `0.84224/0.86602` at 128, and
+`0.89808/0.95053` at 192. Exact region-set reproduction was respectively 14,
+18, 22, and 32 of 240 fits. Mean global LDS rose from `0.71564` at 64 to
+`0.77777` at 192 versus canonical `0.77574`; mean budget-local LDS rose from
+`0.57021` to `0.61665` versus canonical `0.62239`. The CPU result does not
+establish response equivalence: even 192 changes most exact regional sets,
+including appreciable variation on two of the four canonical rescue questions.
+
+The sealed inventory contains 205 unique 192-mask selections: 13 exactly reuse
+canonical-256 sets and 192 require new generation. Stage 192 first. Repeat 0
+must preserve all 4 rescues and all 24 baseline-correct exact answers, with
+wrong-stratum mean F1 no more than `0.02` below canonical and mean gold
+likelihood no more than `0.05` nats/token below canonical. Across five repeats,
+preserve at least 18/20 rescue opportunities and 118/120 correct-stratum
+answers and satisfy the same average F1/likelihood tolerances. If 192 fails,
+retain 256; if it passes, evaluate 128 under the same frozen rule. These gates
+were recorded before reduced-mask GPU outcomes were read.

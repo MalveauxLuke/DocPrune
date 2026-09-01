@@ -178,12 +178,13 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Run the approved reuse-only CPU mask-count ablation across all 48 preliminary
-questions at `N={64,96,128,192,256}` (five deterministic independent subsets
-for every reduced N; canonical 256 reference), using the existing 256 fit and
-64 held-out mask outcomes. Report fidelity and selected-set agreement and seal
-unique reduced-mask selections for a bounded GPU response comparison. Then
-resume enriched-panel preparation. Do not submit a method holdout. The
+The reuse-only CPU mask-count ablation is complete at
+`/scratch/lmalveau/docprune/task9-mask-count-ablation-d6de9d8-v1/analysis.json`.
+Next GPU-evaluate 192 masks only: reuse exact canonical sets and generate the
+192 unique noncanonical sets, then apply the frozen rescue, preservation, F1,
+and gold-likelihood rule in the experiment plan. Evaluate 128 only if 192
+passes; otherwise retain 256. Then resume enriched-panel preparation. Do not
+submit a method holdout. The
 preliminary unified JSON is
 `/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json`
 (internal SHA-256 `985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8c5`).

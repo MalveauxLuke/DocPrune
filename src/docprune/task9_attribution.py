@@ -629,6 +629,114 @@ def build_task9_selected_arm_plan(
     return tuple(plan)
 
 
+def build_task9_mask_count_generation_plan(
+    aggregate: Mapping[str, object],
+    *,
+    question_id: str,
+    mask_count: int,
+    visual_population: int,
+) -> dict[str, object]:
+    """Select unique noncanonical reduced-mask sets and canonical reuses."""
+
+    if not isinstance(aggregate, Mapping):
+        raise ValueError("mask-count aggregate must be a mapping")
+    unsigned = dict(aggregate)
+    observed_sha = unsigned.pop("analysis_sha256", None)
+    inventory = aggregate.get("generation_inventory")
+    if (
+        aggregate.get("schema_version") != "docprune-task9-mask-count-ablation-aggregate-v1"
+        or observed_sha != _canonical_sha256(unsigned)
+        or not isinstance(question_id, str)
+        or not question_id
+        or type(mask_count) is not int
+        or mask_count <= 0
+        or type(visual_population) is not int
+        or visual_population <= 0
+        or not isinstance(inventory, list)
+    ):
+        raise ValueError("mask-count generation inputs are invalid")
+    matches = [row for row in inventory if row.get("question_id") == question_id]
+    if len(matches) != 1 or not isinstance(matches[0].get("selections"), list):
+        raise ValueError("mask-count generation question identity is invalid")
+    arms: list[dict[str, object]] = []
+    bindings: list[dict[str, object]] = []
+    canonical_reuse_repeats: list[int] = []
+    achieved_budget: int | None = None
+    for selection in matches[0]["selections"]:
+        candidate_fits = [
+            fit
+            for fit in selection.get("candidate_fits", [])
+            if fit.get("mask_count") == mask_count
+        ]
+        if not candidate_fits:
+            continue
+        repeats = sorted(int(fit["repeat"]) for fit in candidate_fits)
+        if selection.get("same_as_canonical_256") is True:
+            canonical_reuse_repeats.extend(repeats)
+            continue
+        source_ids = selection.get("retained_source_ids")
+        budget = selection.get("achieved_token_count")
+        selection_sha = selection.get("selection_sha256")
+        if (
+            not isinstance(source_ids, list)
+            or not source_ids
+            or len(set(source_ids)) != len(source_ids)
+            or any(not isinstance(source_id, str) or not source_id for source_id in source_ids)
+            or type(budget) is not int
+            or budget <= 0
+            or budget > visual_population
+            or not _is_sha256(selection_sha)
+            or any(type(repeat) is not int or repeat < 0 for repeat in repeats)
+        ):
+            raise ValueError("mask-count generation selection is invalid")
+        if achieved_budget is None:
+            achieved_budget = budget
+        elif budget != achieved_budget:
+            raise ValueError("mask-count generation selections do not share one budget")
+        arm = f"contextcite_gold_support_n{mask_count}_{selection_sha[:16]}"
+        arms.append(
+            {
+                "arm": arm,
+                "retained_source_ids": list(source_ids),
+                "achieved_token_count": budget,
+            }
+        )
+        bindings.append(
+            {
+                "arm": arm,
+                "selection_sha256": selection_sha,
+                "candidate_fits": candidate_fits,
+            }
+        )
+    if len(canonical_reuse_repeats) != len(set(canonical_reuse_repeats)):
+        raise ValueError("mask-count canonical reuse repeats are duplicated")
+    budgets = (
+        []
+        if not arms
+        else [
+            {
+                "retained_fraction": achieved_budget / visual_population,
+                "requested_token_count": achieved_budget,
+                "achieved_token_count": achieved_budget,
+                "arms": arms,
+            }
+        ]
+    )
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-mask-count-generation-plan-v1",
+        "question_id": question_id,
+        "mask_count": mask_count,
+        "aggregate_analysis_sha256": observed_sha,
+        "canonical_256_selection_sha256": matches[0]["canonical_256_selection_sha256"],
+        "new_generation_count": len(arms),
+        "canonical_reuse_repeats": sorted(canonical_reuse_repeats),
+        "selections": {"question_id": question_id, "budgets": budgets},
+        "bindings": bindings,
+    }
+    result["plan_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def build_regional_development_plan(
     mapping: RegionTokenMapping,
     primary_design: Mapping[str, object],

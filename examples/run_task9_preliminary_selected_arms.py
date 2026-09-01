@@ -21,6 +21,7 @@ from docprune.segmentation import load_region_mapping
 from docprune.task9_attribution import (
     _canonical_sha256,
     analyze_task9_preliminary_question,
+    build_task9_mask_count_generation_plan,
     build_task9_selected_arm_plan,
 )
 
@@ -127,12 +128,15 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--mask-count-analysis", type=Path)
+    parser.add_argument("--mask-count-analysis-sha256")
+    parser.add_argument("--mask-count", type=int)
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
     if any(
         not path.is_absolute()
         for path in (args.raw_root, args.analysis, args.output, args.runtime_dir)
-    ):
+    ) or (args.mask_count_analysis is not None and not args.mask_count_analysis.is_absolute()):
         raise ValueError("Task 9 selected-arm paths must be absolute")
     if args.output.exists() or args.output.is_symlink():
         raise FileExistsError("Task 9 selected-arm output must be fresh")
@@ -156,11 +160,49 @@ def main() -> None:
     ):
         raise ValueError("Task 9 preliminary analysis is not bound to the raw artifact")
     mapping = load_region_mapping(Path(manifest["mapping_path"]), validate_raw_artifacts=True)
-    plan = build_task9_selected_arm_plan(
-        mapping,
-        analysis["selections"],
-        boundary=manifest["boundary"],
+    mask_mode = any(
+        value is not None
+        for value in (
+            args.mask_count_analysis,
+            args.mask_count_analysis_sha256,
+            args.mask_count,
+        )
     )
+    if mask_mode and any(
+        value is None
+        for value in (
+            args.mask_count_analysis,
+            args.mask_count_analysis_sha256,
+            args.mask_count,
+        )
+    ):
+        raise ValueError("mask-count generation arguments must be provided together")
+    generation_plan = None
+    if mask_mode:
+        aggregate = _load(args.mask_count_analysis)
+        if aggregate.get("analysis_sha256") != args.mask_count_analysis_sha256:
+            raise ValueError("mask-count aggregate identity changed")
+        generation_plan = build_task9_mask_count_generation_plan(
+            aggregate,
+            question_id=manifest["qid"],
+            mask_count=args.mask_count,
+            visual_population=mapping.geometry_count,
+        )
+        plan = (
+            ()
+            if generation_plan["new_generation_count"] == 0
+            else build_task9_selected_arm_plan(
+                mapping,
+                generation_plan["selections"],
+                boundary=manifest["boundary"],
+            )
+        )
+    else:
+        plan = build_task9_selected_arm_plan(
+            mapping,
+            analysis["selections"],
+            boundary=manifest["boundary"],
+        )
     if args.validate_only:
         print(
             json.dumps(
@@ -169,6 +211,10 @@ def main() -> None:
                     "qid": manifest["qid"],
                     "selected_arm_count": len(plan),
                     "budgets": sorted({row["retained_fraction"] for row in plan}),
+                    "mask_count": args.mask_count if mask_mode else None,
+                    "canonical_reuse_repeats": (
+                        generation_plan["canonical_reuse_repeats"] if mask_mode else []
+                    ),
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -177,6 +223,20 @@ def main() -> None:
         return
 
     _runtime_identity(args.runtime_dir, args.runtime_commit)
+    if mask_mode and not plan:
+        result = {
+            "schema_version": "docprune-task9-mask-count-selected-arms-v1",
+            "status": "completed-task9-mask-count-selected-arms-by-canonical-reuse",
+            "qid": manifest["qid"],
+            "runtime_commit": args.runtime_commit,
+            "mask_count_generation_plan": generation_plan,
+            "cuda_device_name": None,
+            "selected_results": [],
+        }
+        result["selected_arms_sha256"] = _canonical_sha256(result)
+        _publish(args.output, result)
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return
     work = args.output.parent / f".{args.output.name}.work-{os.getpid()}"
     work.mkdir()
     workload = build_workload(
@@ -241,6 +301,37 @@ def main() -> None:
             frozen_post_qtp_geometry=mapping.geometry,
             ctp_policy=aggregate_native_threshold_policy(),
         )
+
+    if mask_mode:
+        selected_results = [
+            _answer_record(
+                configured(row["forced_intervention"]),
+                images=images,
+                question=sample.question,
+                retrieval=retrieval,
+                accepted_answers=accepted,
+                reference_count=len(references),
+                retained_fraction=row["retained_fraction"],
+                arm=row["arm"],
+            )
+            for row in plan
+        ]
+        result = {
+            "schema_version": "docprune-task9-mask-count-selected-arms-v1",
+            "status": "completed-task9-mask-count-selected-arms",
+            "qid": manifest["qid"],
+            "raw_runtime_commit": manifest["runtime_commit"],
+            "runtime_commit": args.runtime_commit,
+            "mask_count_generation_plan": generation_plan,
+            "cuda_device_name": torch.cuda.get_device_name(0)
+            if torch.cuda.is_available()
+            else None,
+            "selected_results": selected_results,
+        }
+        result["selected_arms_sha256"] = _canonical_sha256(result)
+        _publish(args.output, result)
+        print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        return
 
     unpruned = _answer_record(
         configured(None),

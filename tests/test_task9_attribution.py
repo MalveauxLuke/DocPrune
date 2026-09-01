@@ -1145,3 +1145,52 @@ def test_mask_count_ablation_reuses_deterministic_subsets_and_canonical_referenc
     assert first["fits"][-1]["repeat"] == "canonical"
     assert first["fits"][-1]["selection_vs_256"]["exact_region_set"] is True
     assert first["fits"][-1]["selection_vs_256"]["token_jaccard"] == 1.0
+
+
+def test_mask_count_generation_plan_deduplicates_and_reuses_canonical_sets() -> None:
+    analysis = {
+        "schema_version": "docprune-task9-mask-count-ablation-aggregate-v1",
+        "generation_inventory": [
+            {
+                "question_id": "question-001",
+                "canonical_256_selection_sha256": "a" * 64,
+                "selections": [
+                    {
+                        "selection_sha256": "b" * 64,
+                        "retained_source_ids": ["region-a", "region-b"],
+                        "achieved_token_count": 7,
+                        "same_as_canonical_256": False,
+                        "candidate_fits": [
+                            {"mask_count": 192, "repeat": 0, "fit_sha256": "c" * 64},
+                            {"mask_count": 192, "repeat": 1, "fit_sha256": "d" * 64},
+                        ],
+                    },
+                    {
+                        "selection_sha256": "a" * 64,
+                        "retained_source_ids": ["region-a"],
+                        "achieved_token_count": 7,
+                        "same_as_canonical_256": True,
+                        "candidate_fits": [
+                            {"mask_count": 192, "repeat": 2, "fit_sha256": "e" * 64}
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    analysis["analysis_sha256"] = _sha256(analysis)
+
+    result = task9_attribution.build_task9_mask_count_generation_plan(
+        analysis,
+        question_id="question-001",
+        mask_count=192,
+        visual_population=10,
+    )
+
+    assert len(result["selections"]["budgets"][0]["arms"]) == 1
+    assert result["selections"]["budgets"][0]["arms"][0]["retained_source_ids"] == [
+        "region-a",
+        "region-b",
+    ]
+    assert result["new_generation_count"] == 1
+    assert result["canonical_reuse_repeats"] == [2]

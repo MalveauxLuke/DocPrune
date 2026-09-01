@@ -474,18 +474,20 @@ Pilot preparation and implementation:
   change, and gold/distractor retain/remove states; on baseline-correct cases
   report harm. Cluster descriptive intervals by support-document component.
   Never report the enriched panel as a population estimate.
-- [ ] Before enriched-panel sealing, run the CPU mask-count ablation on all 48
+- [x] Before enriched-panel sealing, run the CPU mask-count ablation on all 48
   completed preliminary questions using five deterministic independent subsets
   at 64, 96, 128, and 192 of the existing 256 fit masks, with canonical 256 as
   reference. Reuse the same 32 global plus 32 native-budget-local holdouts;
   report fidelity, coefficient agreement, region/token-set agreement, and seal
   every unique reduced-mask selection for GPU evaluation.
-- [ ] GPU-evaluate the sealed reduced-mask selections and compare them with the
-  existing canonical-256 and native DocPrune outcomes. Explicitly report the
+- [ ] GPU-evaluate 192 masks first, reusing exact canonical selections and
+  generating only the unique noncanonical 192 sets. Compare with the existing
+  canonical-256 and native DocPrune outcomes. Explicitly report the
   four rescue cases, baseline-correct preservation, wrong-stratum mean F1,
   selected-context gold likelihood, and win/tie/loss. Adopt 128 or 192 only
-  after a pre-outcome equivalence rule is frozen; otherwise retain 256. Do not
-  adopt 64 based on compute cost alone.
+  after the frozen functional rule passes; otherwise retain 256. Only if 192
+  passes, evaluate 128 under the same rule. Do not adopt 64 or 96 based on
+  compute cost alone.
 - [x] Implement terminal manifest-last admission and a unified analysis JSON
   containing question rows, strata, arm/budget contrasts, model-readable metric
   definitions, artifact hashes, and claim limits.

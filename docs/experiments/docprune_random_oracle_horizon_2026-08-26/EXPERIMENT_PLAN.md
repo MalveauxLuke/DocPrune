@@ -570,6 +570,21 @@ masks are not adopted merely because they are cheaper. Any operational
 equivalence threshold must be frozen from the CPU results before reduced-mask
 generation outcomes are read.
 
+The CPU screen advances 192 masks first because it is the closest reduced
+count to the 256 reference. Reuse any exact canonical selection and generate
+only unique noncanonical 192 sets. Repeat 0 is the deterministic primary
+subset; the other four repeats measure subset sensitivity. Before reading
+those GPU outcomes, freeze this adoption rule: repeat 0 must retain all four
+canonical exact rescues, preserve all 24 baseline-correct exact answers,
+reduce wrong-stratum mean token-F1 by no more than `0.02`, and reduce mean
+selected-context gold log-likelihood by no more than `0.05` nats/token versus
+canonical 256. Across all five repeats, at least 18/20 rescue opportunities
+and 118/120 baseline-correct outcomes must be preserved, while averaged wrong-
+stratum F1 and gold likelihood must satisfy the same `0.02` and `0.05`
+tolerances. If 192 fails, retain 256 and stop the reduction study. If 192
+passes, evaluate 128 under the identical rule; adopt the smallest passing
+count. Intervals and win/tie/loss remain descriptive and cannot relax the rule.
+
 ### Estimands and outcomes
 
 Primary outcome is paired generated-answer token F1. Secondary outcomes are
