@@ -1110,3 +1110,38 @@ def test_preliminary_pilot_aggregate_is_stratified_and_rejects_duplicate_qids() 
             draws=10,
             seed=7,
         )
+
+
+def test_mask_count_ablation_reuses_deterministic_subsets_and_canonical_reference() -> None:
+    design = _design()
+    outcomes = [*_fit_outcomes(design), *_holdout_outcomes(design)]
+    regions = _regions()[:-1]
+    local_masks = [row["vector"] for row in design["holdout_masks"][:4]]
+    local_targets = [row["normalized_target"] for row in outcomes[64:68]]
+
+    first = task9_attribution.analyze_contextcite_mask_count_ablation(
+        design,
+        outcomes,
+        regions,
+        requested_budget=5,
+        budget_local_masks=local_masks,
+        budget_local_targets=local_targets,
+        mask_counts=(16, 32, 64),
+        repeats=2,
+    )
+    second = task9_attribution.analyze_contextcite_mask_count_ablation(
+        design,
+        outcomes,
+        regions,
+        requested_budget=5,
+        budget_local_masks=local_masks,
+        budget_local_targets=local_targets,
+        mask_counts=(16, 32, 64),
+        repeats=2,
+    )
+
+    assert first == second
+    assert [row["mask_count"] for row in first["fits"]] == [16, 16, 32, 32, 64]
+    assert first["fits"][-1]["repeat"] == "canonical"
+    assert first["fits"][-1]["selection_vs_256"]["exact_region_set"] is True
+    assert first["fits"][-1]["selection_vs_256"]["token_jaccard"] == 1.0

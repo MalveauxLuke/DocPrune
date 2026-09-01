@@ -1304,6 +1304,176 @@ def evaluate_contextcite_explicit_mask_fidelity(
     return result
 
 
+def analyze_contextcite_mask_count_ablation(
+    design: Mapping[str, object],
+    outcomes: Sequence[Mapping[str, object]],
+    regions: Sequence[Mapping[str, object]],
+    *,
+    requested_budget: int,
+    budget_local_masks: Sequence[Sequence[bool]],
+    budget_local_targets: Sequence[float],
+    mask_counts: Sequence[int] = (64, 96, 128, 192, 256),
+    repeats: int = 5,
+) -> dict[str, object]:
+    """Refit deterministic subsets of an existing ContextCite mask run."""
+
+    source_ids, fit_masks, holdout_masks = _validated_mask_design(design)
+    fit_count = len(fit_masks)
+    counts = tuple(mask_counts)
+    if (
+        not counts
+        or tuple(sorted(set(counts))) != counts
+        or counts[-1] != fit_count
+        or any(type(count) is not int or count <= 0 for count in counts)
+        or type(repeats) is not int
+        or repeats < 1
+    ):
+        raise ValueError("mask-count ablation counts/repeats are invalid")
+    if len(outcomes) != fit_count + len(holdout_masks):
+        raise ValueError("mask-count ablation outcomes do not match the design")
+    fit_outcomes = outcomes[:fit_count]
+    holdout_outcomes = outcomes[fit_count:]
+    canonical_surrogate = fit_contextcite_lasso(design, fit_outcomes)
+    canonical_fidelity = evaluate_contextcite_holdout(
+        design, fit_outcomes, canonical_surrogate, holdout_outcomes
+    )
+    validated_regions = _validated_regions(regions, allow_zero_cost=False)
+    if [source_id for source_id, _ in validated_regions] != source_ids:
+        raise ValueError("mask-count ablation regions do not match source order")
+    checked_regions = [
+        {"source_id": source_id, "token_cost": token_cost}
+        for source_id, token_cost in validated_regions
+    ]
+    costs = dict(validated_regions)
+    matrix = np.asarray([mask["vector"] for mask in fit_masks], dtype=np.float32)
+    targets = np.asarray(
+        [
+            _finite_float(outcome["normalized_target"], label="ContextCite fit target")
+            for outcome in fit_outcomes
+        ],
+        dtype=np.float64,
+    )
+    global_masks = [mask["vector"] for mask in holdout_masks]
+    global_targets = [
+        _finite_float(outcome["normalized_target"], label="ContextCite holdout target")
+        for outcome in holdout_outcomes
+    ]
+    question_id = design["attribution_identity"]["question_id"]
+
+    raw_fits: list[dict[str, object]] = []
+    coefficient_maps: list[dict[str, float]] = []
+    for count in counts:
+        repeat_values: Sequence[int | str] = (
+            ("canonical",) if count == fit_count else range(repeats)
+        )
+        for repeat in repeat_values:
+            if repeat == "canonical":
+                indices = list(range(fit_count))
+                coefficients = dict(canonical_surrogate["coefficients"])
+                intercept = float(canonical_surrogate["intercept"])
+                constant = float(canonical_surrogate["fit_target_mean"])
+            else:
+                seed_material = f"task9-mask-count-v1\0{question_id}\0{count}\0{repeat}"
+                subset_seed = int.from_bytes(
+                    hashlib.sha256(seed_material.encode()).digest()[:8], "big"
+                )
+                indices = sorted(random.Random(subset_seed).sample(range(fit_count), count))
+                fitted, intercept = _fit_contextcite_solver(matrix[indices], targets[indices])
+                coefficients = {
+                    source_id: float(coefficient)
+                    for source_id, coefficient in zip(source_ids, fitted, strict=True)
+                }
+                constant = float(np.mean(targets[indices]))
+            selection = whole_region_knapsack(
+                checked_regions,
+                coefficients=coefficients,
+                requested_budget=requested_budget,
+            )
+            global_fidelity = (
+                canonical_fidelity
+                if repeat == "canonical"
+                else evaluate_contextcite_explicit_mask_fidelity(
+                    source_ids=source_ids,
+                    coefficients=coefficients,
+                    intercept=intercept,
+                    constant_prediction=constant,
+                    masks=global_masks,
+                    targets=global_targets,
+                    split="global_holdout",
+                )
+            )
+            local_fidelity = evaluate_contextcite_explicit_mask_fidelity(
+                source_ids=source_ids,
+                coefficients=coefficients,
+                intercept=intercept,
+                constant_prediction=constant,
+                masks=budget_local_masks,
+                targets=budget_local_targets,
+                split="budget_local_holdout",
+            )
+            coefficient_maps.append(coefficients)
+            raw_fits.append(
+                {
+                    "mask_count": count,
+                    "repeat": repeat,
+                    "fit_indices": indices,
+                    "fit_indices_sha256": _canonical_sha256(indices),
+                    "coefficients_sha256": _canonical_sha256(coefficients),
+                    "intercept": intercept,
+                    "fit_target_mean": constant,
+                    "global_fidelity": global_fidelity,
+                    "budget_local_fidelity": local_fidelity,
+                    "selection": selection,
+                }
+            )
+
+    canonical_index = len(raw_fits) - 1
+    canonical_coefficients = coefficient_maps[canonical_index]
+    canonical_ids = set(raw_fits[canonical_index]["selection"]["top_source_ids"])
+    fits: list[dict[str, object]] = []
+    for raw, coefficients in zip(raw_fits, coefficient_maps, strict=True):
+        selected_ids = set(raw["selection"]["top_source_ids"])
+        union = canonical_ids | selected_ids
+        intersection = canonical_ids & selected_ids
+        region_jaccard = len(intersection) / len(union) if union else 1.0
+        union_cost = sum(costs[source_id] for source_id in union)
+        intersection_cost = sum(costs[source_id] for source_id in intersection)
+        token_jaccard = intersection_cost / union_cost if union_cost else 1.0
+        coefficient_spearman = _spearman_rank_correlation(
+            [coefficients[source_id] for source_id in source_ids],
+            [canonical_coefficients[source_id] for source_id in source_ids],
+        )
+        fit = {
+            **raw,
+            "coefficient_spearman_vs_256": coefficient_spearman,
+            "selection_vs_256": {
+                "exact_region_set": selected_ids == canonical_ids,
+                "region_jaccard": region_jaccard,
+                "token_jaccard": token_jaccard,
+                "shared_token_count": intersection_cost,
+                "union_token_count": union_cost,
+            },
+        }
+        fit["fit_sha256"] = _canonical_sha256(fit)
+        fits.append(fit)
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-contextcite-mask-count-ablation-v1",
+        "question_id": question_id,
+        "mask_design_sha256": design["design_sha256"],
+        "fit_outcomes_sha256": canonical_surrogate["fit_outcomes_sha256"],
+        "global_holdout_outcomes_sha256": _canonical_sha256(holdout_outcomes),
+        "budget_local_masks_sha256": _canonical_sha256([list(mask) for mask in budget_local_masks]),
+        "budget_local_targets_sha256": _canonical_sha256(list(budget_local_targets)),
+        "requested_budget": requested_budget,
+        "mask_counts": list(counts),
+        "repeats_per_reduced_count": repeats,
+        "subset_method": "independent-without-replacement-sha256-seeded-per-question-count-repeat",
+        "fits": fits,
+    }
+    result["ablation_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def evaluate_contextcite_holdout(
     design: Mapping[str, object],
     fit_outcomes: Sequence[Mapping[str, object]],

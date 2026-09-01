@@ -1366,3 +1366,22 @@ unified JSON. This is development-pilot evidence for an answer-conditioned
 regional surrogate, not vanilla ContextCite, a token oracle, or a held-out
 population estimate. The enriched developmental panel is next; no method
 holdout is authorized.
+
+### Approved preliminary-48 mask-count ablation — 2026-09-01
+
+The user approved making a reuse-only mask-count ablation the immediate next
+Task 9 phase before enriched-panel sealing. Across all 48 completed preliminary
+questions, reuse the already-scored 256 fitting masks and the same 32 global
+plus 32 native-budget-local holdouts. For each `N` in `64, 96, 128, 192`, fit
+five deterministic independently sampled without-replacement subsets; compare
+with the canonical 256 fit. The CPU analysis reports held-out fidelity,
+coefficient agreement, selected-region/token agreement, and seals unique
+reduced-mask selections. It performs no new model inference.
+
+A later bounded GPU step compares those sealed selections with the existing
+canonical-256 and native DocPrune responses. The required functional checks are
+the four canonical rescues, baseline-correct preservation, wrong-stratum mean
+F1, selected-context accepted-answer likelihood, and win/tie/loss. A reduced
+count may be adopted only under a decision rule frozen after CPU analysis and
+before reduced-mask generation outcomes are read; 64 is not adopted merely for
+cost. No method holdout is authorized.

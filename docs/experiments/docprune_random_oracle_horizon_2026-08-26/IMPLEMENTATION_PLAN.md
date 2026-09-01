@@ -474,9 +474,18 @@ Pilot preparation and implementation:
   change, and gold/distractor retain/remove states; on baseline-correct cases
   report harm. Cluster descriptive intervals by support-document component.
   Never report the enriched panel as a population estimate.
-- [ ] Refit nested 64/128/192/256 mask subsets on the sealed 16-question
-  calibration subset and directly evaluate their selected sets. This may
-  inform a later mask-count amendment but cannot reduce this pilot below 256.
+- [ ] Before enriched-panel sealing, run the CPU mask-count ablation on all 48
+  completed preliminary questions using five deterministic independent subsets
+  at 64, 96, 128, and 192 of the existing 256 fit masks, with canonical 256 as
+  reference. Reuse the same 32 global plus 32 native-budget-local holdouts;
+  report fidelity, coefficient agreement, region/token-set agreement, and seal
+  every unique reduced-mask selection for GPU evaluation.
+- [ ] GPU-evaluate the sealed reduced-mask selections and compare them with the
+  existing canonical-256 and native DocPrune outcomes. Explicitly report the
+  four rescue cases, baseline-correct preservation, wrong-stratum mean F1,
+  selected-context gold likelihood, and win/tie/loss. Adopt 128 or 192 only
+  after a pre-outcome equivalence rule is frozen; otherwise retain 256. Do not
+  adopt 64 based on compute cost alone.
 - [x] Implement terminal manifest-last admission and a unified analysis JSON
   containing question rows, strata, arm/budget contrasts, model-readable metric
   definitions, artifact hashes, and claim limits.
@@ -576,7 +585,7 @@ these documents plus the active SOL handoff.
 ## Current next action
 
 The preliminary 24-correct/24-wrong pilot and unified analysis are complete.
-Next implement and seal the enriched 16/16/8/8 developmental panel and its
-remaining privilege-matched attention and robust/canonical/reverse ContextCite
-arms. No method-holdout run is currently authorized. Task 10 remains inactive
-and separately gated.
+Next run its reuse-only CPU mask-count ablation at 64/96/128/192/256 and seal
+the reduced-mask selections for the bounded GPU response comparison. Only then
+continue enriched 16/16/8/8 panel preparation. No method-holdout run is
+currently authorized. Task 10 remains inactive and separately gated.

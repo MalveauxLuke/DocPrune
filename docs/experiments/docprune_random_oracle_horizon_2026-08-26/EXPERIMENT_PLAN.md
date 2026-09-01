@@ -548,13 +548,27 @@ downstream regret is benign; material downstream regret is a limitation of the
 oracle. Classical with-replacement bootstrap summaries may remain uncertainty
 diagnostics, but they do not choose the deployed set.
 
-On a prespecified 16-question calibration subset balanced four per primary
-stratum, refit nested prefixes/subsets of 64, 128, 192, and 256 masks and run
-their budgeted selections. This adds no perturbation masks. It calibrates later
-compute only; 256 remains the reference for this pilot. A smaller count may be
-proposed later only if it preserves the direction of the 256-vs-native gap and
-changes that gap by no more than `0.5 F1` (and recovers at least 95% when the
-reference gap magnitude is at least `1.0 F1`).
+Before sealing the enriched panel, use all 48 completed preliminary questions
+for a mask-count ablation that adds no perturbation scoring. For
+`N in {64, 96, 128, 192}`, draw five deterministic independently sampled
+without-replacement subsets of the already-scored 256 fitting masks; the
+canonical 256 fit is the reference. Fit the same frozen surrogate, evaluate
+each fit on the same 32 global and 32 native-budget-local holdouts, and construct
+its whole-region retained set at the already-frozen native budget and layer.
+The CPU phase reports global/local LDS and RMSE, coefficient agreement,
+selected-region and selected-token agreement, and a sealed inventory of unique
+reduced-mask selected sets. It must not infer generated-answer equivalence from
+coefficient agreement alone.
+
+GPU follow-up directly evaluates the sealed reduced-mask selected sets against
+the existing canonical-256 and native DocPrune responses. Report preservation
+of the four canonical-256 exact rescues, baseline-correct preservation,
+wrong-stratum mean F1, selected-context accepted-answer likelihood, and
+per-question win/tie/loss. Prefer 128 or 192 only if repeated subsets preserve
+nearly the same selected-arm behavior as 256; otherwise retain 256. Sixty-four
+masks are not adopted merely because they are cheaper. Any operational
+equivalence threshold must be frozen from the CPU results before reduced-mask
+generation outcomes are read.
 
 ### Estimands and outcomes
 
