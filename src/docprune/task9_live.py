@@ -309,6 +309,7 @@ def admit_task9_regional_development(
         required_manifest |= {
             "baseline_stratum",
             "budget_local_holdout_mask_count",
+            "native_docprune_selection",
             "preliminary_cohort_path",
             "preliminary_cohort_sha256",
             "preliminary_design_sha256",
@@ -341,12 +342,41 @@ def admit_task9_regional_development(
                 != expected_budget_local_holdout_mask_count
                 or not _is_sha256(manifest["preliminary_design_sha256"])
                 or not _is_sha256(manifest["preliminary_cohort_sha256"])
-                or manifest["baseline_stratum"]
-                not in {"baseline_correct", "baseline_wrong"}
+                or manifest["baseline_stratum"] not in {"baseline_correct", "baseline_wrong"}
             )
         )
     ):
         raise ValueError("Task 9 development run manifest identity mismatch")
+    if preliminary:
+        native = manifest["native_docprune_selection"]
+        policy = native.get("policy") if isinstance(native, Mapping) else None
+        retained = (
+            native.get("retained_compact_visual_ids") if isinstance(native, Mapping) else None
+        )
+        layer = native.get("native_layer") if isinstance(native, Mapping) else None
+        if (
+            not isinstance(policy, Mapping)
+            or policy.get("name") != "aggregate-native-threshold"
+            or policy.get("family") != "native-threshold"
+            or policy.get("selection_kind") != "native_threshold"
+            or type(layer) is not int
+            or not 0 <= layer < expected_decoder_layer_count
+            or native.get("boundary") != f"B_{layer}"
+            or native.get("boundary") != manifest["boundary"]
+            or native.get("visual_population") != expected_geometry_count
+            or native.get("geometry_count") != expected_geometry_count
+            or native.get("geometry_sha256") != expected_geometry_sha256
+            or not isinstance(retained, list)
+            or retained != sorted(set(retained))
+            or any(
+                type(token) is not int or not 0 <= token < expected_geometry_count
+                for token in retained
+            )
+            or native.get("requested_budget") != len(retained)
+            or native.get("achieved_budget") != len(retained)
+            or not 0 < len(retained) < expected_geometry_count
+        ):
+            raise ValueError("Task 9 native DocPrune selection is invalid")
     for key in (
         "config_sha256",
         "run_config_sha256",
@@ -377,7 +407,10 @@ def admit_task9_regional_development(
         ("run_config_path", "run_config_sha256"),
     )
     if preliminary:
-        path_hash_pairs = (*path_hash_pairs, ("preliminary_cohort_path", "preliminary_cohort_sha256"))
+        path_hash_pairs = (
+            *path_hash_pairs,
+            ("preliminary_cohort_path", "preliminary_cohort_sha256"),
+        )
     for path_key, hash_key in path_hash_pairs:
         path = Path(str(manifest[path_key]))
         if _regular_file_sha256(path, path_key) != manifest[hash_key]:
@@ -425,6 +458,7 @@ def admit_task9_regional_development(
         required_raw |= {
             "budget_local_mean_sequence_loglikelihoods",
             "budget_local_plan",
+            "native_docprune_selection",
             "query_aggregate_attention_scores",
             "query_region_aggregate_logit_sums",
         }
@@ -435,6 +469,10 @@ def admit_task9_regional_development(
         or raw["run_manifest_sha256"] != manifest_sha
         or not isinstance(raw["cuda_device_name"], str)
         or expected_gpu_substring not in raw["cuda_device_name"]
+        or (
+            preliminary
+            and raw["native_docprune_selection"] != manifest["native_docprune_selection"]
+        )
         or (
             raw["original_visual_tokens"],
             raw["post_btp_visual_tokens"],
@@ -521,6 +559,10 @@ def admit_task9_regional_development(
             target_kind="max-accepted-reference-mean-loglikelihood",
             reference_set_token_ids_sha256=manifest["reference_set_token_ids_sha256"],
             generated_response_token_ids_sha256=None,
+            primary_budget_fraction=(
+                manifest["native_docprune_selection"]["achieved_budget"]
+                / expected_geometry_count
+            ),
             fit_mask_count=expected_fit_mask_count,
             global_holdout_mask_count=expected_holdout_mask_count,
             budget_local_holdout_mask_count=expected_budget_local_holdout_mask_count,
@@ -556,10 +598,16 @@ def admit_task9_regional_development(
         local_likelihoods = raw["budget_local_mean_sequence_loglikelihoods"]
         query_scores = raw["query_aggregate_attention_scores"]
         region_scores = raw["query_region_aggregate_logit_sums"]
-        expected_region_scores = {
-            source.source_id: sum(float(query_scores[token_id]) for token_id in source.token_ids)
-            for source in mapping.sources
-        } if isinstance(query_scores, list) and len(query_scores) == expected_geometry_count else {}
+        expected_region_scores = (
+            {
+                source.source_id: sum(
+                    float(query_scores[token_id]) for token_id in source.token_ids
+                )
+                for source in mapping.sources
+            }
+            if isinstance(query_scores, list) and len(query_scores) == expected_geometry_count
+            else {}
+        )
         if (
             not isinstance(local_likelihoods, list)
             or len(local_likelihoods) != expected_budget_local_holdout_mask_count
