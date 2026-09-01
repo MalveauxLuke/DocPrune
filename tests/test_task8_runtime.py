@@ -520,6 +520,24 @@ def test_task8_mineru_launcher_is_short_offline_fixed_page_and_no_requeue() -> N
     assert launcher.index('mkdir "$OUTPUT_DIR"') < launcher.index('"$MINERU" \\\n')
 
 
+def test_task9_preliminary_mineru_launcher_is_question_sharded_and_retrieval_free() -> None:
+    launcher = Path(
+        "examples/sbatch/42_docprune_task9_preliminary_mineru.sbatch"
+    ).read_text(encoding="utf-8")
+
+    assert "#SBATCH --array=0-47%8" in launcher
+    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --time=00:20:00" in launcher
+    assert "preprocessing-manifest.json" in launcher
+    assert 'SLURM_ARRAY_TASK_ID' in launcher
+    assert 'row["input_manifest"]' in launcher
+    assert 'row["input_root"]' in launcher
+    assert "--backend vlm-auto-engine" in launcher
+    assert "HF_HUB_OFFLINE=1" in launcher
+    assert "TRANSFORMERS_OFFLINE=1" in launcher
+    assert "#SBATCH --no-requeue" in launcher
+
+
 def test_task8_gpu_probe_uses_the_single_cuda_visible_device_without_sigpipe(
     tmp_path: Path,
 ) -> None:
