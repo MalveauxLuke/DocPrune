@@ -171,8 +171,9 @@ Not authorized now:
 
 The later executable handoff must bind a clean consolidated commit, sealed
 cohort/masks/mappings, launcher and input hashes, fresh no-replace roots, and a
-terminal validator. Planned HTC shape is question-level L40S shards, 24 GiB
-host RAM, no mask-level sharding, no requeue, and short independently
+terminal validator. Planned HTC shape is question-level first-available
+suitable CUDA GPU shards with recorded GPU identity, 24 GiB host RAM, no
+mask-level sharding, no requeue, no cross-family absolute timing comparison, and short independently
 recoverable jobs. Exact wall time, questions per shard, concurrency, and job
 IDs remain unset until the bounded smoke measures the final implementation.
 
@@ -182,6 +183,6 @@ IDs remain unset until the bounded smoke measures the final implementation.
    selectors test-first.
 2. Implement the direct selected-set runner, validator, and
    unified analysis JSON test-first.
-3. Run CPU verification and one bounded L40S smoke.
+3. Run CPU verification and one bounded first-available-GPU smoke.
 4. Write and review a new executable preliminary-pilot handoff; only then request
    submission.

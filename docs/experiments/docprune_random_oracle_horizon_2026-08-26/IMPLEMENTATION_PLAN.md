@@ -473,8 +473,10 @@ Pilot preparation and implementation:
   containing question rows, strata, arm/budget contrasts, model-readable metric
   definitions, artifact hashes, and claim limits.
 - [ ] Run a bounded real-input smoke, then write one reviewed HTC handoff. Use
-  exact L40S question-level shards (not mask-level shards), 24 GiB host RAM,
-  no requeue, fresh roots, and no partial-outcome inspection. Do not submit the
+  first-available suitable CUDA GPUs with recorded GPU identity for question-
+  level shards (not mask-level shards), 24 GiB host RAM, no requeue, fresh
+  roots, and no partial-outcome inspection. Do not compare absolute timing
+  across GPU families. Do not submit the
   48-question pilot until the handoff binds a clean consolidated commit.
 
 Acceptance: the pilot is sealed and reproducible, and every selected set is
@@ -562,6 +564,6 @@ The preliminary 24-correct/24-wrong cohort is sealed. Implement its mapping/
 mask contracts and controlled arms test-first, publish one
 unified analysis schema, and pass a bounded real-input smoke. The preliminary
 pilot runs before the enriched panel. The next GPU action after those steps is
-a newly reviewed question-sharded L40S handoff; no pilot submission or method-
+a newly reviewed question-sharded first-available-GPU handoff; no pilot submission or method-
 holdout run is currently authorized. Task 10 remains inactive and separately
 gated.

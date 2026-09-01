@@ -174,6 +174,43 @@ def test_publish_task8_mapping_rejects_cross_manifest_page_or_gpu_drift(
         )
 
 
+def test_task9_mapping_can_accept_any_authenticated_cuda_gpu(
+    monkeypatch, tmp_path: Path
+) -> None:
+    completion, geometry, _pairs = _manifests(tmp_path)
+    geometry["gpu"]["device_name"] = "NVIDIA A100-SXM4-40GB"
+    monkeypatch.setattr(
+        mapping_module,
+        "load_task8_mineru_completion",
+        lambda path, expected_sha256: completion,
+    )
+    monkeypatch.setattr(
+        mapping_module,
+        "load_task8_geometry_capture",
+        lambda path, expected_sha256: geometry,
+    )
+    published = []
+    monkeypatch.setattr(
+        mapping_module,
+        "publish_region_mapping",
+        lambda path, mapping: published.append((path, mapping)),
+    )
+
+    mapping = publish_task8_region_mapping(
+        mineru_completion_path=tmp_path / "completion.json",
+        mineru_completion_sha256="8" * 64,
+        geometry_capture_path=tmp_path / "geometry.json",
+        geometry_capture_sha256="9" * 64,
+        output_path=tmp_path / "mapping.json",
+        expected_qid="q-1",
+        expected_geometry_count=2,
+        expected_geometry_sha256=geometry["geometry_sha256"],
+        required_geometry_gpu_substring=None,
+    )
+
+    assert published == [(tmp_path / "mapping.json", mapping)]
+
+
 def test_mapping_cli_is_artifact_only_and_pins_canonical_geometry() -> None:
     script = Path("examples/build_task8_region_mapping.py").read_text(encoding="utf-8")
 
@@ -181,5 +218,18 @@ def test_mapping_cli_is_artifact_only_and_pins_canonical_geometry() -> None:
     assert "e1e6ed53f9ad11813845088f4cf2f6b1" in script
     assert "3586" in script
     assert "47b32cf6156dcee41da7eab1686219c760dd73803a135534546c1a50519086e8" in script
+    assert "load_pinned_colpali" not in script
+    assert "load_pinned_qwen" not in script
+
+
+def test_task9_mapping_cli_explicitly_removes_only_the_gpu_model_name_gate() -> None:
+    script = Path("examples/build_task9_preliminary_region_mapping.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "publish_task8_region_mapping" in script
+    assert "required_geometry_gpu_substring=None" in script
+    assert "expected_geometry_count" in script
+    assert "expected_geometry_sha256" in script
     assert "load_pinned_colpali" not in script
     assert "load_pinned_qwen" not in script

@@ -60,6 +60,7 @@ def publish_task8_region_mapping(
     expected_qid: str,
     expected_geometry_count: int,
     expected_geometry_sha256: str,
+    required_geometry_gpu_substring: str | None = "L40S",
 ) -> RegionTokenMapping:
     """Publish one mapping only when both live evidence streams agree exactly."""
 
@@ -77,8 +78,17 @@ def publish_task8_region_mapping(
         expected_sha256=_require_sha256(geometry_capture_sha256, "geometry capture checksum"),
     )
     gpu = geometry_capture.get("gpu")
-    if not isinstance(gpu, Mapping) or "L40S" not in str(gpu.get("device_name", "")):
-        raise ValueError("Task 8 mapping requires canonical L40S geometry")
+    device_name = gpu.get("device_name") if isinstance(gpu, Mapping) else None
+    if not isinstance(device_name, str) or not device_name:
+        raise ValueError("Task 8 mapping requires authenticated CUDA geometry")
+    if required_geometry_gpu_substring is not None and (
+        not isinstance(required_geometry_gpu_substring, str)
+        or not required_geometry_gpu_substring
+        or required_geometry_gpu_substring not in device_name
+    ):
+        raise ValueError(
+            f"Task 8 mapping requires {required_geometry_gpu_substring!r} geometry"
+        )
     if (
         completion.get("global_index_loaded") is not False
         or completion.get("retrieval_run") is not False

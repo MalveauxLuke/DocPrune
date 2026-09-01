@@ -2,7 +2,9 @@
 
 ## Active authority — Task 9 oracle-pilot preparation, 2026-08-31
 
-There is no active `sbatch` authority. Historical Task 9 handoffs are completed
+Active preprocessing-smoke jobs are MinerU `62444442` and geometry `62444443`.
+They are not pilot jobs and accept the first available suitable CUDA GPU;
+GPU identity is recorded in their artifacts. Historical Task 9 handoffs are completed
 provenance and must not be resubmitted. Original 64+32 job `62323129`, B13
 256+64 job `62423463`, and corrected input 256+64 job `62424211` completed and
 were terminally admitted. Failed input preflight `62423876` produced no model
@@ -16,7 +18,7 @@ boundary. The procedure remains a privileged answer-conditioned whole-region
 reference oracle, not vanilla ContextCite, a token oracle, or a deployable
 query-only method.
 
-Current authority is CPU/implementation only. The preliminary 48-question
+The preliminary 48-question
 cohort is sealed with 24 canonical-EM-correct and 24 canonical-EM-wrong QIDs
 from the authenticated 245-question BTP+QTP/no-CTP pool at
 `/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json` (file
@@ -35,8 +37,9 @@ Unique accepted Task 6–9 Git work is consolidated on
 `c5b212f`, and Task 8 merge `c38cd9c`. No pilot job has been submitted.
 
 After test and bounded real-input smoke acceptance, create a new exact handoff
-for question-level L40S shards with 24 GiB host RAM, fresh roots, no requeue,
-and no partial-outcome inspection. Until that handoff is reviewed, do not
+for question-level first-available suitable CUDA GPU shards with recorded GPU
+identity, 24 GiB host RAM, fresh roots, no requeue, no cross-family absolute
+timing comparison, and no partial-outcome inspection. Until that handoff is reviewed, do not
 submit the pilot, rerun historical Task 9 jobs, start a method holdout, run
 retrieval, rebuild features, or activate Task 10.
 

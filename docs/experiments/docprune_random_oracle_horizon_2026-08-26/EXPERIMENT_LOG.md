@@ -1248,3 +1248,21 @@ internal cohort SHA-256: 465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7
 No pilot job is submitted. Next action is implementation of the sealed
 preliminary cohort's regional mappings, masks, matched arms, and unified
 analysis, followed by a bounded smoke and a new executable handoff.
+
+### Task 9 preliminary preprocessing GPU-constraint correction — 2026-08-31
+
+The initial one-question MinerU and geometry smoke jobs `62441167` and
+`62441168` requested exact L40S GPUs. HTC left both pending at zero elapsed
+time and estimated L40S availability around 2026-09-07. The user rejected that
+hardware-name restriction because neither deterministic MinerU extraction nor
+post-BTP+QTP geometry identity scientifically requires an L40S. Both untouched
+jobs were cancelled before using GPU time.
+
+Replacement smoke jobs `62444442` (MinerU) and `62444443` (geometry) request
+the first available single CUDA GPU and retain the actual requirements: pinned
+offline model/tool revisions, one visible CUDA device, at least 12 GiB device
+memory, authenticated fixed pages, no retrieval, and output GPU identity. The
+Task 9 mapping path accepts any authenticated CUDA GPU; the historical Task 8
+mapping default continues to require L40S, preserving its completed contract.
+Absolute runtime is not compared across GPU families. These jobs are bounded
+preprocessing smokes, not the 48-question pilot.
