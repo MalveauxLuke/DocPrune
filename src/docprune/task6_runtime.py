@@ -148,6 +148,53 @@ def derive_post_qtp_geometry(
     return GeometryIdentity(retained, len(retained), _canonical_sha256(rows))
 
 
+def frozen_geometry_keep_mask(
+    image_grid_thw: object,
+    geometry: Sequence[VisualTokenGeometry],
+    *,
+    merge_size: int,
+) -> torch.Tensor:
+    """Reconstruct the exact page-major base keep mask from sealed geometry."""
+
+    grid = torch.as_tensor(image_grid_thw, dtype=torch.long)
+    if grid.ndim != 2 or grid.shape[1] != 3:
+        raise ValueError("image grid must have shape [pages, 3]")
+    if type(merge_size) is not int or merge_size <= 0:
+        raise ValueError("merge_size must be a positive integer")
+    if bool((grid[:, 0] != 1).any()):
+        raise ValueError("Task 6 document geometry requires temporal-one grids")
+    if bool((grid[:, 1:] <= 0).any()) or bool((grid[:, 1:] % merge_size != 0).any()):
+        raise ValueError("Task 6 image grids must be positive and merge divisible")
+
+    page_shapes = [
+        (int(height // merge_size), int(width // merge_size))
+        for _, height, width in grid.tolist()
+    ]
+    offsets: list[int] = []
+    population = 0
+    for height, width in page_shapes:
+        offsets.append(population)
+        population += height * width
+    keep = torch.zeros(population, dtype=torch.bool)
+    seen: set[tuple[int, int, int]] = set()
+    for token in geometry:
+        if type(token) is not VisualTokenGeometry or not 0 <= token.page_index < len(page_shapes):
+            raise ValueError("frozen geometry contains an invalid page")
+        height, width = page_shapes[token.page_index]
+        identity = (token.page_index, token.row, token.column)
+        if (
+            token.height != height
+            or token.width != width
+            or not 0 <= token.row < height
+            or not 0 <= token.column < width
+            or identity in seen
+        ):
+            raise ValueError("frozen geometry does not match the merged image grid")
+        seen.add(identity)
+        keep[offsets[token.page_index] + token.row * width + token.column] = True
+    return keep
+
+
 @dataclass(frozen=True, slots=True)
 class Task6PolicyCell:
     policy: CTPPolicy

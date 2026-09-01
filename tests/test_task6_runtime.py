@@ -46,6 +46,26 @@ def test_dynamic_geometry_uses_page_major_merged_grid_and_exact_combined_mask() 
     )
 
 
+def test_frozen_geometry_reconstructs_exact_page_major_keep_mask() -> None:
+    """Catch pilot scoring recomputing a hardware-sensitive QTP base population."""
+
+    from docprune.ctp_controls import VisualTokenGeometry
+    from docprune.task6_runtime import frozen_geometry_keep_mask
+
+    geometry = (
+        VisualTokenGeometry(0, 0, 1, 2, 2),
+        VisualTokenGeometry(1, 0, 0, 1, 2),
+    )
+
+    keep = frozen_geometry_keep_mask(
+        torch.tensor([[1, 4, 4], [1, 2, 4]]),
+        geometry,
+        merge_size=2,
+    )
+
+    assert keep.tolist() == [False, True, False, False, True, False]
+
+
 @pytest.mark.parametrize(
     ("grid", "mask", "message"),
     (

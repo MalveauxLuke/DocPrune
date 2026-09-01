@@ -32,7 +32,7 @@ from docprune.qwen2vl.preprocessing import (
     prepare_qwen_page,
     prepared_raster_image,
 )
-from docprune.task6_runtime import derive_post_qtp_geometry
+from docprune.task6_runtime import derive_post_qtp_geometry, frozen_geometry_keep_mask
 
 
 def _value(container: object, name: str) -> object:
@@ -523,6 +523,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         policy_experiment_version: object | None = None,
         policy_repetition: object | None = None,
         teacher_forced_target_token_ids: tuple[tuple[int, ...], ...] | None = None,
+        frozen_post_qtp_geometry: tuple[VisualTokenGeometry, ...] | None = None,
     ) -> None:
         del colpali_model, colpali_processor
         super().__init__(model=model, processor=processor, max_new_tokens=max_new_tokens)
@@ -539,6 +540,9 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         self._policy_experiment_version = policy_experiment_version
         self._policy_repetition = policy_repetition
         self.teacher_forced_target_token_ids = teacher_forced_target_token_ids
+        self.frozen_post_qtp_geometry = frozen_post_qtp_geometry
+        if frozen_post_qtp_geometry is not None and qa_stage != "full":
+            raise ValueError("frozen post-QTP geometry requires the full QA stage")
         if self.forced_intervention is not None and self.ctp_policy is not None:
             raise ValueError("forced intervention and corrected CTP policy cannot be combined")
         if (
@@ -599,6 +603,25 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             reconstruction=self.reconstruction,
         )
 
+    def _frozen_masks(
+        self,
+        masks: VisionPruningMasks,
+        grid: torch.Tensor,
+        *,
+        merge_size: int,
+    ) -> VisionPruningMasks:
+        if self.frozen_post_qtp_geometry is None:
+            return masks
+        frozen = frozen_geometry_keep_mask(
+            grid,
+            self.frozen_post_qtp_geometry,
+            merge_size=merge_size,
+        ).to(device=torch.as_tensor(masks.background_keep).device)
+        background = torch.as_tensor(masks.background_keep, dtype=torch.bool)
+        if background.shape != frozen.shape or bool((frozen & ~background).any()):
+            raise ValueError("frozen post-QTP geometry is outside the live BTP population")
+        return VisionPruningMasks(background_keep=background, question_keep=frozen)
+
     def score_forced_intervention_likelihoods(
         self,
         images: Sequence[object],
@@ -629,6 +652,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         input_shape, input_sha256 = _input_ids_identity(input_ids)
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         masks = self._masks(images, prepared, moved, question, retrieval_output)
+        masks = self._frozen_masks(masks, grid, merge_size=prepared[0].merge_size)
         adapter = (
             self.model
             if callable(getattr(self.model, "score_forced_intervention_likelihoods", None))
@@ -736,6 +760,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
                 background_keep=masks.background_keep,
                 question_keep=torch.ones_like(masks.question_keep, dtype=torch.bool),
             )
+        masks = self._frozen_masks(masks, grid, merge_size=prepared[0].merge_size)
         if self.ctp_policy is not None:
             if self.ctp_policy.family in {"random-top-m", "coverage-top-m"} and (
                 self.selection_context is None or not self.selection_context.qid

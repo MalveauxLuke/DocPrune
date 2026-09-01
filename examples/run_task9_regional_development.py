@@ -257,6 +257,7 @@ def main() -> None:
         runner.page_loader.load_page(page.doc_id, page.page_index) for page in retrieval.pages
     ]
     answerer = runner.answerer
+    answerer.frozen_post_qtp_geometry = mapping.geometry
     accepted_references = (
         sample.answers
         if preliminary_record is None

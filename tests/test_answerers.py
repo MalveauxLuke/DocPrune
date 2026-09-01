@@ -14,6 +14,7 @@ from docprune.answerers import (
 )
 from docprune.config import PagePruningConfig
 from docprune.ctp import ComprehensionController
+from docprune.ctp_controls import VisualTokenGeometry
 from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures
 from docprune.qwen2vl.decoder import ForcedInterventionRecord, ForcedVisualIntervention
 from docprune.qwen2vl.model import GenerationResult, PruningTrace, VisionPruningMasks
@@ -201,13 +202,17 @@ def test_task7_likelihood_capture_derives_exact_prompt_and_processor_input_inter
         DocPruneQwenAnswerer,
         "_masks",
         lambda self, images, prepared, batch, question, retrieval_output: VisionPruningMasks(
-            torch.ones(2, dtype=torch.bool), torch.ones(2, dtype=torch.bool)
+            torch.ones(4, dtype=torch.bool), torch.ones(4, dtype=torch.bool)
         ),
     )
     answerer = DocPruneQwenAnswerer(
         model=RecordingModel(),
         processor=processor,
         page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+        frozen_post_qtp_geometry=(
+            VisualTokenGeometry(0, 0, 1, 2, 2),
+            VisualTokenGeometry(0, 1, 1, 2, 2),
+        ),
         teacher_forced_target_token_ids=((12, 13), (14,)),
     )
 
@@ -220,6 +225,7 @@ def test_task7_likelihood_capture_derives_exact_prompt_and_processor_input_inter
     )
     expected_ids = torch.tensor([[10, 100, 100, 100, 100, 11]], dtype=torch.int64)
     assert adapter.calls[0]["teacher_forced_target_token_ids"] == ((12, 13), (14,))
+    assert adapter.calls[0]["pruning_masks"].combined().tolist() == [False, True, False, True]
     assert output.teacher_forced_loglikelihoods == (-0.25, -0.75)
     assert output.assistant_prompt_sha256 == hashlib.sha256(exact_prompt.encode()).hexdigest()
     assert output.prefill_input_ids_shape == (1, 6)
@@ -260,6 +266,10 @@ def test_task9_shared_likelihood_capture_reuses_exact_answerer_preprocessing(mon
         model=RecordingModel(),
         processor=processor,
         page_config=PagePruningConfig(1.0, 1.0, 1.0, 0.3, 45.0, 0.075),
+        frozen_post_qtp_geometry=(
+            VisualTokenGeometry(0, 0, 1, 2, 2),
+            VisualTokenGeometry(0, 1, 1, 2, 2),
+        ),
     )
     interventions = (ForcedVisualIntervention(1, "physical_delete", (0, 2)),)
 
@@ -285,7 +295,7 @@ def test_task9_shared_likelihood_capture_reuses_exact_answerer_preprocessing(mon
     assert output.peak_allocated_gpu_bytes >= 0
     assert adapter.calls[0]["forced_interventions"] is interventions
     assert adapter.calls[0]["teacher_forced_target_token_ids"] == ((12, 13),)
-    assert adapter.calls[0]["pruning_masks"].combined().tolist() == [True, True, True, True]
+    assert adapter.calls[0]["pruning_masks"].combined().tolist() == [False, True, False, True]
 
 
 def test_task9_generated_response_target_uses_exact_unpruned_ids_without_terminal_eos(

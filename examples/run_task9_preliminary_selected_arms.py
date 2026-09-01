@@ -218,6 +218,7 @@ def main() -> None:
             "qa_stage": "full",
             "max_new_tokens": base.max_new_tokens,
             "teacher_forced_target_token_ids": teacher_targets,
+            "frozen_post_qtp_geometry": mapping.geometry,
         }
         if forced is None:
             kwargs["ctp_policy"] = btp_qtp_no_ctp_policy()
