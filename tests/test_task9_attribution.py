@@ -11,6 +11,8 @@ import pytest
 
 from docprune import task9_attribution
 from docprune.task9_attribution import (
+    analyze_task9_preliminary_question,
+    build_task9_preliminary_arm_selections,
     build_region_mask_design,
     build_task9_preliminary_mask_design,
     contextcite_logit_per_token_from_mean_loglikelihood,
@@ -383,6 +385,87 @@ def test_whole_region_knapsack_reports_gap_and_deterministic_region_id_ties() ->
             coefficients={"region-z": 1.0, "region-a": 1.0},
             requested_budget=5,
         )
+
+
+def test_preliminary_arm_selections_match_whole_region_cost_at_each_budget() -> None:
+    regions = _regions()[:-1]
+    selections = build_task9_preliminary_arm_selections(
+        regions,
+        question_id="q-001",
+        query_attention_scores={"region-a": 4, "region-b": 3, "region-c": 2, "region-d": 1},
+        gold_support_scores={"region-a": 1, "region-b": 2, "region-c": 3, "region-d": 4},
+        gold_margin_scores={"region-a": -1, "region-b": 0, "region-c": 1, "region-d": 2},
+    )
+
+    assert [row["retained_fraction"] for row in selections["budgets"]] == [0.55, 0.65, 0.8]
+    for budget in selections["budgets"]:
+        costs = {arm["achieved_token_count"] for arm in budget["arms"]}
+        assert len(costs) == 1
+        assert [arm["arm"] for arm in budget["arms"]] == [
+            "docprune_query_attention",
+            "contextcite_gold_support",
+            "contextcite_gold_margin",
+            "random_region_size_aware",
+        ]
+    assert selections == build_task9_preliminary_arm_selections(
+        regions,
+        question_id="q-001",
+        query_attention_scores={"region-a": 4, "region-b": 3, "region-c": 2, "region-d": 1},
+        gold_support_scores={"region-a": 1, "region-b": 2, "region-c": 3, "region-d": 4},
+        gold_margin_scores={"region-a": -1, "region-b": 0, "region-c": 1, "region-d": 2},
+    )
+
+
+def test_preliminary_arm_selections_omit_unavailable_gold_margin_arm() -> None:
+    regions = _regions()[:-1]
+    selections = build_task9_preliminary_arm_selections(
+        regions,
+        question_id="q-002",
+        query_attention_scores={source["source_id"]: 1 for source in regions},
+        gold_support_scores={source["source_id"]: 1 for source in regions},
+    )
+
+    assert selections["gold_margin_available"] is False
+    assert all(
+        "contextcite_gold_margin" not in {arm["arm"] for arm in budget["arms"]}
+        for budget in selections["budgets"]
+    )
+
+
+def test_preliminary_question_analysis_reports_paired_rescue_and_likelihood_changes() -> None:
+    result = analyze_task9_preliminary_question(
+        question_id="q-003",
+        retained_fraction=0.65,
+        arm_results={
+            "unpruned": {
+                "normalized_token_f1": 0.0,
+                "exact_match": False,
+                "gold_mean_loglikelihood": -2.0,
+                "alternative_mean_loglikelihood": -1.0,
+            },
+            "docprune_query_attention": {
+                "normalized_token_f1": 0.0,
+                "exact_match": False,
+                "gold_mean_loglikelihood": -2.5,
+                "alternative_mean_loglikelihood": -1.0,
+            },
+            "contextcite_gold_support": {
+                "normalized_token_f1": 1.0,
+                "exact_match": True,
+                "gold_mean_loglikelihood": -0.5,
+                "alternative_mean_loglikelihood": -1.5,
+            },
+        },
+    )
+
+    paired = result["contextcite_gold_support_vs_docprune"]
+    assert paired["normalized_token_f1_difference"] == 1.0
+    assert paired["exact_match_difference"] == 1
+    assert paired["win_tie_loss"] == "win"
+    assert paired["rescue"] is True
+    assert paired["preservation_advantage"] is False
+    assert paired["gold_likelihood_difference"] == 2.0
+    assert paired["gold_vs_alternative_margin_difference"] == 2.5
 
 
 def test_contextcite_lasso_rejects_noncanonical_fit_inputs_before_solver_import() -> None:

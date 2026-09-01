@@ -1259,6 +1259,181 @@ def whole_region_knapsack(
     }
 
 
+def build_task9_preliminary_arm_selections(
+    regions: Sequence[Mapping[str, object]],
+    *,
+    question_id: str,
+    query_attention_scores: Mapping[str, float],
+    gold_support_scores: Mapping[str, float],
+    gold_margin_scores: Mapping[str, float] | None = None,
+    retained_fractions: Sequence[float] = (0.55, 0.65, 0.8),
+) -> dict[str, object]:
+    """Select the random-48 pilot arms at matched whole-region token costs."""
+
+    if not isinstance(question_id, str) or not question_id:
+        raise ValueError("question_id must be a nonempty string")
+    validated = _validated_regions(regions, allow_zero_cost=False)
+    checked_regions = [
+        {"source_id": source_id, "token_cost": cost} for source_id, cost in validated
+    ]
+    source_ids = [source_id for source_id, _ in validated]
+    score_sets: list[tuple[str, Mapping[str, float]]] = [
+        ("docprune_query_attention", query_attention_scores),
+        ("contextcite_gold_support", gold_support_scores),
+    ]
+    if gold_margin_scores is not None:
+        score_sets.append(("contextcite_gold_margin", gold_margin_scores))
+    random_scores = {
+        source_id: int.from_bytes(
+            hashlib.sha256(
+                f"task9-preliminary-random-v1\0{question_id}\0{source_id}".encode()
+            ).digest()[:8],
+            "big",
+        )
+        / 2**64
+        for source_id in source_ids
+    }
+    score_sets.append(("random_region_size_aware", random_scores))
+
+    total_cost = sum(cost for _, cost in validated)
+    budgets: list[dict[str, object]] = []
+    for raw_fraction in retained_fractions:
+        if (
+            isinstance(raw_fraction, bool)
+            or not isinstance(raw_fraction, int | float)
+            or not math.isfinite(float(raw_fraction))
+            or not 0 < float(raw_fraction) <= 1
+        ):
+            raise ValueError("retained fractions must be finite and in (0, 1]")
+        fraction = float(raw_fraction)
+        requested = math.floor(fraction * total_cost + 0.5)
+        arms: list[dict[str, object]] = []
+        for arm, scores in score_sets:
+            selected = whole_region_knapsack(
+                checked_regions,
+                coefficients=scores,
+                requested_budget=requested,
+            )
+            arms.append(
+                {
+                    "arm": arm,
+                    "retained_source_ids": selected["top_source_ids"],
+                    "achieved_token_count": selected["achieved_budget"],
+                }
+            )
+        budgets.append(
+            {
+                "retained_fraction": fraction,
+                "requested_token_count": requested,
+                "achieved_token_count": arms[0]["achieved_token_count"],
+                "arms": arms,
+            }
+        )
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-preliminary-arm-selections-v1",
+        "question_id": question_id,
+        "total_region_token_count": total_cost,
+        "gold_margin_available": gold_margin_scores is not None,
+        "budgets": budgets,
+    }
+    result["selections_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def analyze_task9_preliminary_question(
+    *,
+    question_id: str,
+    retained_fraction: float,
+    arm_results: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """Build one self-contained preliminary-pilot result for later aggregation."""
+
+    required = {"unpruned", "docprune_query_attention", "contextcite_gold_support"}
+    if not isinstance(question_id, str) or not question_id:
+        raise ValueError("question_id must be a nonempty string")
+    if set(arm_results) < required:
+        raise ValueError("arm_results is missing a required preliminary pilot arm")
+    if (
+        isinstance(retained_fraction, bool)
+        or not isinstance(retained_fraction, int | float)
+        or not math.isfinite(float(retained_fraction))
+        or not 0 < float(retained_fraction) <= 1
+    ):
+        raise ValueError("retained_fraction must be finite and in (0, 1]")
+
+    checked: dict[str, dict[str, object]] = {}
+    for arm, raw in arm_results.items():
+        f1 = _finite_float(raw.get("normalized_token_f1"), label=f"{arm} token F1")
+        if not 0 <= f1 <= 1:
+            raise ValueError(f"{arm} token F1 must be in [0, 1]")
+        exact_match = raw.get("exact_match")
+        if type(exact_match) is not bool:
+            raise ValueError(f"{arm} exact_match must be boolean")
+        gold = _finite_float(
+            raw.get("gold_mean_loglikelihood"), label=f"{arm} gold likelihood"
+        )
+        alternative_raw = raw.get("alternative_mean_loglikelihood")
+        alternative = (
+            None
+            if alternative_raw is None
+            else _finite_float(alternative_raw, label=f"{arm} alternative likelihood")
+        )
+        checked[arm] = {
+            **dict(raw),
+            "normalized_token_f1": f1,
+            "exact_match": exact_match,
+            "gold_mean_loglikelihood": gold,
+            "alternative_mean_loglikelihood": alternative,
+            "gold_vs_alternative_margin": None if alternative is None else gold - alternative,
+        }
+
+    baseline = checked["unpruned"]
+    docprune = checked["docprune_query_attention"]
+    comparisons: dict[str, dict[str, object]] = {}
+    for contextcite_arm in ("contextcite_gold_support", "contextcite_gold_margin"):
+        if contextcite_arm not in checked:
+            continue
+        contextcite = checked[contextcite_arm]
+        f1_difference = float(contextcite["normalized_token_f1"]) - float(
+            docprune["normalized_token_f1"]
+        )
+        contextcite_margin = contextcite["gold_vs_alternative_margin"]
+        docprune_margin = docprune["gold_vs_alternative_margin"]
+        comparisons[f"{contextcite_arm}_vs_docprune"] = {
+            "normalized_token_f1_difference": f1_difference,
+            "exact_match_difference": int(contextcite["exact_match"])
+            - int(docprune["exact_match"]),
+            "win_tie_loss": "win" if f1_difference > 0 else "loss" if f1_difference < 0 else "tie",
+            "rescue": bool(contextcite["exact_match"] and not docprune["exact_match"]),
+            "preservation_advantage": bool(
+                baseline["exact_match"]
+                and contextcite["exact_match"]
+                and not docprune["exact_match"]
+            ),
+            "gold_likelihood_difference": float(contextcite["gold_mean_loglikelihood"])
+            - float(docprune["gold_mean_loglikelihood"]),
+            "gold_likelihood_change_from_unpruned": float(
+                contextcite["gold_mean_loglikelihood"]
+            )
+            - float(baseline["gold_mean_loglikelihood"]),
+            "gold_vs_alternative_margin_difference": (
+                None
+                if contextcite_margin is None or docprune_margin is None
+                else float(contextcite_margin) - float(docprune_margin)
+            ),
+        }
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-preliminary-question-analysis-v1",
+        "question_id": question_id,
+        "retained_fraction": float(retained_fraction),
+        "baseline_correct": bool(baseline["exact_match"]),
+        "arm_results": checked,
+        **comparisons,
+    }
+    result["analysis_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def evaluate_contextcite_refit_stability(
     design: Mapping[str, object],
     fit_outcomes: Sequence[Mapping[str, object]],
@@ -2027,7 +2202,9 @@ def aggregate_contextcite_admission_metrics(
 
 
 __all__ = [
+    "analyze_task9_preliminary_question",
     "build_region_mask_design",
+    "build_task9_preliminary_arm_selections",
     "build_task9_preliminary_mask_design",
     "build_regional_development_plan",
     "build_regional_development_targets",
