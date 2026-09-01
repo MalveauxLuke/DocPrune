@@ -283,6 +283,102 @@ def build_region_mask_design(
     return design
 
 
+def build_task9_preliminary_mask_design(
+    regions: Sequence[Mapping[str, object]],
+    *,
+    question_id: str,
+    forced_boundary: str,
+    mapping_artifact_sha256: str,
+    prompt_input_sha256: str,
+    target_kind: str,
+    reference_set_token_ids_sha256: str | None,
+    generated_response_token_ids_sha256: str | None,
+    primary_budget_fraction: float = 0.65,
+    budget_local_tolerance_fraction: float = 0.05,
+    fit_mask_count: int = 256,
+    global_holdout_mask_count: int = 32,
+    budget_local_holdout_mask_count: int = 32,
+) -> dict[str, object]:
+    """Build the random-48 pilot's global and primary-budget-local mask schedule."""
+
+    for value, label in (
+        (primary_budget_fraction, "primary budget fraction"),
+        (budget_local_tolerance_fraction, "budget-local tolerance fraction"),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(float(value))
+            or not 0 < float(value) < 1
+        ):
+            raise ValueError(f"{label} must be finite and strictly between zero and one")
+    if type(budget_local_holdout_mask_count) is not int or budget_local_holdout_mask_count <= 0:
+        raise ValueError("budget-local holdout count must be a positive integer")
+    validated = _validated_regions(regions, allow_zero_cost=True)
+    positive = [
+        {"source_id": source_id, "token_cost": cost}
+        for source_id, cost in validated
+        if cost > 0
+    ]
+    global_design = build_region_mask_design(
+        regions,
+        question_id=question_id,
+        forced_boundary=forced_boundary,
+        mapping_artifact_sha256=mapping_artifact_sha256,
+        prompt_input_sha256=prompt_input_sha256,
+        target_kind=target_kind,
+        reference_set_token_ids_sha256=reference_set_token_ids_sha256,
+        generated_response_token_ids_sha256=generated_response_token_ids_sha256,
+        fit_mask_count=fit_mask_count,
+        holdout_mask_count=global_holdout_mask_count,
+    )
+    source_ids = list(global_design["source_ids"])
+    costs = {row["source_id"]: row["token_cost"] for row in positive}
+    total_cost = sum(costs.values())
+    requested_budget = math.floor(float(primary_budget_fraction) * total_cost + 0.5)
+    attainable = whole_region_knapsack(
+        positive,
+        coefficients={source_id: 0.0 for source_id in source_ids},
+        requested_budget=requested_budget,
+    )["achieved_budget"]
+    tolerance = max(
+        1, math.floor(float(budget_local_tolerance_fraction) * total_cost + 0.5)
+    )
+    minimum = max(0, attainable - tolerance)
+    maximum = min(total_cost, attainable + tolerance)
+    observed = {
+        row["vector_sha256"]
+        for row in [*global_design["fit_masks"], *global_design["holdout_masks"]]
+    }
+    local: list[dict[str, object]] = []
+    seed = fit_mask_count + global_holdout_mask_count
+    stop = seed + 1_000_000
+    while len(local) < budget_local_holdout_mask_count and seed < stop:
+        row = _mask_record(source_ids, split="budget_local_holdout", seed=seed)
+        retained_cost = sum(costs[source_id] for source_id in row["retained_source_ids"])
+        if minimum <= retained_cost <= maximum and row["vector_sha256"] not in observed:
+            row["retained_token_cost"] = retained_cost
+            local.append(row)
+            observed.add(row["vector_sha256"])
+        seed += 1
+    if len(local) != budget_local_holdout_mask_count:
+        raise ValueError("unable to construct enough unique primary-budget-local holdout masks")
+    design: dict[str, object] = {
+        "method": "task9-preliminary-global-plus-primary-budget-local",
+        "global_design": global_design,
+        "primary_budget_fraction": float(primary_budget_fraction),
+        "requested_primary_budget": requested_budget,
+        "attainable_primary_budget": attainable,
+        "total_region_token_cost": total_cost,
+        "budget_local_tolerance_fraction": float(budget_local_tolerance_fraction),
+        "budget_local_bounds": {"minimum": minimum, "maximum": maximum},
+        "budget_local_holdout_mask_count": budget_local_holdout_mask_count,
+        "budget_local_holdout_masks": local,
+    }
+    design["design_sha256"] = _canonical_sha256(design)
+    return design
+
+
 def build_regional_intervention_plan(
     mapping: RegionTokenMapping,
     design: Mapping[str, object],
@@ -1932,6 +2028,7 @@ def aggregate_contextcite_admission_metrics(
 
 __all__ = [
     "build_region_mask_design",
+    "build_task9_preliminary_mask_design",
     "build_regional_development_plan",
     "build_regional_development_targets",
     "validate_regional_development_targets",

@@ -12,6 +12,7 @@ import pytest
 from docprune import task9_attribution
 from docprune.task9_attribution import (
     build_region_mask_design,
+    build_task9_preliminary_mask_design,
     contextcite_logit_per_token_from_mean_loglikelihood,
     evaluate_contextcite_holdout,
     evaluate_contextcite_refit_stability,
@@ -171,6 +172,31 @@ def test_region_mask_design_supports_frozen_256_fit_64_holdout_schedule() -> Non
     assert design["holdout_mask_count"] == 64
     assert [row["seed"] for row in design["fit_masks"]] == list(range(256))
     assert [row["seed"] for row in design["holdout_masks"]] == list(range(256, 320))
+
+
+def test_preliminary_mask_design_adds_32_distinct_primary_budget_local_holdouts() -> None:
+    regions = [{"source_id": f"region-{index:02d}", "token_cost": 1} for index in range(12)]
+
+    design = build_task9_preliminary_mask_design(regions, **_identity_kwargs())
+
+    global_design = design["global_design"]
+    local = design["budget_local_holdout_masks"]
+    assert len(global_design["fit_masks"]) == 256
+    assert len(global_design["holdout_masks"]) == 32
+    assert len(local) == 32
+    assert design["primary_budget_fraction"] == 0.65
+    assert design["requested_primary_budget"] == 8
+    assert design["attainable_primary_budget"] == 8
+    assert design["budget_local_bounds"] == {"minimum": 7, "maximum": 9}
+    assert all(7 <= row["retained_token_cost"] <= 9 for row in local)
+    assert min(row["seed"] for row in local) >= 288
+    all_global_hashes = {
+        row["vector_sha256"]
+        for row in [*global_design["fit_masks"], *global_design["holdout_masks"]]
+    }
+    assert not all_global_hashes.intersection(row["vector_sha256"] for row in local)
+    assert len({row["vector_sha256"] for row in local}) == 32
+    assert len(design["design_sha256"]) == 64
 
 
 def test_contextcite_logit_per_token_reconstructs_sequence_probability() -> None:
