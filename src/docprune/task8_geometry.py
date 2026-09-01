@@ -476,7 +476,11 @@ def capture_task8_btp_qtp_geometry(
     if capture.geometry_count != expected_geometry_count or (
         expected_geometry_sha is not None and capture.geometry_sha256 != expected_geometry_sha
     ):
-        raise ValueError("live post-QTP geometry identity differs from the Task 6 reference")
+        raise ValueError(
+            "live post-QTP geometry identity differs from the Task 6 reference: "
+            f"expected_count={expected_geometry_count}, actual_count={capture.geometry_count}, "
+            f"actual_sha256={capture.geometry_sha256}"
+        )
     live_trace = {
         "original_visual_tokens": capture.original_visual_tokens,
         "post_btp_visual_tokens": capture.post_btp_visual_tokens,
