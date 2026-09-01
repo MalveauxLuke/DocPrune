@@ -166,6 +166,69 @@ def build_task9_preliminary_random_cohort(
     return cohort
 
 
+def build_task9_preliminary_fixture_inputs(
+    cohort: Mapping[str, object],
+) -> tuple[dict[str, object], list[dict[str, str]]]:
+    """Project the sealed 48-question cohort into retrieval-free fixed-page inputs."""
+
+    supplied_sha = cohort.get("cohort_sha256")
+    unsigned = dict(cohort)
+    unsigned.pop("cohort_sha256", None)
+    if supplied_sha != _canonical_json_sha256(unsigned):
+        raise ValueError("Task 9 preliminary cohort checksum is invalid")
+    selected = cohort.get("selected_qids")
+    records = cohort.get("selected_records")
+    if (
+        not isinstance(selected, Mapping)
+        or set(selected) != {"baseline_correct", "baseline_wrong"}
+        or any(not isinstance(selected[name], list) or len(selected[name]) != 24 for name in selected)
+        or not isinstance(records, list)
+        or len(records) != 48
+    ):
+        raise ValueError("Task 9 preliminary cohort must contain the sealed 24/24 selection")
+    expected_qids = [*selected["baseline_correct"], *selected["baseline_wrong"]]
+    rows: dict[str, dict[str, object]] = {}
+    eligible: list[dict[str, str]] = []
+    observed_qids: list[str] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, Mapping):
+            raise ValueError("Task 9 preliminary selected record is invalid")
+        qid = record.get("question_id")
+        question = record.get("question")
+        pages = record.get("retrieved_pages")
+        stratum = "baseline_correct" if index < 24 else "baseline_wrong"
+        if (
+            not isinstance(qid, str)
+            or not qid
+            or not isinstance(question, str)
+            or not question
+            or record.get("baseline_stratum") != stratum
+            or not isinstance(pages, list)
+            or len(pages) != 4
+        ):
+            raise ValueError("Task 9 preliminary selected record identity is invalid")
+        checked_pages: list[dict[str, object]] = []
+        for page in pages:
+            if not isinstance(page, Mapping) or set(page) != {"doc_id", "page_index", "score"}:
+                raise ValueError("Task 9 preliminary fixed page schema is invalid")
+            checked_pages.append(dict(page))
+        observed_qids.append(qid)
+        rows[qid] = {"retrieved_pages": checked_pages}
+        eligible.append({"qid": qid, "question": question})
+    if observed_qids != expected_qids or len(set(observed_qids)) != 48:
+        raise ValueError("Task 9 preliminary selected record order is invalid")
+    reference: dict[str, object] = {
+        "schema_version": 1,
+        "selection_is_outcome_blind": True,
+        "fixed_page_selection_is_outcome_blind": True,
+        "question_selection": "24-baseline-correct/24-baseline-wrong",
+        "cohort_sha256": supplied_sha,
+        "question_ids": observed_qids,
+        "rows": rows,
+    }
+    return reference, eligible
+
+
 def _open_directory_nofollow(path: Path) -> int:
     """Open an absolute directory by walking every component without symlinks."""
 

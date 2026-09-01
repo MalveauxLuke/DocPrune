@@ -106,6 +106,45 @@ def test_task9_preliminary_cohort_rejects_duplicate_or_undersized_pools() -> Non
         )
 
 
+def test_task9_preliminary_fixture_inputs_preserve_selected_order_and_pages() -> None:
+    """Catch retrieval, reordering, or outcome-label loss while materializing fixed pages."""
+
+    records = []
+    selected_qids = {"baseline_correct": [], "baseline_wrong": []}
+    for index in range(48):
+        stratum = "baseline_correct" if index < 24 else "baseline_wrong"
+        qid = f"q{index:02d}"
+        selected_qids[stratum].append(qid)
+        records.append(
+            {
+                "question_id": qid,
+                "question": f"Question {index}",
+                "answers": ["gold"],
+                "unpruned_predicted_answer": "gold" if index < 24 else "wrong",
+                "retrieved_pages": [
+                    {"doc_id": f"d{index:02d}-{rank}", "page_index": rank, "score": 4 - rank}
+                    for rank in range(4)
+                ],
+                "baseline_em": 1.0 if index < 24 else 0.0,
+                "baseline_stratum": stratum,
+            }
+        )
+    cohort = {
+        "selected_qids": selected_qids,
+        "selected_records": records,
+    }
+    cohort["cohort_sha256"] = experiment_design._canonical_json_sha256(cohort)
+
+    reference, eligible = experiment_design.build_task9_preliminary_fixture_inputs(cohort)
+
+    assert reference["question_ids"] == [row["question_id"] for row in records]
+    assert reference["fixed_page_selection_is_outcome_blind"] is True
+    assert reference["question_selection"] == "24-baseline-correct/24-baseline-wrong"
+    assert reference["rows"]["q00"]["retrieved_pages"] == records[0]["retrieved_pages"]
+    assert eligible[0] == {"qid": "q00", "question": "Question 0"}
+    assert eligible[-1] == {"qid": "q47", "question": "Question 47"}
+
+
 def test_task9_preliminary_sealer_authenticates_sources_and_writes_24_per_stratum(
     tmp_path: Path,
 ) -> None:
