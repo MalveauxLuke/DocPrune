@@ -1,6 +1,6 @@
 # DocPrune Random, Coverage, Attribution, and Visual-State Dependence Experiment
 
-Status: approved amended design; Task 9 answer-conditioned oracle pilot active
+Status: approved amended design; preliminary Task 9 pilot complete; enriched pilot next
 Canonical date: 2026-08-26
 Revision: Wang semantics amendment approved 2026-08-27; review-driven
 amendment approved 2026-08-26; Task 9 oracle-pilot amendment approved
@@ -54,7 +54,7 @@ Failure of phases 4 or 5 does not invalidate or delay phases 1–3.
    are the random-versus-attention conclusions different?
 5. In a controlled developmental pilot, how much generated-answer headroom
    does an accepted-answer-conditioned ContextCite whole-region selector show
-   over query-only DocPrune attention, and how much of that gap remains after
+   over native dynamic-layer DocPrune, and how much of that gap remains after
    comparison with privilege-matched gold-answer-conditioned attention?
 
 The experiment does not ask whether MinerU regions are evidence annotations,
@@ -341,7 +341,7 @@ reproduces the near-zero standalone token-information condition.
 This is **not vanilla ContextCite**, **not a token-level oracle**, and **not a
 deployable selector**. MinerU is independent tooling. ContextCite sees accepted
 answers and is therefore a privileged reference oracle. Its result measures
-potential selection headroom; it does not show that a query-only learned
+potential selection headroom; it does not show that a deployable learned
 selector can recover that headroom.
 
 ### Region masks
@@ -401,11 +401,15 @@ read only QID, accepted answers, the already-observed BTP+QTP prediction, and
 fixed-page provenance; it may not read attention, ContextCite, or subsequent
 arm outcomes.
 
-At the same achieved whole-region token cost for every pruned arm and at the
-prespecified 55%, 65%, and 80% retention budgets, evaluate:
+For each question, first run native aggregate-threshold DocPrune. Before and
+independently of ContextCite, it selects its crossing layer `l*_q`, retained
+token count `M_q`, and native retained-token set. Freeze `l*_q` for every
+regional intervention on that question. At native DocPrune's exact `M_q` and
+the closest attainable whole-region cost `M′_q <= M_q`, evaluate:
 
 1. the unpruned post-QTP reference;
-2. query-only aggregate-logit DocPrune attention-region;
+2. native DocPrune using its dynamic layer, threshold, and exact retained-token
+   set;
 3. accepted-answer gold-support ContextCite-region;
 4. gold-margin ContextCite-region when the unpruned generated response is a
    distinct non-gold alternative, using gold minus alternative normalized
@@ -421,8 +425,8 @@ win/tie/loss, rescue rate on baseline-wrong questions, preservation on
 baseline-correct questions, gold-likelihood change, and gold-versus-alternative
 margin change where defined. Report the two strata separately. Any combined
 descriptive result is reweighted to the frozen eligible pool's natural
-90/245 correct and 155/245 wrong proportions. When multiple budgets contribute
-to uncertainty, resample by question so all budgets for a QID remain together.
+90/245 correct and 155/245 wrong proportions. Resample by question for
+uncertainty calculations.
 This is a developmental discovery/calibration result, not a precise estimate
 of a small average advantage or a dataset-wide population claim.
 
@@ -467,22 +471,22 @@ unqualified population estimate. The completed 1,213-question Task 6
 random-versus-DocPrune holdout remains separate population-level evidence and
 is not rerun or reinterpreted as this same-action-space oracle comparison.
 
-### Matched budgets and controlled pilot arms
+### Dynamic layers, matched budgets, and controlled pilot arms
 
-The primary controlled comparison is at `B_13` and 65% retention. Repeat it at
-55% and 80% as prespecified secondary budget sensitivities. For retention `r`,
-set requested `M` by the existing deterministic half-up rule applied to that
-question's post-QTP visual-token count, then use the maximum attainable common
-whole-region cost `M′ <= M`. Every arm uses identical cached pages, BTP/QTP
-output, post-QTP visual population, whole-region action space, physical-
-deletion operator, `M′`, model, original positions, decoding, and evaluator.
-The arms are:
+The primary comparison is question-adaptive but outcome-independent. Native
+aggregate-threshold DocPrune runs first and selects `l*_q` and exact budget
+`M_q` without access to ContextCite or gold-conditioned outcomes. Freeze that
+same layer for every comparator. Native DocPrune retains its exact token set;
+whole-region arms use the maximum attainable common cost `M′_q <= M_q`.
+Report `M_q`, `M′_q`, and their gap. Every arm uses identical cached pages,
+BTP/QTP output, post-QTP visual population, physical-deletion implementation,
+model, original positions, decoding, and evaluator. The arms are:
 
-1. **Query-only DocPrune attention-region.** Aggregate the existing local
-   aggregate-logit attention score over each whole region and solve the same
-   region-cost knapsack. Literal attention-region is a secondary sensitivity.
+1. **Native DocPrune.** Use its normal dynamic layer selection, aggregate
+   native threshold, and exact retained-token set. Freeze this selection before
+   ContextCite fitting.
 2. **Gold-answer-conditioned attention-region.** Teacher-force every accepted
-   answer, aggregate answer-token-to-visual attention at `B_13`, average the
+   answer, aggregate answer-token-to-visual attention at `l*_q`, average the
    per-reference region scores, and solve the same knapsack. Sum over member
    token attention is primary; mean-over-member-token aggregation is a
    region-size sensitivity analysis.
@@ -503,21 +507,19 @@ The arms are:
 FastV is excluded. Uniform random and coverage-matched random are not rerun in
 Task 9; the already established random/coverage work remains part of the
 broader experiment and may be cited only within its authenticated boundary,
-budget, action-space, and cohort limits. Native token-level policies may be
-reported as contextual secondary results but cannot be mixed into the
-same-action-space primary contrast.
+budget, action-space, and cohort limits. The preliminary pilot retains its one
+prespecified region-size-aware random comparator at `M′_q`.
 
 ### Budget-local validation
 
 The global Bernoulli-0.5 holdout validates interventions near half of the
-regions, while deployment retains a larger budgeted set. Add 32 deterministic
-budget-local held-out masks per pilot question whose physical retained-token
-counts lie within the primary 65% `M′ ± 5%`. These masks and the 32 global
+regions, while deployment uses native DocPrune's question-specific budget. Add
+32 deterministic budget-local held-out masks per pilot question whose physical
+retained-token counts lie within `M_q ± 5%` of the post-QTP visual population.
+These masks and the 32 global
 holdouts are validation-only and never enter the canonical 256-mask fit. They
 must be unique, outcome-blind, sealed before scoring, and physically delete the
-same whole regions at `B_13`. The 55% and 80% results are secondary budget
-sensitivities; no claim of local surrogate fidelity at those slices is allowed
-without separately sealed local masks.
+same whole regions at `l*_q`.
 
 Report global and budget-local LDS/Spearman and RMSE against the fit-target-mean
 constant separately. Undefined local LDS, a local LDS below `0.5`, or local
@@ -550,7 +552,7 @@ On a prespecified 16-question calibration subset balanced four per primary
 stratum, refit nested prefixes/subsets of 64, 128, 192, and 256 masks and run
 their budgeted selections. This adds no perturbation masks. It calibrates later
 compute only; 256 remains the reference for this pilot. A smaller count may be
-proposed later only if it preserves the direction of the 256-vs-query gap and
+proposed later only if it preserves the direction of the 256-vs-native gap and
 changes that gap by no more than `0.5 F1` (and recovers at least 95% when the
 reference gap magnitude is at least `1.0 F1`).
 
@@ -558,15 +560,15 @@ reference gap magnitude is at least `1.0 F1`).
 
 Primary outcome is paired generated-answer token F1. Secondary outcomes are
 accepted-answer normalized log-likelihood, EM, answer length/invalid-answer
-rate, retained tokens, decoder time, and peak memory. At the primary 65%
+rate, retained tokens, decoder time, and peak memory. At each question's native
 budget, report the following separately within every stratum. The selector
 headroom estimand is
 
-`H_total = F1(ContextCite-region) - F1(query-only DocPrune attention-region)`.
+`H_total = F1(ContextCite-region) - F1(native DocPrune)`.
 
 Required interpretive decompositions are
 
-`H_privilege = F1(gold-attention-region) - F1(query-only attention-region)`
+`H_privilege = F1(gold-attention-region) - F1(native DocPrune)`
 
 and
 
@@ -574,7 +576,7 @@ and
 
 For traceable distractor errors, also report:
 
-- rescue-rate difference between ContextCite and query-only attention among
+- rescue-rate difference between ContextCite and native DocPrune among
   baseline-wrong cases;
 - the change from unpruned in the normalized gold-versus-wrong-answer
   teacher-forced log-likelihood margin;
@@ -584,7 +586,7 @@ For traceable distractor errors, also report:
 
 For baseline-correct questions, report harm rate: the fraction changed from
 correct unpruned to incorrect pruned. Report rescue, harm, likelihood margin,
-and the four gold/distractor retention states at all three budgets. A result
+and the four gold/distractor retention states at the native budget. A result
 must not be called distractor removal merely because a signed coefficient is
 negative; it requires the mapped region and downstream intervention evidence.
 
@@ -636,6 +638,15 @@ not improve predictive or selection stability, so `B_13` remains the pilot
 boundary. The later accepted-answer 256-mask analysis is the evidence used for
 the oracle-pilot amendment. Neither completed diagnostic by itself authorizes
 a method-holdout evaluation.
+
+### 2026-09-01 native-comparator amendment
+
+The user superseded fixed `B_13`/fixed-percentage pilot comparisons with the
+native DocPrune comparison defined above. The B13/input diagnostics remain
+historical development evidence. They no longer set the primary pilot layer or
+budget. The new choice is scientifically independent of ContextCite because
+native DocPrune selects `l*_q` and `M_q` first; those values are then frozen for
+the regional arms.
 
 ## Conditional Wang standalone-contribution study
 
@@ -735,7 +746,7 @@ authorized by this plan.
 - Coverage causation requires controlled coverage arms; correlations support
   association only.
 - A regional-attribution advantage is privileged and answer conditioned. It
-  does not show a query-only selector can recover the mask.
+  does not show a deployable selector can recover the mask.
 - The all-drop result is an explicit-visual-state dependence result, not proof
   that the model no longer contains or uses visual information.
 - Wang released-code 2x2-window standalone contribution misses interactions

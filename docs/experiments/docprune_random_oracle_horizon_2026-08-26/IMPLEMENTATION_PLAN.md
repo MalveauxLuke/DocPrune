@@ -10,9 +10,9 @@ Status: Tasks 1–5 and Task 8 are complete. Task 9's four-mask smoke, original
 are complete. The original identity-Jaccard gate is superseded. Task 9 is now
 authorized for implementation and sealing of a 48-question answer-conditioned
 causal-selection oracle pilot. A preliminary 24-correct/24-wrong stratified-
-random pilot now runs before the enriched panel. Unique accepted Task 6–9 Git
-work is consolidated on the active Task 9 branch; no pilot job or method
-holdout is yet authorized.
+random pilot ran before the enriched panel and is complete. Unique accepted Task 6–9 Git
+work is consolidated on the active Task 9 branch; no method holdout is yet
+authorized.
 Baseline runtime: `dd5f000a909a718826541df816a4b65396764e1c`
 Canonical revision: approved Wang semantics amendment, 2026-08-27; approved
 review amendment, 2026-08-26; approved Task 9 oracle-pilot amendment,
@@ -408,12 +408,17 @@ Pilot preparation and implementation:
   SHA-256 `123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`;
   internal cohort SHA-256
   `465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7c33c3c5f9`.
-- [ ] For the preliminary cohort, evaluate unpruned, query-only DocPrune
-  attention-region, gold-support ContextCite, gold-margin ContextCite where a
-  distinct non-gold unpruned response exists, and one deterministic region-
-  size-aware random comparator at matched 55/65/80% whole-region costs. Keep
-  FastV excluded.
-- [ ] Report preliminary correct/wrong strata separately; paired normalized
+- [x] Implement the corrected preliminary comparison. For each question,
+  native aggregate-threshold DocPrune independently selects its crossing layer
+  `l*_q`, exact retained token count `M_q`, and native retained token IDs before
+  any ContextCite fit or outcome is available. Freeze `l*_q` for that
+  question. Evaluate unpruned, native DocPrune, gold-support ContextCite,
+  gold-margin ContextCite where a distinct non-gold unpruned response exists,
+  and one deterministic region-size-aware random comparator. ContextCite and
+  random use the closest attainable whole-region cost at or below `M_q`; every
+  pruned arm uses the same physical-deletion implementation and original
+  M-RoPE positions. Keep FastV excluded.
+- [x] Report preliminary correct/wrong strata separately; paired normalized
   token-F1 and EM differences; win/tie/loss; rescue; preservation; gold-
   likelihood and gold-margin changes; question-clustered uncertainty; and an
   optional 90/245 versus 155/245 reweighted descriptive result. Do not use its
@@ -432,30 +437,33 @@ Pilot preparation and implementation:
   pages without retrieval or feature rebuilding. Require 100% assignment to a
   whole MinerU region or bounded residual cell and publish mapping manifests
   before scoring outcomes.
-- [ ] Generate per question 256 unique Bernoulli-0.5 fit masks, 32 unique global
-  holdouts, and 32 unique primary-budget-local holdouts within 65% `M′ ± 5%`.
-  Seal vectors and hashes before model scoring. Keep 55% and 80% as secondary
-  budget sensitivities without claiming local fidelity there.
-- [ ] Add teacher-forced accepted-answer attention capture at `B_13`. Produce
+- [x] Generate per question 256 unique Bernoulli-0.5 fit masks, 32 unique global
+  holdouts, and 32 unique native-budget-local holdouts centered on
+  `M_q / |V_q|` within ±5% of the visual population. Seal vectors and hashes
+  before model scoring.
+- [ ] Add teacher-forced accepted-answer attention capture at each frozen
+  `l*_q`. Produce
   privilege-matched whole-region scores by summing answer-token attention over
   member visual tokens and averaging references; keep mean-over-member-token
   and literal-score variants as named sensitivities.
-- [ ] Aggregate the existing query-only aggregate-logit score over the identical
-  whole regions. Do not add FastV, uniform-random pruning, or coverage-matched
-  pruning arms. The completed 1,213-question Task 6 random-versus-DocPrune
-  holdout remains separate evidence and is never recomputed for Task 9.
+- [x] Capture and reproduce native aggregate-threshold DocPrune's independently
+  chosen layer, exact budget, and retained-token IDs. Do not add FastV,
+  uniform-random pruning, or coverage-matched pruning arms. The completed
+  1,213-question Task 6 random-versus-DocPrune holdout remains separate evidence
+  and is never recomputed for Task 9.
 - [ ] Convert ContextCite coefficients to signed raw inclusion-feature space.
   Fit the canonical 256-row surrogate plus five deterministic 80%-without-
   replacement refits; use their elementwise coefficient median for the primary
   robust selector and retain the canonical fit as a required sensitivity.
-- [ ] At deterministic 55%, 65%, and 80% requested budgets, use the existing
-  exact two-stage whole-region knapsack for every scored arm. Add reverse robust
-  ContextCite and the audited gold-in/distractor-out diagnostic on the
-  traceable stratum. Never broadcast coefficients or split regions.
-- [ ] Directly generate answers for unpruned, query-attention, gold-attention,
+- [ ] At each question's independently selected native budget `M_q`, use the
+  existing exact two-stage whole-region knapsack for every regional arm. Add
+  reverse robust ContextCite and the audited gold-in/distractor-out diagnostic
+  on the traceable stratum. Never broadcast coefficients or split regions.
+- [ ] Directly generate answers for unpruned, native DocPrune, gold-attention,
   robust ContextCite, canonical ContextCite, reverse ContextCite, the five
-  refit-selected sets, and the traceable-only audited constraint at each
-  applicable budget using identical physical deletion and original M-RoPE.
+  refit-selected sets, the matched regional random control where prescribed,
+  and the traceable-only audited constraint at `M_q` using identical physical
+  deletion and original M-RoPE.
 - [ ] Report global and primary-budget-local LDS/Spearman and RMSE/constant,
   treating failures as warnings rather than reinstating the superseded
   identity gate. Report token-weighted overlap, signed distractor behavior,
@@ -469,16 +477,22 @@ Pilot preparation and implementation:
 - [ ] Refit nested 64/128/192/256 mask subsets on the sealed 16-question
   calibration subset and directly evaluate their selected sets. This may
   inform a later mask-count amendment but cannot reduce this pilot below 256.
-- [ ] Implement terminal manifest-last admission and a unified analysis JSON
+- [x] Implement terminal manifest-last admission and a unified analysis JSON
   containing question rows, strata, arm/budget contrasts, model-readable metric
   definitions, artifact hashes, and claim limits.
-- [ ] Run a bounded real-input smoke, then write one reviewed HTC handoff. Use
+- [x] Run bounded real-input validation, then launch from one clean committed
+  runtime. Use
   first-available suitable CUDA GPUs with recorded GPU identity for four-
   question batch jobs (the final job may contain fewer; never mask-level
   shards), 24 GiB host RAM, no requeue, fresh
   roots, and no partial-outcome inspection. Do not compare absolute timing
   across GPU families. Do not submit the
   48-question pilot until the handoff binds a clean consolidated commit.
+  Corrected implementation `2a66d79c105d28ba4ddcd53b9a3015b5db624b67`
+  was admitted after validator fix `90f27d7ed8b99ad10f1a5fe405c131127456ae5d`.
+  Replacement array `62464099` and targeted retry array `62466113` completed all
+  48 unique questions. Canonical unified result:
+  `/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json`.
 
 Acceptance: the pilot is sealed and reproducible, and every selected set is
 evaluated through the actual deletion operator. The old identity-Jaccard
@@ -561,10 +575,8 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-The preliminary 24-correct/24-wrong cohort is sealed. Implement its mapping/
-mask contracts and controlled arms test-first, publish one
-unified analysis schema, and pass a bounded real-input smoke. The preliminary
-pilot runs before the enriched panel. The next GPU action after those steps is
-a newly reviewed four-question-batched first-available-GPU handoff; no pilot submission or method-
-holdout run is currently authorized. Task 10 remains inactive and separately
-gated.
+The preliminary 24-correct/24-wrong pilot and unified analysis are complete.
+Next implement and seal the enriched 16/16/8/8 developmental panel and its
+remaining privilege-matched attention and robust/canonical/reverse ContextCite
+arms. No method-holdout run is currently authorized. Task 10 remains inactive
+and separately gated.

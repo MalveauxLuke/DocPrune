@@ -4,6 +4,17 @@ Date: 2026-08-31
 Status: CPU implementation and sealing authority only. This is not an `sbatch`
 handoff and authorizes no pilot outcome.
 
+> **Superseded 2026-09-01:** This file preserves the pre-launch preparation
+> decision. The fixed-`B_13`, fixed-55/65/80%, query-attention comparison below
+> is no longer the active pilot design. Native aggregate-threshold DocPrune now
+> independently selects each question's layer `l*_q`, budget `M_q`, and exact
+> token set before ContextCite. Regional arms use the same layer and closest
+> attainable whole-region budget. The preliminary pilot later completed under
+> validator-fix runtime `90f27d7ed8b99ad10f1a5fe405c131127456ae5d`,
+> replacement array `62464099`, and targeted retry array `62466113`. Its
+> unified result is `/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json`.
+> Current authority is the amended experiment plan/log and `agent-context`.
+
 ## Objective and claim boundary
 
 Prepare a controlled developmental comparison of an accepted-answer-
@@ -158,7 +169,8 @@ Authorized now:
 
 Git consolidation is complete on `codex/task9-analysis-cpu-20260828`: Task 6
 merge `689432e`, Task 7 merge `c5b212f`, and Task 8 merge `c38cd9c` contain all
-unique accepted Task 6–9 work. No pilot job was submitted.
+unique accepted Task 6–9 work. This records the state when this historical
+handoff was written; the preliminary pilot later ran and completed.
 
 Not authorized now:
 
@@ -180,10 +192,7 @@ IDs remain unset until the bounded smoke measures the final implementation.
 
 ## Immediate next steps
 
-1. Implement the sealed preliminary cohort's mapping/mask inputs and matched
-   selectors test-first.
-2. Implement the direct selected-set runner, validator, and
-   unified analysis JSON test-first.
-3. Run CPU verification and one bounded first-available-GPU smoke.
-4. Write and review a new executable preliminary-pilot handoff; only then request
-   submission.
+Historical steps below were completed or superseded. All 48 preliminary
+questions and the unified analysis are complete. Current next step is the
+separately specified enriched-panel preparation; this handoff is not submission
+authority.

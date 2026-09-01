@@ -1039,3 +1039,74 @@ def test_contextcite_refit_stability_fails_closed_on_cross_identity_and_drift() 
                 candidate_regions,
                 requested_budget=budget,
             )
+
+
+def test_preliminary_pilot_aggregate_is_stratified_and_rejects_duplicate_qids() -> None:
+    """Keep the final pilot package paired by question and baseline stratum."""
+
+    rows = [
+        {
+            "question_id": "correct-1",
+            "baseline_stratum": "baseline_correct",
+            "arms": {
+                "native_docprune": {"f1": 1.0, "em": 1, "gold": -1.0, "margin": 0.5},
+                "contextcite_gold_support": {
+                    "f1": 1.0,
+                    "em": 1,
+                    "gold": -0.8,
+                    "margin": 0.6,
+                },
+                "random_region_size_aware": {
+                    "f1": 0.5,
+                    "em": 0,
+                    "gold": -1.2,
+                    "margin": 0.3,
+                },
+            },
+        },
+        {
+            "question_id": "wrong-1",
+            "baseline_stratum": "baseline_wrong",
+            "arms": {
+                "native_docprune": {"f1": 0.0, "em": 0, "gold": -2.0, "margin": -1.0},
+                "contextcite_gold_support": {
+                    "f1": 1.0,
+                    "em": 1,
+                    "gold": -1.0,
+                    "margin": 0.2,
+                },
+                "random_region_size_aware": {
+                    "f1": 0.0,
+                    "em": 0,
+                    "gold": -2.1,
+                    "margin": -1.1,
+                },
+                "contextcite_gold_margin": {
+                    "f1": 0.5,
+                    "em": 0,
+                    "gold": -1.2,
+                    "margin": 0.1,
+                },
+            },
+        },
+    ]
+    result = task9_attribution.aggregate_task9_preliminary_pilot(
+        rows,
+        expected_qids=("correct-1", "wrong-1"),
+        natural_pool_weights={"baseline_correct": 0.25, "baseline_wrong": 0.75},
+        draws=10,
+        seed=7,
+    )
+
+    assert result["strata"]["baseline_wrong"]["contextcite_vs_native"]["f1_delta"] == 1.0
+    assert result["strata"]["baseline_wrong"]["contextcite_vs_native"]["rescues"] == 1
+    assert result["balanced"]["contextcite_vs_native"]["f1_delta"] == 0.5
+    assert result["natural_reweighted"]["contextcite_vs_native"]["f1_delta"] == 0.75
+    with pytest.raises(ValueError, match="duplicate or missing"):
+        task9_attribution.aggregate_task9_preliminary_pilot(
+            [rows[0], rows[0]],
+            expected_qids=("correct-1", "wrong-1"),
+            natural_pool_weights={"baseline_correct": 0.25, "baseline_wrong": 0.75},
+            draws=10,
+            seed=7,
+        )

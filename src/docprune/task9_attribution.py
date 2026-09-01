@@ -2366,6 +2366,229 @@ def _bootstrap_quantile(values: Sequence[float], fraction: float) -> float:
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
+def aggregate_task9_preliminary_pilot(
+    question_rows: Sequence[Mapping[str, object]],
+    *,
+    expected_qids: Sequence[str],
+    natural_pool_weights: Mapping[str, float],
+    draws: int = 10_000,
+    seed: int = 20_260_901,
+) -> dict[str, object]:
+    """Aggregate the paired, correct/wrong-stratified Task 9 preliminary pilot."""
+
+    strata = ("baseline_correct", "baseline_wrong")
+    expected = tuple(expected_qids)
+    observed = tuple(row.get("question_id") for row in question_rows)
+    if (
+        not expected
+        or len(set(expected)) != len(expected)
+        or len(set(observed)) != len(observed)
+        or set(observed) != set(expected)
+    ):
+        raise ValueError("pilot aggregate has duplicate or missing question IDs")
+    if type(draws) is not int or draws < 1 or type(seed) is not int:
+        raise ValueError("pilot aggregate bootstrap draws/seed are invalid")
+    if set(natural_pool_weights) != set(strata):
+        raise ValueError("pilot aggregate natural weights are invalid")
+    weights = {key: float(natural_pool_weights[key]) for key in strata}
+    if any(
+        not math.isfinite(value) or value <= 0 for value in weights.values()
+    ) or not math.isclose(math.fsum(weights.values()), 1.0):
+        raise ValueError("pilot aggregate natural weights are invalid")
+
+    checked: list[dict[str, object]] = []
+    required_arms = (
+        "native_docprune",
+        "contextcite_gold_support",
+        "random_region_size_aware",
+    )
+    for row in question_rows:
+        stratum = row.get("baseline_stratum")
+        arms = row.get("arms")
+        if (
+            stratum not in strata
+            or not isinstance(arms, Mapping)
+            or any(arm not in arms for arm in required_arms)
+        ):
+            raise ValueError("pilot aggregate row schema is invalid")
+        checked_arms: dict[str, dict[str, float | int]] = {}
+        for arm, metrics in arms.items():
+            if not isinstance(arm, str) or not isinstance(metrics, Mapping):
+                raise ValueError("pilot aggregate arm schema is invalid")
+            if set(metrics) != {"f1", "em", "gold", "margin"}:
+                raise ValueError("pilot aggregate arm metrics are invalid")
+            values = {key: float(metrics[key]) for key in ("f1", "gold", "margin")}
+            em = metrics["em"]
+            if (
+                any(not math.isfinite(value) for value in values.values())
+                or not 0.0 <= values["f1"] <= 1.0
+                or type(em) is not int
+                or em not in (0, 1)
+            ):
+                raise ValueError("pilot aggregate arm metrics are invalid")
+            checked_arms[arm] = {**values, "em": em}
+        checked.append(
+            {
+                "question_id": row["question_id"],
+                "baseline_stratum": stratum,
+                "arms": checked_arms,
+            }
+        )
+
+    by_stratum = {
+        stratum: [row for row in checked if row["baseline_stratum"] == stratum]
+        for stratum in strata
+    }
+    if any(not rows for rows in by_stratum.values()):
+        raise ValueError("pilot aggregate requires both baseline strata")
+
+    def mean(values: Sequence[float]) -> float:
+        return math.fsum(values) / len(values)
+
+    def arm_summary(rows: Sequence[Mapping[str, object]], arm: str) -> dict[str, object] | None:
+        available = [row for row in rows if arm in row["arms"]]
+        if not available:
+            return None
+        return {
+            "n": len(available),
+            "mean_f1": mean([float(row["arms"][arm]["f1"]) for row in available]),
+            "exact_match_rate": mean([float(row["arms"][arm]["em"]) for row in available]),
+            "mean_gold_loglikelihood": mean([float(row["arms"][arm]["gold"]) for row in available]),
+            "mean_gold_vs_alternative_margin": mean(
+                [float(row["arms"][arm]["margin"]) for row in available]
+            ),
+        }
+
+    def contrast(rows: Sequence[Mapping[str, object]], other: str) -> dict[str, object]:
+        support = "contextcite_gold_support"
+        deltas = {
+            metric: [
+                float(row["arms"][support][metric]) - float(row["arms"][other][metric])
+                for row in rows
+            ]
+            for metric in ("f1", "em", "gold", "margin")
+        }
+        f1_deltas = deltas["f1"]
+        return {
+            "n": len(rows),
+            "f1_delta": mean(f1_deltas),
+            "exact_match_delta": mean(deltas["em"]),
+            "gold_loglikelihood_delta": mean(deltas["gold"]),
+            "gold_vs_alternative_margin_delta": mean(deltas["margin"]),
+            "wins": sum(value > 0 for value in f1_deltas),
+            "ties": sum(value == 0 for value in f1_deltas),
+            "losses": sum(value < 0 for value in f1_deltas),
+            "rescues": sum(
+                row["arms"][support]["em"] == 1 and row["arms"][other]["em"] == 0 for row in rows
+            ),
+            "harms": sum(
+                row["arms"][support]["em"] == 0 and row["arms"][other]["em"] == 1 for row in rows
+            ),
+        }
+
+    def summary(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
+        arms = sorted({arm for row in rows for arm in row["arms"]})
+        return {
+            "n": len(rows),
+            "arms": {arm: arm_summary(rows, arm) for arm in arms},
+            "contextcite_vs_native": contrast(rows, "native_docprune"),
+            "contextcite_vs_regional_random": contrast(rows, "random_region_size_aware"),
+        }
+
+    stratum_summaries = {stratum: summary(rows) for stratum, rows in by_stratum.items()}
+
+    def weighted_contrast(weight_map: Mapping[str, float], other: str) -> dict[str, float]:
+        keys = {
+            "f1_delta",
+            "exact_match_delta",
+            "gold_loglikelihood_delta",
+            "gold_vs_alternative_margin_delta",
+        }
+        return {
+            key: math.fsum(
+                weight_map[stratum]
+                * float(
+                    stratum_summaries[stratum][
+                        "contextcite_vs_native"
+                        if other == "native_docprune"
+                        else "contextcite_vs_regional_random"
+                    ][key]
+                )
+                for stratum in strata
+            )
+            for key in keys
+        }
+
+    balanced_weights = {stratum: 0.5 for stratum in strata}
+    aggregate_views: dict[str, dict[str, object]] = {}
+    for label, weight_map in (("balanced", balanced_weights), ("natural_reweighted", weights)):
+        aggregate_views[label] = {
+            "stratum_weights": dict(weight_map),
+            "contextcite_vs_native": weighted_contrast(weight_map, "native_docprune"),
+            "contextcite_vs_regional_random": weighted_contrast(
+                weight_map, "random_region_size_aware"
+            ),
+        }
+
+    generator = random.Random(seed)
+    bootstrap: dict[str, list[float]] = {
+        f"{view}:{other}:{metric}": []
+        for view in ("balanced", "natural_reweighted")
+        for other in ("native_docprune", "random_region_size_aware")
+        for metric in ("f1", "em")
+    }
+    for _ in range(draws):
+        sampled = {
+            stratum: [rows[generator.randrange(len(rows))] for _ in rows]
+            for stratum, rows in by_stratum.items()
+        }
+        for view, weight_map in (("balanced", balanced_weights), ("natural_reweighted", weights)):
+            for other in ("native_docprune", "random_region_size_aware"):
+                for metric in ("f1", "em"):
+                    support = "contextcite_gold_support"
+                    value = math.fsum(
+                        weight_map[stratum]
+                        * mean(
+                            [
+                                float(row["arms"][support][metric])
+                                - float(row["arms"][other][metric])
+                                for row in sampled[stratum]
+                            ]
+                        )
+                        for stratum in strata
+                    )
+                    bootstrap[f"{view}:{other}:{metric}"].append(value)
+    intervals = {
+        view: {
+            other: {
+                f"{metric}_delta_interval_95": [
+                    _bootstrap_quantile(bootstrap[f"{view}:{other}:{metric}"], 0.025),
+                    _bootstrap_quantile(bootstrap[f"{view}:{other}:{metric}"], 0.975),
+                ]
+                for metric in ("f1", "em")
+            }
+            for other in ("native_docprune", "random_region_size_aware")
+        }
+        for view in ("balanced", "natural_reweighted")
+    }
+    for view in aggregate_views:
+        aggregate_views[view]["bootstrap_intervals"] = intervals[view]
+
+    return {
+        "method": "paired-question-stratified-task9-preliminary-pilot",
+        "question_count": len(checked),
+        "strata": stratum_summaries,
+        **aggregate_views,
+        "bootstrap": {
+            "method": "within-stratum-question-nonparametric-percentile",
+            "confidence_level": 0.95,
+            "draw_count": draws,
+            "seed": seed,
+            "draws_sha256": _canonical_sha256(bootstrap),
+        },
+    }
+
+
 def _replay_aggregate_raw_input(
     value: object,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:

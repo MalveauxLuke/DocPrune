@@ -31,8 +31,7 @@ surrogate has sufficient global predictive fidelity for a controlled oracle
 pilot. On 2026-08-31 the user superseded the old `0.8` exact selected-set
 Jaccard admission rule and approved preparation of a 48-question
 answer-conditioned causal-selection pilot. A preliminary 24-correct/24-wrong
-stratified-random cohort is now sealed to run before the enriched panel. No
-current experiment job is active.
+stratified-random cohort ran before the enriched panel and is complete.
 
 The separate Task 6 fixed-page holdout root contains 1,213 sealed QIDs and
 1,213 result files, each intended to hold the aggregate-score-versus-20-random
@@ -43,9 +42,7 @@ random comparator. Task 6 branch/code and final analysis authority are
 consolidated separately.
 
 Unique accepted Task 6–9 work is consolidated on the active Task 9 branch.
-Next action: implement and smoke the sealed preliminary cohort's region
-mappings, budget-local masks, matched selectors, and unified pilot analysis.
-The enriched cohort follows the preliminary pilot. No 48-question pilot,
+Next action: prepare and seal the enriched cohort and remaining arms. No
 method holdout, retrieval, feature rebuild, or Task 10 job is currently
 authorized. Task 10 remains separately approval gated.
 
@@ -1283,3 +1280,89 @@ therefore keeps the authenticated Task 6 row as the sampling-stratum and
 fixed-page reference, but freezes the newly captured BTP/QTP geometry as the
 common action space for every pilot arm. Original and post-BTP counts must
 still match the reference; exact Task 8 replay behavior remains unchanged.
+
+### Task 9 native-comparator correction and pilot launch — 2026-09-01
+
+The user approved replacing the fixed-B13 regional-attention comparison with a
+fair native DocPrune comparison. For each question, native aggregate-threshold
+DocPrune now runs first and independently selects its crossing layer `l*_q`,
+exact retained count `M_q`, and retained-token IDs. That layer is frozen for
+ContextCite and regional random. Their whole-region knapsack uses the closest
+attainable common cost `M′_q <= M_q`; all pruned arms use the same physical-
+deletion implementation and original M-RoPE positions. The 256 fit masks, 32
+global holdouts, and 32 holdouts local to the native budget remain unchanged.
+FastV, new uniform-random, and coverage-matched-random arms remain excluded.
+
+Fixed-B13 array `62463802` was cancelled after this correction was approved.
+Its completed or partial outputs, together with completed batch-0 job
+`62463676`, remain preserved as secondary fixed-layer diagnostics and are not
+mixed into the corrected pilot.
+
+Implementation commit:
+`2a66d79c105d28ba4ddcd53b9a3015b5db624b67`. Focused verification passed 37
+attribution/intervention tests with the pinned ContextCite solver, Ruff, Python
+compilation, and the batch-0 no-model input/mapping validation. The runtime was
+clean at submission.
+
+Corrected HTC array `62463982` was submitted as 12 four-question batches with
+up to 12 concurrent tasks, first-available supported CUDA GPU including A30,
+24 GiB host RAM, 75-minute limits, and no requeue. Initial scheduler state had
+batches 0–3 running and 4–11 pending for resources. Fresh artifact root:
+`/scratch/lmalveau/docprune/task9-preliminary-dynamic48-2a66d79-v1`. Do not
+interpret partial scientific outcomes; wait for all batches, validate all 48
+question artifacts, and then emit the unified analysis JSON.
+
+### Task 9 preliminary dynamic-48 completion and unified analysis — 2026-09-01
+
+Array `62463982` did not produce admissible final outcomes: its first four tasks
+reached a validator incompatibility and later tasks encountered the temporary
+dirty-runtime guard. The raw root is preserved at
+`/scratch/lmalveau/docprune/task9-preliminary-dynamic48-2a66d79-v1` and is not
+mixed into the result. Validator fix commit
+`90f27d7ed8b99ad10f1a5fe405c131127456ae5d` admitted the native dynamic
+selection schema. Replacement array `62464099` ran the 12 four-question
+batches at
+`/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1`.
+Batches 5–7 timed out after two questions each without code errors or OOMs.
+Targeted retry array `62466113` ran only missing ordinals 22, 23, 26, 27, 30,
+and 31 as one-question jobs with the original 75-minute limit; all completed at
+`/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1`.
+
+The final verifier admitted exactly the sealed 48 unique QIDs across those two
+roots and checked cohort, selected-arm, analysis, per-question-analysis, and
+individual arm-result signatures. Canonical unified output:
+
+```text
+path: /scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json
+internal SHA-256: 985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8c5
+bootstrap: 10,000 within-stratum question resamples, seed 20260901
+```
+
+Primary gold-support ContextCite results versus native dynamic DocPrune:
+
+- baseline-correct (`n=24`): both mean token-F1 and EM were `1.0`; paired
+  F1/EM delta `0`, win/tie/loss `0/24/0`, rescue/harm `0/0`;
+- baseline-wrong (`n=24`): ContextCite mean F1 `0.38125` versus DocPrune
+  `0.13750` (paired delta `+0.24375`), EM `4/24` versus `0/24`,
+  win/tie/loss `9/15/0`, rescues/harms `4/0`;
+- balanced descriptive delta: F1 `+0.121875` (question-bootstrap 95% interval
+  `[0.051042, 0.203125]`) and EM `+0.083333` (`[0.020833, 0.166667]`);
+- natural-pool reweighted descriptive delta using 90/245 correct and 155/245
+  wrong: F1 `+0.154209` (`[0.064583, 0.257015]`) and EM `+0.105442`
+  (`[0.026361, 0.210884]`).
+
+Against the matched region-size-aware random control, balanced paired F1 delta
+was `+0.155208` and natural-reweighted delta `+0.174277`. On baseline-wrong
+questions, gold-margin ContextCite achieved mean F1 `0.36875` and EM `5/24`,
+versus gold-support F1 `0.38125` and EM `4/24`; it remains a conditional
+diagnostic, not a full-cohort arm.
+
+Surrogate diagnostics are supportive but heterogeneous: global LDS mean/min
+`0.775738`/`0.308651`, with 44/48 at least `0.5` and RMSE beating constant on
+48/48; native-budget-local LDS mean/min `0.622393`/`-0.103006`, with 35/48 at
+least `0.5` and RMSE beating constant on 45/48. Therefore the direct generated
+outcomes are primary and question-level local-fidelity warnings remain in the
+unified JSON. This is development-pilot evidence for an answer-conditioned
+regional surrogate, not vanilla ContextCite, a token oracle, or a held-out
+population estimate. The enriched developmental panel is next; no method
+holdout is authorized.

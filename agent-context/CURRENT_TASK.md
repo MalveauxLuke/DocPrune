@@ -21,8 +21,9 @@ versus constant `0.99428`; coefficient-refit Spearman mean/min is
 `0.66975`/`0.57412`, while selected-set Jaccard mean/min is `0.70779`/`0.65`.
 The user approved bypassing the old `0.8` exact-set identity gate and proceeding
 with a controlled answer-conditioned oracle pilot whose stability is judged by
-budget-local fidelity and actual budgeted-set outcomes. B13 stays primary;
-`B_input` and the generated-response target remain diagnostics.
+budget-local fidelity and actual budgeted-set outcomes. B13 and `B_input` now
+remain historical diagnostics; the active pilot uses each question's native
+dynamic layer and budget.
 
 The approved sequence now begins with a preliminary stratified-random
 48-question pilot drawn from the authenticated 245-question BTP+QTP/no-CTP
@@ -30,23 +31,31 @@ pool: 24 baseline-correct and 24 baseline-wrong questions sampled randomly
 within stratum. It is sealed at
 `/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json` with file
 SHA-256 `123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273`.
+For each question, native aggregate-threshold DocPrune first and independently
+freezes its crossing layer `l*_q`, exact budget `M_q`, and retained token set.
+ContextCite and regional random use that layer and the closest attainable
+whole-region cost at or below `M_q`. The preliminary pilot is complete. The
+corrected implementation was committed at `2a66d79`; validator-fix runtime
+`90f27d7ed8b99ad10f1a5fe405c131127456ae5d` produced the admitted results in
+array `62464099`, with only six timed-out questions retried by array `62466113`.
 The previously approved enriched 48-question developmental
 mechanism panel follows: 16 uniformly sampled eligible questions, 16 traceable
 distractor errors, 8 high-ambiguity correct questions, and 8 clean controls.
 Both use 256 fit masks, 32
-global and 32 primary-budget-local holdouts, B13 physical deletion, matched
-55/65/80% whole-region budgets, query-only attention, gold-conditioned
+global and 32 native-budget-local holdouts, per-question dynamic physical
+deletion, native DocPrune, gold-conditioned
 attention, robust/canonical accepted-answer ContextCite, reverse ContextCite,
 unpruned, and a traceable-only audited constraint. FastV and new random or
 coverage pruning families are excluded. The preliminary pilot alone includes
 one matched region-size-aware random comparator required for its same-action-
 space interpretation. The existing 1,213-question Task 6 random-versus-
 DocPrune evidence remains separate and is not rerun.
-Current non-executable preparation authority is
-`sol/handoffs/DOCPRUNE_TASK9_ORACLE_PILOT_PREPARATION_2026-08-31.md`.
+The 2026-08-31 non-executable preparation handoff is preserved as historical;
+the amended experiment plan/log, this file, and runtime commit `90f27d7` are
+current authority.
 All unique accepted Task 6–9 Git work is now consolidated on
 `codex/task9-analysis-cpu-20260828`: Task 6 merge `689432e`, Task 7 merge
-`c5b212f`, and Task 8 merge `c38cd9c`. No pilot job has been submitted.
+`c5b212f`, and Task 8 merge `c38cd9c`.
 
 The evaluation measurement fix and durable HTC shard pipeline are sealed at runtime
 `4e2473bdbbc2e4eca0e92c30d4a0633044501ccf`. The validated schema-5 indexes are promoted without
@@ -169,9 +178,9 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Implement and test the sealed preliminary cohort's mappings, mask design,
-matched selectors, evaluation, and unified analysis
-JSON. After a bounded real-input smoke, write a fresh four-question-batched handoff
-for first-available suitable CUDA GPUs, recording GPU identity and avoiding
-cross-family absolute timing comparisons. Run the enriched pilot only afterward. No pilot or method-holdout
-submission is currently authorized.
+Prepare the already-planned enriched pilot: seal its outcome-blind 16/16/8/8
+cohort and implement the remaining gold-attention, robust/canonical/reverse
+ContextCite, and audited traceable arms. Do not submit a method holdout. The
+preliminary unified JSON is
+`/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json`
+(internal SHA-256 `985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8c5`).
