@@ -6,7 +6,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="[a30|a100_40|a100_80|l40s|l40|h100|h100_80|h200]"
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=20G
+#SBATCH --mem=24G
 #SBATCH --time=00:45:00
 #SBATCH --array=0-11%12
 #SBATCH --no-requeue
