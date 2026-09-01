@@ -386,10 +386,12 @@ def test_task9_preliminary_geometry_launcher_is_question_sharded_and_hash_discov
     )
 
     assert "#SBATCH --array=0-47%8" in launcher
-    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --constraint=" not in launcher
     assert "#SBATCH --time=00:15:00" in launcher
     assert "expected_post_qtp_visual_tokens" in launcher
     assert "selected-source-results.jsonl" in launcher
+    assert "probe_task8_gpu.sh" in launcher
+    assert "probe_task7_l40s_gpu.sh" not in launcher
     assert "HF_HUB_OFFLINE=1" in launcher
     assert "TRANSFORMERS_OFFLINE=1" in launcher
     assert "expected_geometry_sha256=None" in wrapper

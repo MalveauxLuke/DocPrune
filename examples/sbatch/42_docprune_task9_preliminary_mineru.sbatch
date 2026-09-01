@@ -5,7 +5,6 @@
 #SBATCH --qos=public
 #SBATCH --array=0-47%8
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=l40s
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
 #SBATCH --time=00:20:00

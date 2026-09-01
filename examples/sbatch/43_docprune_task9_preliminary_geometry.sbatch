@@ -5,7 +5,6 @@
 #SBATCH --qos=public
 #SBATCH --array=0-47%8
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=l40s
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=48G
 #SBATCH --time=00:15:00
@@ -42,6 +41,7 @@ read -r QID INPUT_MANIFEST INPUT_MANIFEST_SHA256 EXPECTED_GEOMETRY_COUNT < <(
 readonly QID INPUT_MANIFEST INPUT_MANIFEST_SHA256 EXPECTED_GEOMETRY_COUNT
 readonly JOB_ROOT="$BATCH_ROOT/$(printf '%02d' "$SLURM_ARRAY_TASK_ID")-$QID"
 readonly OUTPUT="$JOB_ROOT/geometry.json"
+readonly GPU_MANIFEST="$JOB_ROOT/gpu.json"
 mkdir "$JOB_ROOT"
 
 export PYTHONNOUSERSITE=1
@@ -56,7 +56,7 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 export TOKENIZERS_PARALLELISM=false
 
-"$RUNTIME_DIR/examples/probe_task7_l40s_gpu.sh" "$PYTHON" > "$JOB_ROOT/gpu.txt"
+"$RUNTIME_DIR/examples/probe_task8_gpu.sh" "$PYTHON" "$GPU_MANIFEST"
 "$PYTHON" "$RUNTIME_DIR/examples/run_task9_preliminary_geometry_capture.py" \
   --fixture "$FIXTURE" \
   --fixture-sha256 "$FIXTURE_SHA256" \
@@ -69,4 +69,4 @@ export TOKENIZERS_PARALLELISM=false
   --output "$OUTPUT" \
   --runtime-commit "$RUNTIME_COMMIT"
 
-sha256sum "$OUTPUT" "$JOB_ROOT/gpu.txt" > "$JOB_ROOT/artifacts.sha256"
+sha256sum "$OUTPUT" "$GPU_MANIFEST" > "$JOB_ROOT/artifacts.sha256"

@@ -526,7 +526,7 @@ def test_task9_preliminary_mineru_launcher_is_question_sharded_and_retrieval_fre
     ).read_text(encoding="utf-8")
 
     assert "#SBATCH --array=0-47%8" in launcher
-    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --constraint=" not in launcher
     assert "#SBATCH --time=00:20:00" in launcher
     assert "preprocessing-manifest.json" in launcher
     assert 'SLURM_ARRAY_TASK_ID' in launcher
