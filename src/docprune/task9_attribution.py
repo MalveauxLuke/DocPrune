@@ -1501,12 +1501,11 @@ def build_task9_preliminary_arm_selections(
     regions: Sequence[Mapping[str, object]],
     *,
     question_id: str,
-    query_attention_scores: Mapping[str, float],
+    requested_token_count: int,
     gold_support_scores: Mapping[str, float],
     gold_margin_scores: Mapping[str, float] | None = None,
-    retained_fractions: Sequence[float] = (0.55, 0.65, 0.8),
 ) -> dict[str, object]:
-    """Select the random-48 pilot arms at matched whole-region token costs."""
+    """Select ContextCite/random arms at native DocPrune's token budget."""
 
     if not isinstance(question_id, str) or not question_id:
         raise ValueError("question_id must be a nonempty string")
@@ -1516,7 +1515,6 @@ def build_task9_preliminary_arm_selections(
     ]
     source_ids = [source_id for source_id, _ in validated]
     score_sets: list[tuple[str, Mapping[str, float]]] = [
-        ("docprune_query_attention", query_attention_scores),
         ("contextcite_gold_support", gold_support_scores),
     ]
     if gold_margin_scores is not None:
@@ -1534,41 +1532,36 @@ def build_task9_preliminary_arm_selections(
     score_sets.append(("random_region_size_aware", random_scores))
 
     total_cost = sum(cost for _, cost in validated)
-    budgets: list[dict[str, object]] = []
-    for raw_fraction in retained_fractions:
-        if (
-            isinstance(raw_fraction, bool)
-            or not isinstance(raw_fraction, int | float)
-            or not math.isfinite(float(raw_fraction))
-            or not 0 < float(raw_fraction) <= 1
-        ):
-            raise ValueError("retained fractions must be finite and in (0, 1]")
-        fraction = float(raw_fraction)
-        requested = math.floor(fraction * total_cost + 0.5)
-        arms: list[dict[str, object]] = []
-        for arm, scores in score_sets:
-            selected = whole_region_knapsack(
-                checked_regions,
-                coefficients=scores,
-                requested_budget=requested,
-            )
-            arms.append(
-                {
-                    "arm": arm,
-                    "retained_source_ids": selected["top_source_ids"],
-                    "achieved_token_count": selected["achieved_budget"],
-                }
-            )
-        budgets.append(
+    if (
+        type(requested_token_count) is not int
+        or requested_token_count <= 0
+        or requested_token_count > total_cost
+    ):
+        raise ValueError("requested token count must be within the regional token population")
+    arms: list[dict[str, object]] = []
+    for arm, scores in score_sets:
+        selected = whole_region_knapsack(
+            checked_regions,
+            coefficients=scores,
+            requested_budget=requested_token_count,
+        )
+        arms.append(
             {
-                "retained_fraction": fraction,
-                "requested_token_count": requested,
-                "achieved_token_count": arms[0]["achieved_token_count"],
-                "arms": arms,
+                "arm": arm,
+                "retained_source_ids": selected["top_source_ids"],
+                "achieved_token_count": selected["achieved_budget"],
             }
         )
+    budgets = [
+        {
+            "retained_fraction": requested_token_count / total_cost,
+            "requested_token_count": requested_token_count,
+            "achieved_token_count": arms[0]["achieved_token_count"],
+            "arms": arms,
+        }
+    ]
     result: dict[str, object] = {
-        "schema_version": "docprune-task9-preliminary-arm-selections-v1",
+        "schema_version": "docprune-task9-preliminary-dynamic-arm-selections-v1",
         "question_id": question_id,
         "total_region_token_count": total_cost,
         "gold_margin_available": gold_margin_scores is not None,
@@ -1586,7 +1579,7 @@ def analyze_task9_preliminary_question(
 ) -> dict[str, object]:
     """Build one self-contained preliminary-pilot result for later aggregation."""
 
-    required = {"unpruned", "docprune_query_attention", "contextcite_gold_support"}
+    required = {"unpruned", "native_docprune", "contextcite_gold_support"}
     if not isinstance(question_id, str) or not question_id:
         raise ValueError("question_id must be a nonempty string")
     if set(arm_results) < required:
@@ -1624,7 +1617,7 @@ def analyze_task9_preliminary_question(
         }
 
     baseline = checked["unpruned"]
-    docprune = checked["docprune_query_attention"]
+    docprune = checked["native_docprune"]
     comparisons: dict[str, dict[str, object]] = {}
     for contextcite_arm in ("contextcite_gold_support", "contextcite_gold_margin"):
         if contextcite_arm not in checked:
@@ -1868,7 +1861,7 @@ def analyze_task9_preliminary_attribution(
     secondary_design: Mapping[str, object],
     secondary_outcomes: Sequence[Mapping[str, object]],
     regions: Sequence[Mapping[str, object]],
-    query_attention_scores: Mapping[str, float],
+    requested_token_count: int,
     budget_local_masks: Sequence[Sequence[bool]],
     budget_local_primary_targets: Sequence[float],
     budget_local_secondary_targets: Sequence[float],
@@ -1905,7 +1898,13 @@ def analyze_task9_preliminary_attribution(
     ]
     source_ids = [source_id for source_id, _ in validated_regions]
     total_cost = sum(cost for _, cost in validated_regions)
-    requested_primary_budget = math.floor(total_cost * 0.65 + 0.5)
+    if (
+        type(requested_token_count) is not int
+        or requested_token_count <= 0
+        or requested_token_count > total_cost
+    ):
+        raise ValueError("native DocPrune budget is outside the regional token population")
+    requested_primary_budget = requested_token_count
 
     primary = analyze_contextcite_development_question(
         primary_design,
@@ -2010,7 +2009,7 @@ def analyze_task9_preliminary_attribution(
     selections = build_task9_preliminary_arm_selections(
         checked_regions,
         question_id=primary_identity["question_id"],
-        query_attention_scores=query_attention_scores,
+        requested_token_count=requested_primary_budget,
         gold_support_scores=primary_surrogate["coefficients"],
         gold_margin_scores=margin_scores,
     )

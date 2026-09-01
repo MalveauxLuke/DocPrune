@@ -89,7 +89,7 @@ def main() -> None:
         secondary_design=secondary["design"],
         secondary_outcomes=secondary["outcomes"],
         regions=regions,
-        query_attention_scores=raw["query_region_aggregate_logit_sums"],
+        requested_token_count=raw["native_docprune_selection"]["achieved_budget"],
         budget_local_masks=[row["vector"] for row in raw["budget_local_plan"]],
         budget_local_primary_targets=[max(row[:reference_count]) for row in local_rows],
         budget_local_secondary_targets=[row[reference_count] for row in local_rows],

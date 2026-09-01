@@ -392,17 +392,16 @@ def test_preliminary_arm_selections_match_whole_region_cost_at_each_budget() -> 
     selections = build_task9_preliminary_arm_selections(
         regions,
         question_id="q-001",
-        query_attention_scores={"region-a": 4, "region-b": 3, "region-c": 2, "region-d": 1},
+        requested_token_count=6,
         gold_support_scores={"region-a": 1, "region-b": 2, "region-c": 3, "region-d": 4},
         gold_margin_scores={"region-a": -1, "region-b": 0, "region-c": 1, "region-d": 2},
     )
 
-    assert [row["retained_fraction"] for row in selections["budgets"]] == [0.55, 0.65, 0.8]
+    assert [row["requested_token_count"] for row in selections["budgets"]] == [6]
     for budget in selections["budgets"]:
         costs = {arm["achieved_token_count"] for arm in budget["arms"]}
         assert len(costs) == 1
         assert [arm["arm"] for arm in budget["arms"]] == [
-            "docprune_query_attention",
             "contextcite_gold_support",
             "contextcite_gold_margin",
             "random_region_size_aware",
@@ -410,7 +409,7 @@ def test_preliminary_arm_selections_match_whole_region_cost_at_each_budget() -> 
     assert selections == build_task9_preliminary_arm_selections(
         regions,
         question_id="q-001",
-        query_attention_scores={"region-a": 4, "region-b": 3, "region-c": 2, "region-d": 1},
+        requested_token_count=6,
         gold_support_scores={"region-a": 1, "region-b": 2, "region-c": 3, "region-d": 4},
         gold_margin_scores={"region-a": -1, "region-b": 0, "region-c": 1, "region-d": 2},
     )
@@ -421,7 +420,7 @@ def test_preliminary_arm_selections_omit_unavailable_gold_margin_arm() -> None:
     selections = build_task9_preliminary_arm_selections(
         regions,
         question_id="q-002",
-        query_attention_scores={source["source_id"]: 1 for source in regions},
+        requested_token_count=6,
         gold_support_scores={source["source_id"]: 1 for source in regions},
     )
 
@@ -443,7 +442,7 @@ def test_preliminary_question_analysis_reports_paired_rescue_and_likelihood_chan
                 "gold_mean_loglikelihood": -2.0,
                 "alternative_mean_loglikelihood": -1.0,
             },
-            "docprune_query_attention": {
+            "native_docprune": {
                 "normalized_token_f1": 0.0,
                 "exact_match": False,
                 "gold_mean_loglikelihood": -2.5,
@@ -548,7 +547,7 @@ def test_preliminary_attribution_analysis_connects_global_local_and_arm_selectio
         secondary_design=secondary,
         secondary_outcomes=outcomes(secondary, lambda row: 0.0),
         regions=regions,
-        query_attention_scores={region["source_id"]: 1.0 for region in regions},
+        requested_token_count=6,
         budget_local_masks=local_masks,
         budget_local_primary_targets=[float(row[0]) for row in local_masks],
         budget_local_secondary_targets=[0.0] * len(local_masks),
@@ -559,11 +558,7 @@ def test_preliminary_attribution_analysis_connects_global_local_and_arm_selectio
     assert result["gold_support"]["budget_local_fidelity"]["lds_spearman"] == pytest.approx(1.0)
     assert result["gold_margin"]["available"] is True
     assert result["selections"]["gold_margin_available"] is True
-    assert [row["retained_fraction"] for row in result["selections"]["budgets"]] == [
-        0.55,
-        0.65,
-        0.8,
-    ]
+    assert [row["requested_token_count"] for row in result["selections"]["budgets"]] == [6]
 
 
 def test_contextcite_lasso_rejects_noncanonical_fit_inputs_before_solver_import() -> None:

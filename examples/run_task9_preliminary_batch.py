@@ -27,7 +27,6 @@ _MAPPINGS = Path("/scratch/lmalveau/docprune/task9-preliminary-mappings-ecd1a87-
 _ATTEMPT = Path("/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2")
 _RUN_CONFIG = _ATTEMPT / "run-configs/docprune-top4-task6-clean-m3-v1.json"
 _INDEX_MANIFEST = _ATTEMPT / "indexes/docprune/top4/docprune/manifest.json"
-_REUSE_Q0_ROOT = Path("/scratch/lmalveau/docprune/task9-preliminary-attribution-smoke-d66a523-v1")
 
 
 def _sha256(path: Path) -> str:
@@ -140,70 +139,66 @@ def main() -> None:
         qid = item["qid"]
         question_root = args.job_root / f"{ordinal:02d}-{qid}"
         question_root.mkdir()
-        if ordinal == 0:
-            raw_root = _REUSE_Q0_ROOT / "output"
-            analysis_path = _REUSE_Q0_ROOT / "analysis.json"
-        else:
-            raw_root = question_root / "raw"
-            _run(
-                [
-                    str(_SOL_PYTHON),
-                    str(args.runtime_dir / "examples/run_task9_regional_development.py"),
-                    "--config",
-                    str(config),
-                    "--run-config",
-                    str(_RUN_CONFIG),
-                    "--index-manifest",
-                    str(_INDEX_MANIFEST),
-                    "--fixture",
-                    str(_FIXTURE),
-                    "--fixture-sha256",
-                    _FIXTURE_SHA256,
-                    "--preliminary-cohort",
-                    str(_COHORT),
-                    "--preliminary-cohort-sha256",
-                    _COHORT_SHA256,
-                    "--mapping",
-                    str(item["mapping_path"]),
-                    "--mapping-sha256",
-                    str(item["mapping_sha256"]),
-                    "--expected-geometry-count",
-                    str(item["geometry_count"]),
-                    "--expected-geometry-sha256",
-                    str(item["geometry_sha256"]),
-                    "--qid",
-                    str(qid),
-                    "--boundary",
-                    "13",
-                    "--fit-mask-count",
-                    "256",
-                    "--holdout-mask-count",
-                    "32",
-                    "--budget-local-holdout-mask-count",
-                    "32",
-                    "--output",
-                    str(raw_root),
-                    "--runtime-dir",
-                    str(args.runtime_dir),
-                    "--runtime-commit",
-                    args.runtime_commit,
-                ],
-                env=base_env,
-            )
-            analysis_path = question_root / "analysis.json"
-            _run(
-                [
-                    str(_CONTEXTCITE_PYTHON),
-                    str(args.runtime_dir / "examples/analyze_task9_preliminary_attribution.py"),
-                    "--root",
-                    str(raw_root),
-                    "--output",
-                    str(analysis_path),
-                    "--decoder-layer-count",
-                    "28",
-                ],
-                env=analysis_env,
-            )
+        raw_root = question_root / "raw"
+        _run(
+            [
+                str(_SOL_PYTHON),
+                str(args.runtime_dir / "examples/run_task9_regional_development.py"),
+                "--config",
+                str(config),
+                "--run-config",
+                str(_RUN_CONFIG),
+                "--index-manifest",
+                str(_INDEX_MANIFEST),
+                "--fixture",
+                str(_FIXTURE),
+                "--fixture-sha256",
+                _FIXTURE_SHA256,
+                "--preliminary-cohort",
+                str(_COHORT),
+                "--preliminary-cohort-sha256",
+                _COHORT_SHA256,
+                "--mapping",
+                str(item["mapping_path"]),
+                "--mapping-sha256",
+                str(item["mapping_sha256"]),
+                "--expected-geometry-count",
+                str(item["geometry_count"]),
+                "--expected-geometry-sha256",
+                str(item["geometry_sha256"]),
+                "--qid",
+                str(qid),
+                "--boundary",
+                "dynamic",
+                "--fit-mask-count",
+                "256",
+                "--holdout-mask-count",
+                "32",
+                "--budget-local-holdout-mask-count",
+                "32",
+                "--output",
+                str(raw_root),
+                "--runtime-dir",
+                str(args.runtime_dir),
+                "--runtime-commit",
+                args.runtime_commit,
+            ],
+            env=base_env,
+        )
+        analysis_path = question_root / "analysis.json"
+        _run(
+            [
+                str(_CONTEXTCITE_PYTHON),
+                str(args.runtime_dir / "examples/analyze_task9_preliminary_attribution.py"),
+                "--root",
+                str(raw_root),
+                "--output",
+                str(analysis_path),
+                "--decoder-layer-count",
+                "28",
+            ],
+            env=analysis_env,
+        )
         selected_path = question_root / "selected-arms.json"
         _run(
             [

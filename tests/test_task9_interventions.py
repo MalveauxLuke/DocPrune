@@ -220,7 +220,7 @@ def test_selected_arm_plan_translates_region_ids_to_physical_visual_ids() -> Non
                 "achieved_token_count": 4,
                 "arms": [
                     {
-                        "arm": "docprune_query_attention",
+                        "arm": "random_region_size_aware",
                         "retained_source_ids": ["region-a", "region-c"],
                         "achieved_token_count": 4,
                     },
@@ -237,7 +237,7 @@ def test_selected_arm_plan_translates_region_ids_to_physical_visual_ids() -> Non
     plan = builder(_mapping(), selections, boundary="B_13")
 
     assert [(row["arm"], row["retained_visual_ids"]) for row in plan] == [
-        ("docprune_query_attention", [0, 2, 3, 5]),
+        ("random_region_size_aware", [0, 2, 3, 5]),
         ("contextcite_gold_support", [1, 3, 4, 5]),
     ]
     assert all(row["forced_intervention"].boundary == 13 for row in plan)

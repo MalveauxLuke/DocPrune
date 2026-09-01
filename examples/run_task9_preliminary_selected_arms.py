@@ -13,7 +13,7 @@ import torch
 
 from docprune.answerers import DocPruneQwenAnswerer, prepare_task7_likelihood_target_for_question
 from docprune.config import load_config
-from docprune.ctp_policy import btp_qtp_no_ctp_policy
+from docprune.ctp_policy import aggregate_native_threshold_policy, btp_qtp_no_ctp_policy
 from docprune.evaluation import list_em, list_f1
 from docprune.m3docrag import RetrievalOutput
 from docprune.m3docvqa_factory import build_workload
@@ -111,6 +111,9 @@ def _answer_record(
         },
         "forced_intervention": (
             None if output.forced_intervention is None else output.forced_intervention.to_dict()
+        ),
+        "policy_selection": (
+            None if output.policy_selection is None else output.policy_selection.to_dict()
         ),
     }
     result["result_sha256"] = _canonical_sha256(result)
@@ -226,6 +229,19 @@ def main() -> None:
             kwargs["forced_intervention"] = forced
         return DocPruneQwenAnswerer(base.model, base.processor, **kwargs)
 
+    def configured_native() -> DocPruneQwenAnswerer:
+        return DocPruneQwenAnswerer(
+            base.model,
+            base.processor,
+            page_config=base.page_config,
+            reconstruction=base.reconstruction,
+            qa_stage="full",
+            max_new_tokens=base.max_new_tokens,
+            teacher_forced_target_token_ids=teacher_targets,
+            frozen_post_qtp_geometry=mapping.geometry,
+            ctp_policy=aggregate_native_threshold_policy(),
+        )
+
     unpruned = _answer_record(
         configured(None),
         images=images,
@@ -236,6 +252,30 @@ def main() -> None:
         retained_fraction=None,
         arm="unpruned",
     )
+    native = _answer_record(
+        configured_native(),
+        images=images,
+        question=sample.question,
+        retrieval=retrieval,
+        accepted_answers=accepted,
+        reference_count=len(references),
+        retained_fraction=raw["native_docprune_selection"]["achieved_budget"]
+        / raw["native_docprune_selection"]["visual_population"],
+        arm="native_docprune",
+    )
+    expected_native = raw["native_docprune_selection"]
+    observed_native = native["policy_selection"]
+    matched_fields = (
+        "boundary",
+        "native_layer",
+        "visual_population",
+        "achieved_budget",
+        "retained_compact_visual_ids",
+    )
+    if not isinstance(observed_native, dict) or any(
+        observed_native.get(field) != expected_native.get(field) for field in matched_fields
+    ):
+        raise ValueError("Task 9 native DocPrune selection did not reproduce the frozen prepass")
     selected_results = [
         _answer_record(
             configured(row["forced_intervention"]),
@@ -249,20 +289,19 @@ def main() -> None:
         )
         for row in plan
     ]
-    question_analyses = []
-    for fraction in (0.55, 0.65, 0.8):
-        rows = [row for row in selected_results if row["retained_fraction"] == fraction]
-        arm_results = {row["arm"]: row for row in rows}
-        arm_results["unpruned"] = unpruned
-        question_analyses.append(
-            analyze_task9_preliminary_question(
-                question_id=manifest["qid"],
-                retained_fraction=fraction,
-                arm_results=arm_results,
-            )
+    fraction = analysis["selections"]["budgets"][0]["retained_fraction"]
+    arm_results = {row["arm"]: row for row in selected_results}
+    arm_results["unpruned"] = unpruned
+    arm_results["native_docprune"] = native
+    question_analyses = [
+        analyze_task9_preliminary_question(
+            question_id=manifest["qid"],
+            retained_fraction=fraction,
+            arm_results=arm_results,
         )
+    ]
     result: dict[str, object] = {
-        "schema_version": "docprune-task9-preliminary-selected-arms-v1",
+        "schema_version": "docprune-task9-preliminary-dynamic-selected-arms-v1",
         "status": "completed-task9-preliminary-selected-arms",
         "qid": manifest["qid"],
         "raw_runtime_commit": manifest["runtime_commit"],
@@ -270,6 +309,7 @@ def main() -> None:
         "analysis_artifact_sha256": observed_sha,
         "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "unpruned": unpruned,
+        "native_docprune": native,
         "selected_results": selected_results,
         "question_analyses": question_analyses,
     }

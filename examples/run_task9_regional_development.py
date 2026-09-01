@@ -13,12 +13,13 @@ from pathlib import Path
 import torch
 
 from docprune.answerers import (
+    DocPruneQwenAnswerer,
     _input_ids_identity,
     _prepare_batch_with_prompt,
     prepare_task7_likelihood_target_for_question,
 )
 from docprune.config import load_config
-from docprune.ctp_policy import btp_qtp_no_ctp_policy
+from docprune.ctp_policy import aggregate_native_threshold_policy, btp_qtp_no_ctp_policy
 from docprune.m3docrag import RetrievalOutput
 from docprune.m3docvqa_factory import build_workload
 from docprune.qwen2vl.preprocessing import prepare_qwen_page, prepared_raster_image
@@ -56,12 +57,14 @@ def _canonical_sha256(value: object) -> str:
 
 
 def _boundary(value: str) -> str | int:
-    if value == "input":
+    if value in {"input", "dynamic"}:
         return value
     try:
         parsed = int(value)
     except ValueError as error:
-        raise argparse.ArgumentTypeError("boundary must be input or a block index") from error
+        raise argparse.ArgumentTypeError(
+            "boundary must be dynamic, input, or a block index"
+        ) from error
     if parsed < 0:
         raise argparse.ArgumentTypeError("boundary block index must be nonnegative")
     return parsed
@@ -258,10 +261,38 @@ def main() -> None:
     ]
     answerer = runner.answerer
     answerer.frozen_post_qtp_geometry = mapping.geometry
+    native_selection = None
+    if args.boundary == "dynamic":
+        native_answerer = DocPruneQwenAnswerer(
+            answerer.model,
+            answerer.processor,
+            page_config=answerer.page_config,
+            reconstruction=answerer.reconstruction,
+            qa_stage="full",
+            max_new_tokens=answerer.max_new_tokens,
+            ctp_policy=aggregate_native_threshold_policy(),
+            frozen_post_qtp_geometry=mapping.geometry,
+        )
+        native_output = native_answerer.answer(
+            images,
+            sample.question,
+            retrieval_output=retrieval,
+        )
+        native_selection = native_output.policy_selection
+        if (
+            native_selection is None
+            or type(native_selection.native_layer) is not int
+            or native_selection.boundary != f"B_{native_selection.native_layer}"
+            or native_output.trace.ctp_layer != native_selection.native_layer
+            or native_selection.visual_population != mapping.geometry_count
+            or native_selection.achieved_budget != len(native_selection.retained_visual_ids)
+            or not 0 < native_selection.achieved_budget < mapping.geometry_count
+        ):
+            raise ValueError("Task 9 native DocPrune did not produce a usable dynamic selection")
+        args.boundary = native_selection.native_layer
+        boundary_label = native_selection.boundary
     accepted_references = (
-        sample.answers
-        if preliminary_record is None
-        else tuple(preliminary_record["answers"])
+        sample.answers if preliminary_record is None else tuple(preliminary_record["answers"])
     )
     target = prepare_task7_likelihood_target_for_question(
         answerer.processor,
@@ -300,6 +331,11 @@ def main() -> None:
         preliminary_design = build_task9_preliminary_mask_design(
             regions,
             **design_kwargs,
+            primary_budget_fraction=(
+                native_selection.achieved_budget / mapping.geometry_count
+                if native_selection is not None
+                else 0.65
+            ),
             global_holdout_mask_count=args.holdout_mask_count,
             budget_local_holdout_mask_count=args.budget_local_holdout_mask_count,
         )
@@ -425,6 +461,8 @@ def main() -> None:
         manifest["preliminary_cohort_path"] = str(args.preliminary_cohort)
         manifest["preliminary_cohort_sha256"] = args.preliminary_cohort_sha256
         manifest["baseline_stratum"] = preliminary_record["baseline_stratum"]
+        if native_selection is not None:
+            manifest["native_docprune_selection"] = native_selection.to_dict()
     manifest["run_manifest_sha256"] = _canonical_sha256(manifest)
     raw_result: dict[str, object] = {
         "schema_version": 2 if preliminary_design is not None else 1,
@@ -471,6 +509,8 @@ def main() -> None:
         ]
         raw_result["query_aggregate_attention_scores"] = query_scores
         raw_result["query_region_aggregate_logit_sums"] = query_region_scores
+        if native_selection is not None:
+            raw_result["native_docprune_selection"] = native_selection.to_dict()
     raw_result["raw_result_sha256"] = _canonical_sha256(raw_result)
     completion = publish_task9_regional_development(
         args.output,
