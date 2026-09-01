@@ -26,6 +26,9 @@ from docprune.task6_runtime import AuthenticatedFixedPageRetriever, load_fixed_p
 from docprune.task8_runtime import load_task8_smoke_inputs
 
 TASK8_GEOMETRY_SCHEMA_VERSION = "docprune-task8-btp-qtp-geometry-v1"
+TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION = (
+    "docprune-task9-preliminary-btp-qtp-geometry-v1"
+)
 _GEOMETRY_CAPTURE_KEYS = {
     "schema_version",
     "status",
@@ -104,6 +107,7 @@ def _load_reference_row(
     expected_sha256: str,
     *,
     qid: str,
+    require_task6_policy: bool = True,
 ) -> Mapping[str, object]:
     raw = _regular_bytes(path, "Task 6 reference results")
     if _sha256_bytes(raw) != _require_sha256(expected_sha256, "reference results checksum"):
@@ -118,10 +122,11 @@ def _load_reference_row(
                 raise ValueError("Task 6 reference result row is invalid")
             selection = row.get("policy_selection")
             policy = selection.get("policy") if isinstance(selection, Mapping) else None
-            if (
-                row.get("question_id") == qid
-                and isinstance(policy, Mapping)
-                and policy.get("name") == "btp-qtp-no-ctp"
+            policy_matches = (
+                isinstance(policy, Mapping) and policy.get("name") == "btp-qtp-no-ctp"
+            )
+            if row.get("question_id") == qid and (
+                policy_matches or not require_task6_policy
             ):
                 matches.append(row)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
@@ -129,6 +134,32 @@ def _load_reference_row(
     if len(matches) != 1:
         raise ValueError("Task 6 reference must contain one BTP+QTP no-CTP row for the QID")
     return matches[0]
+
+
+def _preliminary_reference_identity(
+    row: Mapping[str, object], *, expected_geometry_count: int
+) -> tuple[str, list[Mapping[str, object]], Mapping[str, object]]:
+    question = row.get("question")
+    pages = row.get("retrieved_pages")
+    trace = row.get("trace")
+    if (
+        not isinstance(question, str)
+        or not question
+        or not isinstance(pages, list)
+        or not pages
+        or any(not isinstance(page, Mapping) for page in pages)
+        or not isinstance(trace, Mapping)
+    ):
+        raise ValueError("Task 9 preliminary reference structure is invalid")
+    if (
+        type(expected_geometry_count) is not int
+        or expected_geometry_count <= 0
+        or trace.get("post_qtp_visual_tokens") != expected_geometry_count
+        or trace.get("post_ctp_visual_tokens") != expected_geometry_count
+        or trace.get("ctp_layer") is not None
+    ):
+        raise ValueError("Task 9 preliminary reference geometry count is invalid")
+    return question, pages, trace
 
 
 def _reference_identity(
@@ -254,7 +285,8 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
     if raw != _canonical_bytes(value):
         raise ValueError("Task 8 geometry capture bytes are not canonical")
     if (
-        value["schema_version"] != TASK8_GEOMETRY_SCHEMA_VERSION
+        value["schema_version"]
+        not in {TASK8_GEOMETRY_SCHEMA_VERSION, TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION}
         or value["status"] != "complete"
         or value["global_index_loaded"] is not False
         or value["retrieval_search_run"] is not False
@@ -299,6 +331,7 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
         reference_path,
         _require_sha256(value["reference_results_sha256"], "reference checksum"),
         qid=value["qid"],
+        require_task6_policy=value["schema_version"] == TASK8_GEOMETRY_SCHEMA_VERSION,
     )
     rows = value["geometry"]
     if not isinstance(rows, list):
@@ -314,12 +347,17 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
         or _sha256_bytes(_canonical_bytes(rows)) != value["geometry_sha256"]
     ):
         raise ValueError("Task 8 geometry rows do not match their identity")
-    reference_question, reference_pages, reference_trace = _reference_identity(
-        reference,
-        fixture_sha256=fixture_sha,
-        expected_geometry_count=value["geometry_count"],
-        expected_geometry_sha256=value["geometry_sha256"],
-    )
+    if value["schema_version"] == TASK8_GEOMETRY_SCHEMA_VERSION:
+        reference_question, reference_pages, reference_trace = _reference_identity(
+            reference,
+            fixture_sha256=fixture_sha,
+            expected_geometry_count=value["geometry_count"],
+            expected_geometry_sha256=value["geometry_sha256"],
+        )
+    else:
+        reference_question, reference_pages, reference_trace = _preliminary_reference_identity(
+            reference, expected_geometry_count=value["geometry_count"]
+        )
     if (
         hashlib.sha256(reference_question.encode("utf-8")).hexdigest() != value["question_sha256"]
         or value["retrieved_pages"] != reference_pages
@@ -348,7 +386,7 @@ def capture_task8_btp_qtp_geometry(
     reference_results_sha256: str,
     qid: str,
     expected_geometry_count: int,
-    expected_geometry_sha256: str,
+    expected_geometry_sha256: str | None,
     output_path: Path,
     runtime_commit: str,
     query_encoder: object,
@@ -360,7 +398,12 @@ def capture_task8_btp_qtp_geometry(
     _require_commit(runtime_commit)
     fixture_sha = _require_sha256(fixture_sha256, "fixture checksum")
     smoke_sha = _require_sha256(smoke_input_manifest_sha256, "smoke input checksum")
-    expected_geometry_sha = _require_sha256(expected_geometry_sha256, "expected geometry checksum")
+    preliminary = expected_geometry_sha256 is None
+    expected_geometry_sha = (
+        None
+        if preliminary
+        else _require_sha256(expected_geometry_sha256, "expected geometry checksum")
+    )
     if not isinstance(qid, str) or not qid:
         raise ValueError("Task 8 geometry QID must be nonempty")
     output = Path(output_path)
@@ -396,13 +439,19 @@ def capture_task8_btp_qtp_geometry(
         Path(reference_results_path),
         reference_results_sha256,
         qid=qid,
+        require_task6_policy=not preliminary,
     )
-    question, reference_pages, reference_trace = _reference_identity(
-        reference,
-        fixture_sha256=fixture_sha,
-        expected_geometry_count=expected_geometry_count,
-        expected_geometry_sha256=expected_geometry_sha,
-    )
+    if preliminary:
+        question, reference_pages, reference_trace = _preliminary_reference_identity(
+            reference, expected_geometry_count=expected_geometry_count
+        )
+    else:
+        question, reference_pages, reference_trace = _reference_identity(
+            reference,
+            fixture_sha256=fixture_sha,
+            expected_geometry_count=expected_geometry_count,
+            expected_geometry_sha256=str(expected_geometry_sha),
+        )
     if sample.question != question:
         raise ValueError("Task 8 fixture question differs from the Task 6 reference")
 
@@ -424,9 +473,8 @@ def capture_task8_btp_qtp_geometry(
         question,
         retrieval_output,
     )
-    if (
-        capture.geometry_count != expected_geometry_count
-        or capture.geometry_sha256 != expected_geometry_sha
+    if capture.geometry_count != expected_geometry_count or (
+        expected_geometry_sha is not None and capture.geometry_sha256 != expected_geometry_sha
     ):
         raise ValueError("live post-QTP geometry identity differs from the Task 6 reference")
     live_trace = {
@@ -461,7 +509,11 @@ def capture_task8_btp_qtp_geometry(
     ):
         _require_sha256(digest, label)
     unsigned: dict[str, object] = {
-        "schema_version": TASK8_GEOMETRY_SCHEMA_VERSION,
+        "schema_version": (
+            TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION
+            if preliminary
+            else TASK8_GEOMETRY_SCHEMA_VERSION
+        ),
         "status": "complete",
         "runtime_commit": runtime_commit,
         "qid": qid,
@@ -505,6 +557,7 @@ def capture_task8_btp_qtp_geometry(
 
 __all__ = [
     "TASK8_GEOMETRY_SCHEMA_VERSION",
+    "TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION",
     "capture_task8_btp_qtp_geometry",
     "load_task8_geometry_capture",
 ]

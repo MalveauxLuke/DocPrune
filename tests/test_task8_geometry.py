@@ -229,6 +229,62 @@ def test_geometry_capture_is_fixed_page_exact_no_replace_and_no_qwen_model(
             qwen_processor=object(),
             require_cuda=False,
         )
+
+
+def test_preliminary_geometry_capture_accepts_authenticated_stage_reference_without_hash(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Catch requiring a circular predeclared geometry hash for the new random-48 cohort."""
+
+    inputs = _inputs(tmp_path)
+    reference = json.loads(Path(inputs["reference_path"]).read_text().strip())
+    for key in (
+        "fixed_page_fixture_sha256",
+        "fixed_page_provenance",
+        "global_index_loaded",
+        "policy_selection",
+    ):
+        reference.pop(key)
+    Path(inputs["reference_path"]).write_text(json.dumps(reference) + "\n")
+    capture = BTPQTPGeometryCapture(
+        geometry=inputs["geometry"],
+        geometry_count=2,
+        geometry_sha256=inputs["geometry_sha256"],
+        image_grid_thw=((1, 2, 2), (1, 2, 2)),
+        original_visual_tokens=4,
+        post_btp_visual_tokens=3,
+        post_qtp_visual_tokens=2,
+        background_keep_sha256="1" * 64,
+        question_keep_sha256="2" * 64,
+        combined_keep_sha256="3" * 64,
+    )
+    monkeypatch.setattr(
+        geometry_module,
+        "derive_btp_qtp_geometry_without_qwen_model",
+        lambda *_args: capture,
+    )
+    output = tmp_path / "preliminary-geometry.json"
+
+    payload = capture_task8_btp_qtp_geometry(
+        fixture_path=inputs["fixture_path"],
+        fixture_sha256=inputs["fixture_sha256"],
+        smoke_input_manifest_path=inputs["smoke_path"],
+        smoke_input_manifest_sha256=inputs["smoke_sha256"],
+        reference_results_path=inputs["reference_path"],
+        reference_results_sha256=_sha(inputs["reference_path"]),
+        qid=inputs["qid"],
+        expected_geometry_count=2,
+        expected_geometry_sha256=None,
+        output_path=output,
+        runtime_commit="c" * 40,
+        query_encoder=_QueryEncoder(),
+        qwen_processor=object(),
+        require_cuda=False,
+    )
+
+    assert payload["schema_version"] == "docprune-task9-preliminary-btp-qtp-geometry-v1"
+    assert payload["geometry_sha256"] == inputs["geometry_sha256"]
+    assert load_task8_geometry_capture(output, expected_sha256=_sha(output)) == payload
     canonical = output.read_bytes()
     contradicted = json.loads(canonical)
     contradicted["retrieved_pages"][0]["score"] += 1.0
@@ -319,3 +375,23 @@ def test_geometry_launcher_is_single_short_l40s_fixed_page_capture() -> None:
     assert "load_pinned_colpali_query_encoder" in wrapper
     assert "load_pinned_qwen_processor" in wrapper
     assert "_load_qwen(" not in wrapper
+
+
+def test_task9_preliminary_geometry_launcher_is_question_sharded_and_hash_discovering() -> None:
+    launcher = Path(
+        "examples/sbatch/43_docprune_task9_preliminary_geometry.sbatch"
+    ).read_text(encoding="utf-8")
+    wrapper = Path("examples/run_task9_preliminary_geometry_capture.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "#SBATCH --array=0-47%8" in launcher
+    assert "#SBATCH --constraint=l40s" in launcher
+    assert "#SBATCH --time=00:15:00" in launcher
+    assert "expected_post_qtp_visual_tokens" in launcher
+    assert "selected-source-results.jsonl" in launcher
+    assert "HF_HUB_OFFLINE=1" in launcher
+    assert "TRANSFORMERS_OFFLINE=1" in launcher
+    assert "expected_geometry_sha256=None" in wrapper
+    assert "load_pinned_colpali_query_encoder" in wrapper
+    assert "load_pinned_qwen_processor" in wrapper
