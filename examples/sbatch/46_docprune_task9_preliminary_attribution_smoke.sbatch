@@ -4,9 +4,9 @@
 #SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --gres=gpu:1
-#SBATCH --constraint="[a100_40|a100_80|l40s|l40|h100|h100_80|h200]"
+#SBATCH --constraint="[a30|a100_40|a100_80|l40s|l40|h100|h100_80|h200]"
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=24G
 #SBATCH --time=00:20:00
 #SBATCH --no-requeue
 #SBATCH --output=slurm-%x-%j.out

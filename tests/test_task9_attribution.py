@@ -12,8 +12,8 @@ import pytest
 from docprune import task9_attribution
 from docprune.task9_attribution import (
     analyze_task9_preliminary_question,
-    build_task9_preliminary_arm_selections,
     build_region_mask_design,
+    build_task9_preliminary_arm_selections,
     build_task9_preliminary_mask_design,
     contextcite_logit_per_token_from_mean_loglikelihood,
     evaluate_contextcite_holdout,
@@ -466,6 +466,104 @@ def test_preliminary_question_analysis_reports_paired_rescue_and_likelihood_chan
     assert paired["preservation_advantage"] is False
     assert paired["gold_likelihood_difference"] == 2.0
     assert paired["gold_vs_alternative_margin_difference"] == 2.5
+
+
+def test_explicit_mask_fidelity_scores_budget_local_rows() -> None:
+    """Catch evaluating local masks with the wrong coefficients or constant baseline."""
+
+    evaluator = getattr(task9_attribution, "evaluate_contextcite_explicit_mask_fidelity", None)
+    assert evaluator is not None, "budget-local ContextCite fidelity evaluator is missing"
+
+    result = evaluator(
+        source_ids=("region-a", "region-b"),
+        coefficients={"region-a": 2.0, "region-b": -1.0},
+        intercept=0.5,
+        constant_prediction=1.5,
+        masks=((False, False), (False, True), (True, False), (True, True)),
+        targets=(0.0, 1.0, 3.0, 2.0),
+        split="budget-local-holdout",
+    )
+
+    assert result["split"] == "budget-local-holdout"
+    assert result["mask_count"] == 4
+    assert result["lds_spearman"] == pytest.approx(0.8)
+    assert result["heldout_rmse"] == pytest.approx(math.sqrt(0.75))
+    assert result["constant_rmse"] == pytest.approx(math.sqrt(1.25))
+    assert result["surrogate_beats_constant"] is True
+
+
+def test_preliminary_attribution_analysis_connects_global_local_and_arm_selections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catch dropping local fidelity or selecting arms from a different fitted target."""
+
+    analyzer = getattr(task9_attribution, "analyze_task9_preliminary_attribution", None)
+    assert analyzer is not None, "preliminary attribution analyzer is missing"
+
+    regions = [{"source_id": f"region-{index:02d}", "token_cost": 1} for index in range(12)]
+    primary = build_task9_preliminary_mask_design(
+        regions,
+        **_identity_kwargs(),
+        fit_mask_count=8,
+        global_holdout_mask_count=4,
+        budget_local_holdout_mask_count=4,
+    )
+    secondary = build_region_mask_design(
+        regions,
+        **_identity_kwargs(target_kind=_SECONDARY_TARGET_KIND),
+        fit_mask_count=8,
+        holdout_mask_count=4,
+    )
+
+    def fixed_solver(masks: object, targets: object) -> tuple[object, float]:
+        del targets
+        coefficients = task9_attribution.np.zeros(task9_attribution.np.asarray(masks).shape[1])
+        coefficients[0] = 1.0
+        return coefficients, 0.0
+
+    monkeypatch.setattr(task9_attribution, "_fit_contextcite_solver", fixed_solver)
+
+    def outcomes(design: dict[str, object], value: object) -> list[dict[str, object]]:
+        rows = [*design["fit_masks"], *design["holdout_masks"]]
+        return [
+            {
+                "split": row["split"],
+                "seed": row["seed"],
+                "vector_sha256": row["vector_sha256"],
+                "attribution_identity_sha256": design["attribution_identity_sha256"],
+                "normalized_target": float(value(row)),
+            }
+            for row in rows
+        ]
+
+    local_masks = [
+        [False] * 12,
+        [True, *([False] * 11)],
+        [False, True, *([False] * 10)],
+        [True, True, *([False] * 10)],
+    ]
+    result = analyzer(
+        primary_design=primary["global_design"],
+        primary_outcomes=outcomes(primary["global_design"], lambda row: row["vector"][0]),
+        secondary_design=secondary,
+        secondary_outcomes=outcomes(secondary, lambda row: 0.0),
+        regions=regions,
+        query_attention_scores={region["source_id"]: 1.0 for region in regions},
+        budget_local_masks=local_masks,
+        budget_local_primary_targets=[float(row[0]) for row in local_masks],
+        budget_local_secondary_targets=[0.0] * len(local_masks),
+        gold_margin_available=True,
+    )
+
+    assert result["gold_support"]["global_fidelity"]["lds_spearman"] == pytest.approx(1.0)
+    assert result["gold_support"]["budget_local_fidelity"]["lds_spearman"] == pytest.approx(1.0)
+    assert result["gold_margin"]["available"] is True
+    assert result["selections"]["gold_margin_available"] is True
+    assert [row["retained_fraction"] for row in result["selections"]["budgets"]] == [
+        0.55,
+        0.65,
+        0.8,
+    ]
 
 
 def test_contextcite_lasso_rejects_noncanonical_fit_inputs_before_solver_import() -> None:

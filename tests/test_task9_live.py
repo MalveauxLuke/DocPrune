@@ -174,8 +174,23 @@ def test_preliminary_smoke_launcher_uses_full_320_mask_schedule() -> None:
     assert "--fit-mask-count 256" in launcher
     assert "--holdout-mask-count 32" in launcher
     assert "--budget-local-holdout-mask-count 32" in launcher
-    assert "a100_40|a100_80|l40s|l40|h100|h100_80|h200" in launcher
+    assert "a30|a100_40|a100_80|l40s|l40|h100|h100_80|h200" in launcher
+    assert "#SBATCH --mem=24G" in launcher
     assert "a100_20" not in launcher
+
+
+def test_preliminary_batch_launcher_uses_four_question_batches_and_24g_resources() -> None:
+    launcher = (
+        Path(__file__).parents[1]
+        / "examples"
+        / "sbatch"
+        / "47_docprune_task9_preliminary_batches.sbatch"
+    ).read_text()
+
+    assert "#SBATCH --array=0-11%4" in launcher
+    assert "a30|a100_40|a100_80|l40s|l40|h100|h100_80|h200" in launcher
+    assert "#SBATCH --mem=24G" in launcher
+    assert '--batch-index "$BATCH_INDEX"' in launcher
 
 
 def test_input_256_launcher_freezes_matching_schedule_before_decoder_blocks() -> None:

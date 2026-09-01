@@ -29,7 +29,8 @@ _CONTEXTCITE_LOGIT_SCALE = "contextcite-sequence-logit-per-generated-token"
 _TARGET_SCALES = {_MEAN_LOGLIKELIHOOD_SCALE, _CONTEXTCITE_LOGIT_SCALE}
 _PRIMARY_TARGET_KIND = "max-accepted-reference-mean-loglikelihood"
 _SECONDARY_TARGET_KIND = "unpruned-generated-response-mean-loglikelihood"
-_TARGET_KINDS = {_PRIMARY_TARGET_KIND, _SECONDARY_TARGET_KIND}
+_MARGIN_TARGET_KIND = "gold-minus-unpruned-generated-response-mean-loglikelihood"
+_TARGET_KINDS = {_PRIMARY_TARGET_KIND, _SECONDARY_TARGET_KIND, _MARGIN_TARGET_KIND}
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _BOUNDARY_PATTERN = re.compile(r"B_(?:0|[1-9][0-9]*)")
 _QWEN_DECODER_LAYER_COUNT = 28
@@ -119,9 +120,13 @@ def _build_attribution_identity(
         valid_target = _is_sha256(reference_set_token_ids_sha256) and (
             generated_response_token_ids_sha256 is None
         )
-    else:
+    elif target_kind == _SECONDARY_TARGET_KIND:
         valid_target = _is_sha256(generated_response_token_ids_sha256) and (
             reference_set_token_ids_sha256 is None
+        )
+    else:
+        valid_target = _is_sha256(reference_set_token_ids_sha256) and _is_sha256(
+            generated_response_token_ids_sha256
         )
     if not valid_target:
         raise ValueError("regional attribution target identity is invalid")
@@ -316,9 +321,7 @@ def build_task9_preliminary_mask_design(
         raise ValueError("budget-local holdout count must be a positive integer")
     validated = _validated_regions(regions, allow_zero_cost=True)
     positive = [
-        {"source_id": source_id, "token_cost": cost}
-        for source_id, cost in validated
-        if cost > 0
+        {"source_id": source_id, "token_cost": cost} for source_id, cost in validated if cost > 0
     ]
     global_design = build_region_mask_design(
         regions,
@@ -341,9 +344,7 @@ def build_task9_preliminary_mask_design(
         coefficients={source_id: 0.0 for source_id in source_ids},
         requested_budget=requested_budget,
     )["achieved_budget"]
-    tolerance = max(
-        1, math.floor(float(budget_local_tolerance_fraction) * total_cost + 0.5)
-    )
+    tolerance = max(1, math.floor(float(budget_local_tolerance_fraction) * total_cost + 0.5))
     minimum = max(0, attainable - tolerance)
     maximum = min(total_cost, attainable + tolerance)
     observed = {
@@ -518,11 +519,9 @@ def build_task9_preliminary_intervention_plan(
             for source_id, retained in zip(source_ids, mask["vector"], strict=True)
             if retained is True
         ]
-        if (
-            mask.get("retained_source_ids") != retained_sources
-            or mask.get("retained_token_cost")
-            != sum(costs[source_id] for source_id in retained_sources)
-        ):
+        if mask.get("retained_source_ids") != retained_sources or mask.get(
+            "retained_token_cost"
+        ) != sum(costs[source_id] for source_id in retained_sources):
             raise ValueError("Task 9 preliminary local mask membership is invalid")
         retained_visual_ids = tuple(
             sorted(token_id for source_id in retained_sources for token_id in membership[source_id])
@@ -533,9 +532,7 @@ def build_task9_preliminary_intervention_plan(
                 "seed": mask["seed"],
                 "vector": list(mask["vector"]),
                 "vector_sha256": mask["vector_sha256"],
-                "attribution_identity_sha256": global_design[
-                    "attribution_identity_sha256"
-                ],
+                "attribution_identity_sha256": global_design["attribution_identity_sha256"],
                 "retained_source_ids": retained_sources,
                 "retained_visual_ids": list(retained_visual_ids),
                 "retained_visual_count": len(retained_visual_ids),
@@ -548,6 +545,88 @@ def build_task9_preliminary_intervention_plan(
             }
         )
     return (*global_rows, *local_rows)
+
+
+def build_task9_selected_arm_plan(
+    mapping: RegionTokenMapping,
+    selections: Mapping[str, object],
+    *,
+    boundary: str,
+) -> tuple[dict[str, object], ...]:
+    """Translate selected whole-region pilot arms into physical interventions."""
+
+    if not isinstance(mapping, RegionTokenMapping) or not _is_forced_boundary(boundary):
+        raise ValueError("Task 9 selected-arm mapping or boundary is invalid")
+    budgets = selections.get("budgets") if isinstance(selections, Mapping) else None
+    if (
+        not isinstance(selections.get("question_id"), str)
+        or not selections["question_id"]
+        or not isinstance(budgets, list)
+        or not budgets
+    ):
+        raise ValueError("Task 9 selected-arm schema is invalid")
+    membership = {source.source_id: source.token_ids for source in mapping.sources}
+    flattened = [token_id for source in mapping.sources for token_id in source.token_ids]
+    if (
+        len(membership) != len(mapping.sources)
+        or sorted(flattened) != list(range(mapping.geometry_count))
+        or len(mapping.token_to_source) != mapping.geometry_count
+    ):
+        raise ValueError("Task 9 selected-arm mapping is not a token partition")
+    decoder_boundary: str | int = (
+        "input" if boundary == "B_input" else int(boundary.removeprefix("B_"))
+    )
+    plan: list[dict[str, object]] = []
+    seen: set[tuple[float, str]] = set()
+    for budget in budgets:
+        arms = budget.get("arms") if isinstance(budget, Mapping) else None
+        fraction = budget.get("retained_fraction") if isinstance(budget, Mapping) else None
+        achieved = budget.get("achieved_token_count") if isinstance(budget, Mapping) else None
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, int | float)
+            or not isinstance(achieved, int)
+            or not isinstance(arms, list)
+            or not arms
+        ):
+            raise ValueError("Task 9 selected-arm budget is invalid")
+        for arm in arms:
+            name = arm.get("arm") if isinstance(arm, Mapping) else None
+            retained_sources = arm.get("retained_source_ids") if isinstance(arm, Mapping) else None
+            key = (float(fraction), name) if isinstance(name, str) else None
+            if (
+                not isinstance(name, str)
+                or not name
+                or key in seen
+                or not isinstance(retained_sources, list)
+                or len(set(retained_sources)) != len(retained_sources)
+                or any(source_id not in membership for source_id in retained_sources)
+            ):
+                raise ValueError("Task 9 selected arm is invalid")
+            retained_visual_ids = tuple(
+                sorted(
+                    token_id for source_id in retained_sources for token_id in membership[source_id]
+                )
+            )
+            if arm.get("achieved_token_count") != achieved or len(retained_visual_ids) != achieved:
+                raise ValueError("Task 9 selected arm does not match its achieved budget")
+            seen.add(key)
+            plan.append(
+                {
+                    "retained_fraction": float(fraction),
+                    "arm": name,
+                    "retained_source_ids": list(retained_sources),
+                    "retained_visual_ids": list(retained_visual_ids),
+                    "retained_visual_count": len(retained_visual_ids),
+                    "visual_population": mapping.geometry_count,
+                    "forced_intervention": ForcedVisualIntervention(
+                        boundary=decoder_boundary,
+                        mode="physical_delete",
+                        retained_visual_ids=retained_visual_ids,
+                    ),
+                }
+            )
+    return tuple(plan)
 
 
 def build_regional_development_plan(
@@ -1155,6 +1234,76 @@ def _root_mean_square(errors: Sequence[float]) -> float:
     return result
 
 
+def evaluate_contextcite_explicit_mask_fidelity(
+    *,
+    source_ids: Sequence[str],
+    coefficients: Mapping[str, float],
+    intercept: float,
+    constant_prediction: float,
+    masks: Sequence[Sequence[bool]],
+    targets: Sequence[float],
+    split: str,
+) -> dict[str, object]:
+    """Evaluate a fitted surrogate on sealed masks outside the global schedule."""
+
+    checked_ids = tuple(source_ids)
+    if (
+        not checked_ids
+        or any(not isinstance(source_id, str) or not source_id for source_id in checked_ids)
+        or len(set(checked_ids)) != len(checked_ids)
+        or set(coefficients) != set(checked_ids)
+        or not isinstance(split, str)
+        or not split
+        or not masks
+        or len(masks) != len(targets)
+    ):
+        raise ValueError("explicit ContextCite fidelity inputs are invalid")
+    checked_coefficients = {
+        source_id: _finite_float(coefficients[source_id], label="ContextCite coefficient")
+        for source_id in checked_ids
+    }
+    checked_intercept = _finite_float(intercept, label="ContextCite intercept")
+    checked_constant = _finite_float(constant_prediction, label="ContextCite constant prediction")
+    checked_masks: list[list[bool]] = []
+    predictions: list[float] = []
+    checked_targets: list[float] = []
+    for raw_mask, raw_target in zip(masks, targets, strict=True):
+        vector = list(raw_mask)
+        if len(vector) != len(checked_ids) or any(type(value) is not bool for value in vector):
+            raise ValueError("explicit ContextCite masks must be boolean source vectors")
+        target = _finite_float(raw_target, label="ContextCite normalized target")
+        prediction = checked_intercept + sum(
+            checked_coefficients[source_id] * float(retained)
+            for source_id, retained in zip(checked_ids, vector, strict=True)
+        )
+        checked_masks.append(vector)
+        checked_targets.append(target)
+        predictions.append(prediction)
+    lds = _spearman_rank_correlation(predictions, checked_targets)
+    heldout_rmse = _root_mean_square(
+        [prediction - target for prediction, target in zip(predictions, checked_targets)]
+    )
+    constant_rmse = _root_mean_square([checked_constant - target for target in checked_targets])
+    result: dict[str, object] = {
+        "method": "contextcite-explicit-mask-fidelity",
+        "split": split,
+        "mask_count": len(checked_masks),
+        "lds_definition": "spearman-rank-correlation-average-ties",
+        "lds_spearman": lds,
+        "lds_defined": lds is not None,
+        "heldout_rmse": heldout_rmse,
+        "constant_baseline": "fit-target-mean",
+        "constant_prediction": checked_constant,
+        "constant_rmse": constant_rmse,
+        "surrogate_beats_constant": heldout_rmse < constant_rmse,
+        "masks_sha256": _canonical_sha256(checked_masks),
+        "targets_sha256": _canonical_sha256(checked_targets),
+        "predictions_sha256": _canonical_sha256(predictions),
+    }
+    result["fidelity_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def evaluate_contextcite_holdout(
     design: Mapping[str, object],
     fit_outcomes: Sequence[Mapping[str, object]],
@@ -1458,9 +1607,7 @@ def analyze_task9_preliminary_question(
         exact_match = raw.get("exact_match")
         if type(exact_match) is not bool:
             raise ValueError(f"{arm} exact_match must be boolean")
-        gold = _finite_float(
-            raw.get("gold_mean_loglikelihood"), label=f"{arm} gold likelihood"
-        )
+        gold = _finite_float(raw.get("gold_mean_loglikelihood"), label=f"{arm} gold likelihood")
         alternative_raw = raw.get("alternative_mean_loglikelihood")
         alternative = (
             None
@@ -1501,9 +1648,7 @@ def analyze_task9_preliminary_question(
             ),
             "gold_likelihood_difference": float(contextcite["gold_mean_loglikelihood"])
             - float(docprune["gold_mean_loglikelihood"]),
-            "gold_likelihood_change_from_unpruned": float(
-                contextcite["gold_mean_loglikelihood"]
-            )
+            "gold_likelihood_change_from_unpruned": float(contextcite["gold_mean_loglikelihood"])
             - float(baseline["gold_mean_loglikelihood"]),
             "gold_vs_alternative_margin_difference": (
                 None
@@ -1711,6 +1856,176 @@ def analyze_contextcite_development_question(
         "surrogate": surrogate,
         "fidelity": fidelity,
         "stability": stability,
+    }
+    result["analysis_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def analyze_task9_preliminary_attribution(
+    *,
+    primary_design: Mapping[str, object],
+    primary_outcomes: Sequence[Mapping[str, object]],
+    secondary_design: Mapping[str, object],
+    secondary_outcomes: Sequence[Mapping[str, object]],
+    regions: Sequence[Mapping[str, object]],
+    query_attention_scores: Mapping[str, float],
+    budget_local_masks: Sequence[Sequence[bool]],
+    budget_local_primary_targets: Sequence[float],
+    budget_local_secondary_targets: Sequence[float],
+    gold_margin_available: bool,
+) -> dict[str, object]:
+    """Fit the preliminary pilot targets and produce matched arm selections."""
+
+    primary_identity = _validated_attribution_identity(
+        primary_design.get("attribution_identity"),
+        expected_sha256=primary_design.get("attribution_identity_sha256"),
+    )
+    secondary_identity = _validated_attribution_identity(
+        secondary_design.get("attribution_identity"),
+        expected_sha256=secondary_design.get("attribution_identity_sha256"),
+    )
+    identity_fields = (
+        "question_id",
+        "forced_boundary",
+        "mapping_artifact_sha256",
+        "prompt_input_sha256",
+    )
+    if (
+        primary_identity["target_kind"] != _PRIMARY_TARGET_KIND
+        or secondary_identity["target_kind"] != _SECONDARY_TARGET_KIND
+        or any(primary_identity[key] != secondary_identity[key] for key in identity_fields)
+        or type(gold_margin_available) is not bool
+        or len(budget_local_masks) != len(budget_local_primary_targets)
+        or len(budget_local_masks) != len(budget_local_secondary_targets)
+    ):
+        raise ValueError("preliminary attribution target identities are incompatible")
+    validated_regions = _validated_regions(regions, allow_zero_cost=False)
+    checked_regions = [
+        {"source_id": source_id, "token_cost": cost} for source_id, cost in validated_regions
+    ]
+    source_ids = [source_id for source_id, _ in validated_regions]
+    total_cost = sum(cost for _, cost in validated_regions)
+    requested_primary_budget = math.floor(total_cost * 0.65 + 0.5)
+
+    primary = analyze_contextcite_development_question(
+        primary_design,
+        primary_outcomes,
+        checked_regions,
+        requested_budget=requested_primary_budget,
+    )
+    primary_surrogate = primary["surrogate"]
+    primary_local = evaluate_contextcite_explicit_mask_fidelity(
+        source_ids=source_ids,
+        coefficients=primary_surrogate["coefficients"],
+        intercept=primary_surrogate["intercept"],
+        constant_prediction=primary_surrogate["fit_target_mean"],
+        masks=budget_local_masks,
+        targets=budget_local_primary_targets,
+        split="budget-local-holdout",
+    )
+
+    margin: dict[str, object]
+    margin_scores: Mapping[str, float] | None = None
+    if gold_margin_available:
+        if len(primary_outcomes) != len(secondary_outcomes):
+            raise ValueError("gold-margin targets require paired global outcomes")
+        margin_design = build_region_mask_design(
+            checked_regions,
+            question_id=primary_identity["question_id"],
+            forced_boundary=primary_identity["forced_boundary"],
+            mapping_artifact_sha256=primary_identity["mapping_artifact_sha256"],
+            prompt_input_sha256=primary_identity["prompt_input_sha256"],
+            target_kind=_MARGIN_TARGET_KIND,
+            reference_set_token_ids_sha256=primary_identity["reference_set_token_ids_sha256"],
+            generated_response_token_ids_sha256=secondary_identity[
+                "generated_response_token_ids_sha256"
+            ],
+            fit_mask_count=primary_design["fit_mask_count"],
+            holdout_mask_count=primary_design["holdout_mask_count"],
+        )
+        masks = [*margin_design["fit_masks"], *margin_design["holdout_masks"]]
+        margin_outcomes: list[dict[str, object]] = []
+        for primary_row, secondary_row, mask in zip(
+            primary_outcomes, secondary_outcomes, masks, strict=True
+        ):
+            if (
+                primary_row.get("split") != secondary_row.get("split")
+                or primary_row.get("seed") != secondary_row.get("seed")
+                or primary_row.get("vector_sha256") != secondary_row.get("vector_sha256")
+                or primary_row.get("vector_sha256") != mask["vector_sha256"]
+            ):
+                raise ValueError("gold-margin global outcomes are not paired by mask")
+            margin_outcomes.append(
+                {
+                    "split": mask["split"],
+                    "seed": mask["seed"],
+                    "vector_sha256": mask["vector_sha256"],
+                    "attribution_identity_sha256": margin_design["attribution_identity_sha256"],
+                    "normalized_target": _finite_float(
+                        primary_row.get("normalized_target"), label="gold target"
+                    )
+                    - _finite_float(
+                        secondary_row.get("normalized_target"), label="alternative target"
+                    ),
+                }
+            )
+        margin_analysis = analyze_contextcite_development_question(
+            margin_design,
+            margin_outcomes,
+            checked_regions,
+            requested_budget=requested_primary_budget,
+        )
+        margin_surrogate = margin_analysis["surrogate"]
+        margin_local_targets = [
+            _finite_float(gold, label="local gold target")
+            - _finite_float(alternative, label="local alternative target")
+            for gold, alternative in zip(
+                budget_local_primary_targets,
+                budget_local_secondary_targets,
+                strict=True,
+            )
+        ]
+        margin = {
+            "available": True,
+            "global_fidelity": margin_analysis["fidelity"],
+            "budget_local_fidelity": evaluate_contextcite_explicit_mask_fidelity(
+                source_ids=source_ids,
+                coefficients=margin_surrogate["coefficients"],
+                intercept=margin_surrogate["intercept"],
+                constant_prediction=margin_surrogate["fit_target_mean"],
+                masks=budget_local_masks,
+                targets=margin_local_targets,
+                split="budget-local-holdout",
+            ),
+            "surrogate": margin_surrogate,
+            "stability": margin_analysis["stability"],
+        }
+        margin_scores = margin_surrogate["coefficients"]
+    else:
+        margin = {
+            "available": False,
+            "reason": "unpruned response is not a distinct non-gold alternative",
+        }
+
+    selections = build_task9_preliminary_arm_selections(
+        checked_regions,
+        question_id=primary_identity["question_id"],
+        query_attention_scores=query_attention_scores,
+        gold_support_scores=primary_surrogate["coefficients"],
+        gold_margin_scores=margin_scores,
+    )
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-preliminary-attribution-analysis-v1",
+        "question_id": primary_identity["question_id"],
+        "forced_boundary": primary_identity["forced_boundary"],
+        "gold_support": {
+            "global_fidelity": primary["fidelity"],
+            "budget_local_fidelity": primary_local,
+            "surrogate": primary_surrogate,
+            "stability": primary["stability"],
+        },
+        "gold_margin": margin,
+        "selections": selections,
     }
     result["analysis_sha256"] = _canonical_sha256(result)
     return result
@@ -2292,15 +2607,18 @@ def aggregate_contextcite_admission_metrics(
 
 __all__ = [
     "analyze_task9_preliminary_question",
+    "analyze_task9_preliminary_attribution",
     "build_region_mask_design",
     "build_task9_preliminary_arm_selections",
     "build_task9_preliminary_intervention_plan",
     "build_task9_preliminary_mask_design",
+    "build_task9_selected_arm_plan",
     "build_regional_development_plan",
     "build_regional_development_targets",
     "validate_regional_development_targets",
     "aggregate_contextcite_admission_metrics",
     "analyze_contextcite_development_question",
+    "evaluate_contextcite_explicit_mask_fidelity",
     "evaluate_contextcite_holdout",
     "evaluate_contextcite_refit_stability",
     "fit_contextcite_lasso",

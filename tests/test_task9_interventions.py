@@ -206,6 +206,44 @@ def test_intervention_plan_retains_exact_union_selected_by_contextcite_mask() ->
     assert len(plan) == 64
 
 
+def test_selected_arm_plan_translates_region_ids_to_physical_visual_ids() -> None:
+    """Catch sending region IDs rather than their post-QTP token union to generation."""
+
+    builder = getattr(task9_attribution, "build_task9_selected_arm_plan", None)
+    assert builder is not None, "Task 9 selected-arm intervention builder is missing"
+    selections = {
+        "question_id": "qid",
+        "budgets": [
+            {
+                "retained_fraction": 0.65,
+                "requested_token_count": 4,
+                "achieved_token_count": 4,
+                "arms": [
+                    {
+                        "arm": "docprune_query_attention",
+                        "retained_source_ids": ["region-a", "region-c"],
+                        "achieved_token_count": 4,
+                    },
+                    {
+                        "arm": "contextcite_gold_support",
+                        "retained_source_ids": ["region-b", "region-c"],
+                        "achieved_token_count": 4,
+                    },
+                ],
+            }
+        ],
+    }
+
+    plan = builder(_mapping(), selections, boundary="B_13")
+
+    assert [(row["arm"], row["retained_visual_ids"]) for row in plan] == [
+        ("docprune_query_attention", [0, 2, 3, 5]),
+        ("contextcite_gold_support", [1, 3, 4, 5]),
+    ]
+    assert all(row["forced_intervention"].boundary == 13 for row in plan)
+    assert all(row["forced_intervention"].mode == "physical_delete" for row in plan)
+
+
 def test_preliminary_intervention_plan_appends_budget_local_masks() -> None:
     sources = tuple(_source(f"region-{index:02d}", (index,)) for index in range(12))
     mapping = RegionTokenMapping(
