@@ -67,6 +67,7 @@ def main() -> None:
             pdf_dir=args.pdf_dir.resolve(),
             fixture_version="task9-baseline-wrong100-confirmation-v1",
             page_count=4,
+            allow_outcome_stratified_questions=True,
         )
         fixture_sha = publish_fixed_page_fixture(fixture, fixture_path)
         selected_qids = [row["qid"] for row in eligible]

@@ -671,6 +671,69 @@ def test_cpu_sealer_builds_fixture_from_reference_ledger_and_existing_bytes(
     )
 
 
+def test_cpu_sealer_explicitly_allows_outcome_stratum_with_blind_fixed_pages(
+    tmp_path: Path,
+) -> None:
+    from docprune.task6_runtime import build_fixed_page_fixture
+
+    fixture, rgb = _fixture(tmp_path)
+    page = fixture.questions[0].pages[0]
+    fixture.reference_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "selection_is_outcome_blind": False,
+                "fixed_page_selection_is_outcome_blind": True,
+                "question_ids": ["q1"],
+                "rows": {
+                    "q1": {
+                        "retrieved_pages": [
+                            {
+                                "doc_id": page.doc_id,
+                                "page_index": page.page_index,
+                                "score": page.score,
+                            }
+                        ]
+                    }
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    eligible = tmp_path / "eligible.jsonl"
+    eligible.write_text(
+        json.dumps({"qid": "q1", "question": "question", "answers": []}) + "\n",
+        encoding="utf-8",
+    )
+    fixture.feature_manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 5,
+                "mode": "docprune",
+                "page_count": 1,
+                "completion_ledger_path": str(fixture.completion_ledger_path),
+                "completion_ledger_sha256": _sha256(fixture.completion_ledger_path),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    sealed = build_fixed_page_fixture(
+        reference_path=fixture.reference_path,
+        eligible_questions_path=eligible,
+        feature_manifest_path=fixture.feature_manifest_path,
+        pdf_dir=tmp_path,
+        fixture_version="task9-confirmation-test-v1",
+        page_count=1,
+        render_page=lambda path, index: rgb.copy(),
+        allow_outcome_stratified_questions=True,
+    )
+
+    assert [question.qid for question in sealed.questions] == ["q1"]
+
+
 def test_gate_manifest_seals_qid_shards_policy_matrices_and_gpu_roles(tmp_path: Path) -> None:
     from docprune.task6_runtime import build_task6_gate_manifest
 

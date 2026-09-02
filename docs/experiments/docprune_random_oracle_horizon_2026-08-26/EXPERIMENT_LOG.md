@@ -1481,3 +1481,13 @@ pages, 17 have one, one has two, and none has three or four. The sealed random
 Source preprocessing is therefore reuse-first by exact page and rendered-byte
 identity, but cohort membership remains unchanged and random. MinerU may run
 only for missing unique pages; no retrieval or global index access is allowed.
+
+The first CPU fixed-input sealing attempt at runtime `7be2137` failed closed
+before publication because the reused Task 6 fixture builder required the
+question cohort itself to be outcome-blind. Baseline-wrong selection is
+intentionally outcome-stratified, while its already cached top-4 page selection
+remains outcome-blind. The builder now retains its strict default but accepts an
+explicit confirmation-only override only when
+`fixed_page_selection_is_outcome_blind` is true. The failed output root was
+removed automatically; no fixture, retrieval, model, or GPU outcome was
+published. Focused old/new fixture tests pass.

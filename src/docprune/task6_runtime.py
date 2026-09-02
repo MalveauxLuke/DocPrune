@@ -967,6 +967,7 @@ def build_fixed_page_fixture(
     fixture_version: str,
     page_count: int,
     render_page: Callable[[Path, int], Image.Image] = render_task6_pdf_page,
+    allow_outcome_stratified_questions: bool = False,
 ) -> FixedPageFixture:
     """Seal existing fixed pages and document shards without search or rebuilding."""
 
@@ -980,7 +981,13 @@ def build_fixed_page_fixture(
         raise ValueError("fixed fixture PDF directory must be a real directory")
 
     reference = _load_json_object(reference_path, "fixed-page reference")
-    if reference.get("selection_is_outcome_blind") is not True:
+    question_selection_is_blind = reference.get("selection_is_outcome_blind") is True
+    fixed_page_selection_is_blind = (
+        reference.get("fixed_page_selection_is_outcome_blind") is True
+    )
+    if not question_selection_is_blind and not (
+        allow_outcome_stratified_questions and fixed_page_selection_is_blind
+    ):
         raise ValueError("fixed-page reference must be outcome blind")
     qids = reference.get("question_ids")
     rows = reference.get("rows")
