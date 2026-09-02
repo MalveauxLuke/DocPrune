@@ -108,7 +108,7 @@ retrieval index and model snapshots.
    fixture/input manifests while preserving transferred source bytes.
 
    ```bash
-   "$TASK9_ENV_PREFIX/bin/python" \
+   PYTHONPATH="$TASK9_REPO/src" "$TASK9_ENV_PREFIX/bin/python" \
      "$TASK9_REPO/examples/relocate_task9_h200_inputs.py" \
      --bundle-root "$TASK9_TRANSFER_ROOT" \
      --source-fixed-root "$TASK9_TRANSFER_ROOT/raw/scratch/lmalveau/docprune/task9-baseline-wrong100-inputs-c0c9bee-v1" \

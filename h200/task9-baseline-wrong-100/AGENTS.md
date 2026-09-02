@@ -60,6 +60,11 @@ Never write caches, temporary files, environments, checkpoints, or outputs to
 under `/mnt/data2/eunwooim` unless the survey proves those paths differ. Do not
 use ARC-only or cross-lab storage. Use one explicitly approved CoRAL GPU at a
 time by default; additional GPUs require separate explicit approval.
+Record a timestamped storage snapshot with `record_storage_usage.sh` after
+every setup, transfer, preprocessing, smoke, production, retry, and aggregation
+stage. Use `STORAGE_LEDGER.md` to distinguish project-owned artifacts from
+shared/re-downloadable caches. The reporter is observational and never
+authorizes cleanup or deletion.
 
 CoRAL GPUs are physical IDs 4–7. Check current processes and memory before every
 launch because dynamically allocated work may not be obvious. Default to one

@@ -27,7 +27,7 @@ if [[ ! -d "$TASK9_MINERU_SOURCE/.git" ]]; then
 fi
 git -C "$TASK9_MINERU_SOURCE" fetch origin "$MINERU_COMMIT"
 git -C "$TASK9_MINERU_SOURCE" checkout --detach "$MINERU_COMMIT"
-"$TASK9_MINERU_ENV_PREFIX/bin/pip" install "$TASK9_MINERU_SOURCE"
+"$TASK9_MINERU_ENV_PREFIX/bin/pip" install "${TASK9_MINERU_SOURCE}[vlm]"
 "$TASK9_MINERU_ENV_PREFIX/bin/hf" download "$MINERU_MODEL" \
   --revision "$MINERU_MODEL_REVISION"
 
@@ -41,5 +41,7 @@ PYTHONPATH="$TASK9_REPO/src" "$TASK9_ENV_PREFIX/bin/python" -c \
   'import sklearn, torch, transformers, docprune; print(torch.__version__, transformers.__version__, sklearn.__version__)'
 "$TASK9_MINERU_ENV_PREFIX/bin/python" -c \
   'import torch, transformers, mineru; print(torch.__version__, transformers.__version__)'
+"$TASK9_ENV_PREFIX/bin/pip" check
+"$TASK9_MINERU_ENV_PREFIX/bin/pip" check
 git -C "$TASK9_MINERU_SOURCE" rev-parse HEAD
 git -C "$TASK9_M3DOCRAG_SOURCE" rev-parse HEAD

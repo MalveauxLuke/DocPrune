@@ -1539,3 +1539,45 @@ H200 uses separate environments because the validated DocPrune stack
 MinerU stack (Python 3.11 and Transformers 4.57.6 with its own PyTorch stack).
 Environment setup may overlap the transfer after the read-only survey, but no
 preprocessing or GPU work may begin until the transfer is complete and verified.
+
+### Task 9 H200 environment compatibility correction — 2026-09-02
+
+The prepared H200 setup initially installed the pinned MinerU source without
+an optional runtime extra. Its final targeted validation failed closed with
+`ModuleNotFoundError: No module named 'torch'`; no MinerU inference or other GPU
+work ran. Inspection of the pinned `pyproject.toml` showed that Torch,
+Transformers, and Accelerate are declared by the `vlm` extra. The setup command
+was corrected to install the same pinned checkout as `MinerU[vlm]`, and both
+isolated environments now require `pip check` at the setup checkpoint. This is
+an environment compatibility correction only; no scientific input or method
+contract changed.
+
+Task-owned storage locations and cleanup classifications are tracked in
+`h200/task9-baseline-wrong-100/STORAGE_LEDGER.md`. The companion
+`record_storage_usage.sh` appends timestamped byte counts after each material
+stage to the local, untracked Task 9 manifest
+`task9-h200-local-data/manifests/storage-usage.tsv`; it never deletes data.
+
+The first H200 relocation invocation failed before creating its output root
+because the prepared command did not expose the sparse checkout's `src/`
+directory to Python. The handoff command was corrected to set
+`PYTHONPATH="$TASK9_REPO/src"`; the unchanged authenticated bundle remains the
+only relocation source.
+
+The corrected CPU-only setup then passed its full checkpoint. DocPrune reports
+Torch `2.4.1`, Transformers `4.46.3`, and scikit-learn `1.7.2`; MinerU
+reports Torch `2.13.0+cu130` and Transformers `4.57.6`. Both `pip check`
+invocations report no broken requirements. MinerU is exactly
+`d9cd58add047c2364c1198eefcb1ee9cd63a971a`, M3DocRAG is exactly
+`29e6ac2294d6b87075a1d45b8a8df175b214248a`, and the 13-file MinerU model
+snapshot dereferences to 2,328,026,289 bytes with model SHA-256
+`f2650d91aaa619534980445034f62cde27fc3fa0430aaf5c3302b91179cad0c5`.
+
+The transferred manifest re-authenticated successfully before relocation.
+CPU-only relocation completed with 100 questions, 400 page slots, no retrieval,
+and no global index. The source fixture remains
+`9b54c41787c0ccc34205c8e3fc23ca50701b93dc1c74289e64b57740c3ed9a71`;
+the H200-local fixture is
+`e349c5b983c41d55b1e3171e8ca918a2ef55b085561bb841f22908255fa8c3b0`.
+Inventory found 100 selected QIDs/records, 400 PNGs, 100 per-QID manifests, and
+253 unique existing PDFs plus 253 unique existing feature shards.
