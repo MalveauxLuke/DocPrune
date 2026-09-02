@@ -4,9 +4,11 @@ These tasks run on the current source/SOL computer, not on H200. Keep all
 generated data outside Git. H200 may survey and prepare its environment in
 parallel, but it must wait for this completed bundle before smoke execution.
 
-1. **Seal fixed inputs.** Run `seal_task9_confirmation_inputs.py` against the
+1. **[Complete] Seal fixed inputs.** Run `seal_task9_confirmation_inputs.py` against the
    sealed cohort and exact cached top-4 pages/features. Require exactly 100 QIDs,
    400 pages, `retrieval_run: false`, and `global_index_loaded: false`.
+   Canonical root:
+   `/scratch/lmalveau/docprune/task9-baseline-wrong100-inputs-c0c9bee-v1`.
 2. **Reuse MinerU outputs, then process missing pages only.** Match the 400
    sealed page identities and rendered-byte hashes against authenticated
    outputs from pinned MinerU commit

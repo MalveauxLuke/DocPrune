@@ -1491,3 +1491,23 @@ explicit confirmation-only override only when
 `fixed_page_selection_is_outcome_blind` is true. The failed output root was
 removed automatically; no fixture, retrieval, model, or GPU outcome was
 published. Focused old/new fixture tests pass.
+
+The corrected clean runtime `c0c9beef76f327ff80f73bb971a8bc772c2a95ec`
+sealed the fixed inputs in CPU-only SOL job `62497332` (completed in `00:05:36`,
+peak RSS `309460K`, exit `0:0`). Canonical artifact root:
+
+```text
+/scratch/lmalveau/docprune/task9-baseline-wrong100-inputs-c0c9bee-v1
+preprocessing-manifest SHA-256: 037b5479f5c05c3aede984f8cdcfd0e63935031a7e30ac99960b56b11917d61a
+fixture SHA-256: 9b54c41787c0ccc34205c8e3fc23ca50701b93dc1c74289e64b57740c3ed9a71
+selected-source-results SHA-256: e32613223575949c8822b3fbc1ab057e2c546ba31e65fd9e6be6854f085eac0c
+questions: 100
+page slots: 400
+size: 170M
+retrieval_run: false
+global_index_loaded: false
+```
+
+The two earlier interactive attempts were externally terminated before terminal
+publication; their partial roots were automatically removed and are
+non-canonical. No GPU or model execution occurred during fixed-input sealing.
