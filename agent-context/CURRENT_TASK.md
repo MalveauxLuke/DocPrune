@@ -190,6 +190,7 @@ masks and zero holdout masks. After its sparse checkout, the H200 agent's first
 action is the read-only survey in
 `h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`; SOL is no longer the
 final model-execution environment for this phase. Before transfer, the
-source/SOL agent must seal fixed inputs, run MinerU, capture geometry, build and
-validate all 100 mappings, and package the authenticated bundle. H200 must not
-recreate those inputs or mappings.
+source/SOL agent must seal fixed inputs, reuse authenticated MinerU pages, run
+MinerU only for missing unique pages, capture geometry, build and validate all
+100 mappings, and package the authenticated bundle. H200 must not recreate
+those inputs or mappings.

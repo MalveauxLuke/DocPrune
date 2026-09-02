@@ -7,10 +7,14 @@ parallel, but it must wait for this completed bundle before smoke execution.
 1. **Seal fixed inputs.** Run `seal_task9_confirmation_inputs.py` against the
    sealed cohort and exact cached top-4 pages/features. Require exactly 100 QIDs,
    400 pages, `retrieval_run: false`, and `global_index_loaded: false`.
-2. **Run pinned MinerU.** Prepare, execute, and finalize MinerU for each QID's
-   four sealed pages using commit `d9cd58add047c2364c1198eefcb1ee9cd63a971a`
-   and model revision `d3f5e08d073c21466bbabe21c71bb1e9c2e595da`.
-   Preserve completion manifests, raw hashes, and actual GPU identities.
+2. **Reuse MinerU outputs, then process missing pages only.** Match the 400
+   sealed page identities and rendered-byte hashes against authenticated
+   outputs from pinned MinerU commit
+   `d9cd58add047c2364c1198eefcb1ee9cd63a971a` and model revision
+   `d3f5e08d073c21466bbabe21c71bb1e9c2e595da`. Reuse exact matches without
+   rerunning MinerU. Prepare, execute, and finalize MinerU only for missing
+   unique pages, preserving completion manifests, raw hashes, and actual GPU
+   identities. Never rerun a completed page merely because another QID uses it.
 3. **Capture frozen geometry.** Run
    `run_task9_preliminary_geometry_capture.py` once per QID and authenticate
    fixture, source-row, page, feature, model, and geometry identities.

@@ -87,9 +87,11 @@ After the survey:
 ## Phase 2 — receive and validate the completed bundle
 
 The source computer performs every construction step before transfer. It seals
-the fixed inputs, runs MinerU, captures frozen post-BTP/QTP geometry, builds all
-100 mappings, runs model-free validation, and publishes a content-addressed
-bundle with byte counts and SHA-256 manifests. This division is mandatory.
+the fixed inputs, reuses authenticated MinerU outputs by exact page/render hash,
+runs MinerU only for missing unique pages, captures frozen post-BTP/QTP
+geometry, builds all 100 mappings, runs model-free validation, and publishes a
+content-addressed bundle with byte counts and SHA-256 manifests. This division
+is mandatory.
 
 The H200 agent must not run any of these construction commands:
 

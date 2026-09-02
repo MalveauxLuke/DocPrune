@@ -580,8 +580,9 @@ unresolved under the locked procedure.
   the same 256 interventions and make generated-answer outcomes primary.
 - [x] Prepare path-parameterized cohort, fixed-input, fit-only analysis, batch,
   selected-arm, aggregation, and H200 handoff tooling.
-- [ ] On the source/SOL computer, seal all 100 retrieval-free fixed inputs, run
-  pinned MinerU, capture frozen post-BTP/QTP geometry, build exactly 100
+- [ ] On the source/SOL computer, seal all 100 retrieval-free fixed inputs,
+  reuse exact authenticated MinerU page outputs, run pinned MinerU only for
+  missing unique pages, capture frozen post-BTP/QTP geometry, build exactly 100
   authenticated mappings, and pass model-free validation for ordinals 0–99.
 - [ ] On the source/SOL computer, package those completed artifacts with exact
   cached pages/features and a content-addressed byte-count/SHA-256 manifest.

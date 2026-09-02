@@ -42,10 +42,11 @@ document them before running the smoke.
 
 ## Source/H200 work boundary
 
-The source computer must seal the fixed inputs, run MinerU, capture frozen
-post-BTP/QTP geometry, build all 100 mappings, and validate the complete bundle
-before transfer. The H200 agent must not recreate or modify those artifacts and
-must not install MinerU or its model. It only receives and authenticates the
+The source computer must seal the fixed inputs, reuse authenticated MinerU page
+outputs, run MinerU only for missing unique pages, capture frozen post-BTP/QTP
+geometry, build all 100 mappings, and validate the complete bundle before
+transfer. The H200 agent must not recreate or modify those artifacts and must
+not install MinerU or its model. It only receives and authenticates the
 completed bundle, runs CPU-only transferred-input validation, then performs the
 smoke, production, retry, and aggregation stages.
 

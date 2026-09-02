@@ -1467,3 +1467,17 @@ bundle, performs CPU-only transferred-input validation, then runs smoke,
 production, retries if required, and aggregation. This changes packaging and
 execution ownership only; the cohort, 256/0 mask design, arms, model, decoding,
 and analysis contract are unchanged.
+
+### Task 9 MinerU reuse inventory — 2026-09-02
+
+Before fixed-input sealing or preprocessing, the user approved retaining the
+already sealed random 100-question cohort rather than selecting on artifact
+availability. Across the 731 eligible new baseline-wrong questions, the 48
+authenticated preliminary-pilot MinerU completions cover 192 unique pages, but
+zero eligible questions have all four pages covered: 713 have zero covered
+pages, 17 have one, one has two, and none has three or four. The sealed random
+100 contains one reusable page slot and 99 questions with no page overlap.
+
+Source preprocessing is therefore reuse-first by exact page and rendered-byte
+identity, but cohort membership remains unchanged and random. MinerU may run
+only for missing unique pages; no retrieval or global index access is allowed.
