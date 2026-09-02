@@ -46,7 +46,7 @@ storage changes are permitted before it is recorded.
 - Sealed cohort present? path/file SHA-256/internal SHA-256:
 - Fixed-page fixture/features/PDF subset present?:
 - Qwen model revision present?:
-- MinerU/mapping prerequisites present?:
+- Completed source-built bundle/mappings present?:
 
 ## Findings before setup
 

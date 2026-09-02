@@ -580,21 +580,28 @@ unresolved under the locked procedure.
   the same 256 interventions and make generated-answer outcomes primary.
 - [x] Prepare path-parameterized cohort, fixed-input, fit-only analysis, batch,
   selected-arm, aggregation, and H200 handoff tooling.
+- [ ] On the source/SOL computer, seal all 100 retrieval-free fixed inputs, run
+  pinned MinerU, capture frozen post-BTP/QTP geometry, build exactly 100
+  authenticated mappings, and pass model-free validation for ordinals 0–99.
+- [ ] On the source/SOL computer, package those completed artifacts with exact
+  cached pages/features and a content-addressed byte-count/SHA-256 manifest.
 - [ ] On the CoRAL H200 host, perform and record the required read-only
   environment survey before setup or execution.
-- [ ] Transfer the repository, sealed cohort, exact cached top-4 page/feature
-  artifacts, model cache, and mapping prerequisites to CoRAL storage without
-  writing to `/` or cross-lab storage.
-- [ ] Build/validate the H200 environment, prepare the 100 mappings, run one
-  exact smoke question, then distribute the remaining questions across
+- [ ] Transfer the repository and completed authenticated source-built bundle
+  to CoRAL storage without writing to `/` or cross-lab storage; copy the pinned
+  Qwen snapshot only if the H200 survey shows it is absent.
+- [ ] Build/validate the H200 environment, authenticate the transferred bundle,
+  run CPU-only validation for all 100 ordinals, run one exact smoke question,
+  then distribute the remaining questions across
   available CoRAL GPUs 4–7 only after the required channel notice.
 - [ ] Aggregate exactly 100 admitted results with support-component-clustered
   uncertainty and preserve a unified analysis JSON.
 
-Current next action: transfer this prepared branch and the sealed cohort to the
-H200 operator. That agent first performs the read-only survey in
-`h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`; it does not redesign the
-experiment. No SOL/HTC job is part of this phase.
+Current next action: complete the source/SOL preparation checklist in
+`h200/task9-baseline-wrong-100/SOURCE_PREPARATION_TODO.md`. The H200 operator
+may perform the read-only survey in parallel, but no input bundle is transferred
+until source-side fixed inputs, MinerU, geometry, mappings, validation, and
+packaging are complete.
 
 ## Task 12 — Close the stage
 
@@ -614,8 +621,8 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-The preliminary 24-correct/24-wrong pilot and unified analysis are complete.
-Next run its reuse-only CPU mask-count ablation at 64/96/128/192/256 and seal
-the reduced-mask selections for the bounded GPU response comparison. Only then
-continue enriched 16/16/8/8 panel preparation. No method-holdout run is
-currently authorized. Task 10 remains inactive and separately gated.
+Complete the seven source/SOL preparation steps in
+`h200/task9-baseline-wrong-100/SOURCE_PREPARATION_TODO.md`, then transfer the
+authenticated bundle to the surveyed H200 destination. The H200 agent must not
+rebuild fixed inputs, MinerU output, geometry, or mappings. No method-holdout
+run is currently authorized. Task 10 remains inactive and separately gated.

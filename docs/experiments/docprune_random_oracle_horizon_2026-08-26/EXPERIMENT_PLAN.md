@@ -847,4 +847,8 @@ This is a new-question confirmation of an answer-conditioned regional
 ContextCite diagnostic. It is not vanilla ContextCite, a token oracle, a
 deployable selector, or a prevalence estimate outside ordinary baseline
 failures. H200 CoRAL execution policy is authoritative for this phase; SOL
-documents are historical implementation context only.
+documents are historical implementation context only. Operationally, the
+source/SOL computer constructs and validates the complete fixed-input, MinerU,
+geometry, and mapping bundle before transfer. H200 authenticates that bundle
+and performs only CPU input validation, smoke, production, retry, and
+aggregation; it must not reconstruct experiment inputs or mappings.

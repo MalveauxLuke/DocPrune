@@ -55,62 +55,65 @@ model files, mappings, and outputs stay outside Git.
 
 ## Phase 0 — mandatory read-only survey
 
-1. Read the scoped `AGENTS.md` and `CORAL_POLICY.md`.
-2. Run `bash SURVEY_COMMANDS.sh`. It is read-only.
-3. Fill `ENVIRONMENT_SURVEY.md` with the observed output and conclusions.
-4. Stop if `/mnt/data1` or `/mnt/data2` naming/ownership differs, if CoRAL GPU
+1. Sparse-clone the prepared branch into `/mnt/data1/eunwooim/DocPrune` using
+   `SPARSE_CHECKOUT_PATHS.txt`. This is the only permitted pre-survey setup.
+2. Read the scoped `AGENTS.md` and `CORAL_POLICY.md`.
+3. Run `bash SURVEY_COMMANDS.sh`. It is read-only.
+4. Fill `ENVIRONMENT_SURVEY.md` with the observed output and conclusions.
+5. Stop if `/mnt/data1` or `/mnt/data2` naming/ownership differs, if CoRAL GPU
    identity is unclear, or if a safe cache/environment root is unavailable.
 
-Do not clone, install, transfer, load a model, or touch a GPU before this phase
-is recorded.
+Apart from the sparse checkout, do not install, transfer, load a model, or
+touch a GPU before this phase is recorded.
 
 ## Phase 1 — checkout and environment
 
 After the survey:
 
-1. Clone the prepared branch into `/mnt/data1/eunwooim/DocPrune` (or the
-   survey-confirmed CoRAL equivalent). Use the paths in
-   `SPARSE_CHECKOUT_PATHS.txt` if a trimmed checkout is desired.
-2. Copy `paths.env.example` to `paths.env` and change only survey-disproved
+1. Copy `paths.env.example` to `paths.env` and change only survey-disproved
    paths.
-3. Create the environment under `/mnt/data2/eunwooim/.conda/`, never under `/`
+2. Create the environment under `/mnt/data2/eunwooim/.conda/`, never under `/`
    or the default home cache. `environment-h200.yml` preserves the successful
    SOL versions and adds scikit-learn 1.7.2. Treat those versions as a strong
    freeze; if an H200/driver incompatibility makes one impossible, record the
    minimal substitution before proceeding.
-4. Export every cache/temp variable from `paths.env` before installation or
+3. Export every cache/temp variable from `paths.env` before installation or
    model access.
-5. Run only targeted import/version checks. Do not run the full test suite.
-6. The execution checkout must be clean and its exact 40-character commit
-   recorded before the smoke.
+4. Run only targeted import/version checks. Do not run the full test suite.
+5. Record the original clean 40-character execution commit. Do not create a
+   local survey-record commit; preserve survey notes outside the execution
+   checkout if necessary to keep it clean.
 
-## Phase 2 — fixed inputs and mappings
+## Phase 2 — receive and validate the completed bundle
 
-Follow `TRANSFER_MANIFEST.md`. The transfer strategy is intentionally finalized
-after the H200 survey because mount paths and available local caches are not yet
-known. No code needs to be written.
+The source computer performs every construction step before transfer. It seals
+the fixed inputs, runs MinerU, captures frozen post-BTP/QTP geometry, builds all
+100 mappings, runs model-free validation, and publishes a content-addressed
+bundle with byte counts and SHA-256 manifests. This division is mandatory.
 
-Once artifacts are present, run `seal_task9_confirmation_inputs.py` to create
-the 100-question fixed-page fixture. It authenticates the cohort and creates
-retrieval-free QID inputs. Use the existing prepared mapping pipeline:
+The H200 agent must not run any of these construction commands:
 
-- `run_task8_mineru_smoke.py` for each selected fixed-page input;
-- `run_task9_preliminary_geometry_capture.py` for the frozen post-QTP geometry;
-- `build_task9_preliminary_region_mapping.py` to combine authenticated MinerU
-  and geometry artifacts.
+- `seal_task9_confirmation_inputs.py`;
+- `run_task8_mineru_smoke.py` or the MinerU backend;
+- `run_task9_preliminary_geometry_capture.py`;
+- `build_task9_preliminary_region_mapping.py`.
 
-The filenames placed in `TASK9_MAPPINGS` must begin with the zero-padded
-ordinal and include the QID, for example `000-<qid>.json`. Validate all 100
-mappings before any attribution run. No retrieval command is permitted.
+After the survey confirms destination paths, receive the already completed
+bundle described in `TRANSFER_MANIFEST.md`, authenticate its manifest and all
+sealed identities, and run `run_task9_confirmation_batch.py --validate-only`
+for ordinals 0–99. This CPU-only check must resolve exactly one correctly named
+mapping per QID and report 256 fit masks and zero holdout masks. No retrieval
+command is permitted.
 
-## Phase 3 — smoke
+## Phase 3 — smoke and admission
 
 1. Check GPUs 4–7 with `nvidia-smi`.
 2. If the smoke may exceed 15 minutes, post in the channel first.
 3. Choose one idle CoRAL physical GPU and run `launch_smoke.sh GPU_ID`.
-4. Confirm completion-manifest admission, exactly 256 fit masks, zero holdouts,
-   exact fixture/mapping hashes, dynamic native layer/budget, all five arms,
-   finite likelihoods, and recorded H200 identity/peak VRAM.
+4. In the same smoke stage, confirm completion-manifest admission, exactly 256
+   fit masks, zero holdouts, exact fixture/mapping hashes, dynamic native
+   layer/budget, all five arms, finite likelihoods, and recorded H200
+   identity/peak VRAM.
 5. Do not launch production if the smoke changes code or experiment semantics.
 
 The admitted smoke is question 0 and is retained as canonical production data.
@@ -128,10 +131,8 @@ with both the smoke root and production root. Preserve its unified JSON, file
 SHA-256, internal SHA-256, per-question rows, logs, GPU identities, and any
 retries in the experiment log.
 
-## Prepared code entry points
+## Runtime code entry points
 
-- Cohort: [`../../examples/seal_task9_baseline_wrong100.py`](../../examples/seal_task9_baseline_wrong100.py)
-- Fixed pages: [`../../examples/seal_task9_confirmation_inputs.py`](../../examples/seal_task9_confirmation_inputs.py)
 - Intervention run: [`../../examples/run_task9_regional_development.py`](../../examples/run_task9_regional_development.py)
 - Fit-only analysis: [`../../examples/analyze_task9_confirmation_attribution.py`](../../examples/analyze_task9_confirmation_attribution.py)
 - Batch driver: [`../../examples/run_task9_confirmation_batch.py`](../../examples/run_task9_confirmation_batch.py)

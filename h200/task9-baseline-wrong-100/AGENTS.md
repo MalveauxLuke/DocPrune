@@ -17,10 +17,12 @@ copy SOL scheduler assumptions onto this server.
 
 ## First action: observation only
 
-Before environment creation, downloads, transfer, compilation, model loading,
-or GPU work, run the read-only commands in [`SURVEY_COMMANDS.sh`](SURVEY_COMMANDS.sh).
-Then record the outputs and conclusions in [`ENVIRONMENT_SURVEY.md`](ENVIRONMENT_SURVEY.md).
-Do not change the machine during the survey.
+The sparse Git checkout at `/mnt/data1/eunwooim/DocPrune` is the sole permitted
+setup action before the survey. After that checkout, and before environment
+creation, downloads, transfer, compilation, model loading, or GPU work, run the
+read-only commands in [`SURVEY_COMMANDS.sh`](SURVEY_COMMANDS.sh). Then record
+the outputs and conclusions in [`ENVIRONMENT_SURVEY.md`](ENVIRONMENT_SURVEY.md).
+Do not otherwise change the machine during the survey.
 
 ## Scope
 
@@ -37,6 +39,15 @@ document them before running the smoke.
   policy, and whole-region deletion frozen.
 - Run one smoke question before production.
 - Large/generated artifacts stay outside Git on CoRAL storage.
+
+## Source/H200 work boundary
+
+The source computer must seal the fixed inputs, run MinerU, capture frozen
+post-BTP/QTP geometry, build all 100 mappings, and validate the complete bundle
+before transfer. The H200 agent must not recreate or modify those artifacts and
+must not install MinerU or its model. It only receives and authenticates the
+completed bundle, runs CPU-only transferred-input validation, then performs the
+smoke, production, retry, and aggregation stages.
 
 ## Storage and GPU safety
 

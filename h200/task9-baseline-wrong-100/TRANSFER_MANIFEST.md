@@ -1,7 +1,8 @@
 # Transfer manifest and boundary
 
-The survey happens first. Transfer design is finalized only afterward, but the
-required logical inputs are already fixed.
+The source computer prepares one finalized, content-addressed bundle before
+transfer. The H200 survey confirms only its destination paths and whether the
+pinned Qwen snapshot must be copied; it does not reopen the bundle design.
 
 ## Required Git content
 
@@ -26,20 +27,27 @@ required logical inputs are already fixed.
   persisted feature files plus a rewritten/authenticated H200-local manifest.
 - Fixed run config and index metadata needed to load those persisted features;
   do not transfer or load the global searchable retrieval index.
-- Qwen/Qwen2-VL-7B-Instruct model/processor files at the pinned revision.
-- MinerU tool/config/model artifacts required by the existing region mapping
-  pipeline, unless all 100 authenticated mappings are built before transfer.
+- The sealed fixed-page fixture, 100 per-QID input directories, selected source
+  rows, and preprocessing manifest built on the source computer.
+- All completed authenticated MinerU outputs/completion manifests, geometry
+  captures, and exactly 100 final mapping files built and validated on the
+  source computer.
+- Qwen/Qwen2-VL-7B-Instruct model/processor files at the pinned revision only
+  if the H200 survey shows that exact snapshot is absent.
 
-## Preferred packaging choices after survey
+Do not transfer MinerU executables, configuration, or model weights for H200
+execution. H200 must not regenerate fixed inputs, MinerU output, geometry, or
+mappings.
 
-1. Best: build a content-addressed subset bundle containing only the 400 cached
-   pages, their persisted features, selected source rows, mapping prerequisites,
-   and model files absent from the H200 cache.
-2. Also acceptable: build all 100 region mappings on the source machine and
-   transfer the authenticated mapping artifacts plus only runtime page/features.
-3. Avoid copying the full global retrieval index or full experiment scratch
-   tree. They are unnecessary and create both storage and provenance risk.
+## Required packaging
 
-Whichever route is chosen, record source/destination paths, byte counts, and
-SHA-256 manifests. Do not rewrite the sealed cohort itself; H200-local paths
-belong in the fixed-page fixture and transfer manifest.
+Build one content-addressed subset bundle containing the 400 cached pages,
+persisted features, fixed inputs, selected source rows, completed MinerU and
+geometry artifacts, final mappings, fixed runtime metadata, and model files
+absent from the H200 cache. Exclude the global retrieval index and unrelated
+experiment scratch trees.
+
+Record source/destination paths, byte counts, and SHA-256 manifests. Preserve
+the sealed cohort bytes. Any H200-local path relocation must be represented by
+an authenticated relocation manifest; it must not reconstruct scientific
+inputs or change their identities.

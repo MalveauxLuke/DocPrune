@@ -1454,3 +1454,16 @@ The source cached-results file contains 2,441 rows; the sealer restricts it to
 the exact 1,213 sealed Task 6 holdout QIDs before baseline classification. No
 H200 survey, environment mutation, model load, smoke, or GPU job occurred
 during this preparation.
+
+### Task 9 source/H200 execution-boundary correction — 2026-09-02
+
+Before any confirmation outcomes were produced, the user corrected the
+operational division of work. The source/SOL computer must seal the 100 fixed
+inputs, run pinned MinerU, capture frozen post-BTP/QTP geometry, build and
+model-free validate exactly 100 mappings, and package the authenticated bundle.
+The H200 agent must not recreate those artifacts or install MinerU; it only
+surveys and configures the host, receives and authenticates the completed
+bundle, performs CPU-only transferred-input validation, then runs smoke,
+production, retries if required, and aggregation. This changes packaging and
+execution ownership only; the cohort, 256/0 mask design, arms, model, decoding,
+and analysis contract are unchanged.
