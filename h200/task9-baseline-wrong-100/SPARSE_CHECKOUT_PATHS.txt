@@ -10,6 +10,11 @@
 /docs/SOL_INSTRUCTIONS.md
 /h200/task9-baseline-wrong-100/
 /src/docprune/
+/examples/seal_task9_confirmation_inputs.py
+/examples/run_task8_mineru_smoke.py
+/examples/run_task9_preliminary_geometry_capture.py
+/examples/build_task9_preliminary_region_mapping.py
+/examples/relocate_task9_h200_inputs.py
 /examples/run_task9_regional_development.py
 /examples/analyze_task9_confirmation_attribution.py
 /examples/run_task9_preliminary_selected_arms.py

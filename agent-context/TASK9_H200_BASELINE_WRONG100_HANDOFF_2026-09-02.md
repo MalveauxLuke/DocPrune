@@ -7,12 +7,13 @@ This file exists so agents entering through `agent-context/` do not follow the
 older SOL next action. Read the root `AGENTS.md`, the current task, the three
 canonical experiment documents, and then the H200-scoped `AGENTS.md`. After
 the required sparse checkout, the H200 agent begins with a read-only machine
-survey and records it before any environment setup. It should not redesign or
-recode the experiment.
+survey. Once recorded, both isolated environments may be prepared while the
+data transfer continues. It should not redesign or recode the experiment.
 
-The source computer must first seal all fixed inputs, run MinerU, capture
-geometry, build all 100 mappings, validate them, and package the authenticated
-bundle. The H200 agent must not repeat those construction steps; after its
-survey and environment setup it only receives and authenticates that bundle,
-runs CPU-only transferred-input validation, then performs smoke, production,
-retries if necessary, and aggregation.
+The source computer sealed the cohort and retrieval-free 100-QID/400-page fixed
+inputs and packaged the exact required PDF, page, feature, and provenance bytes.
+After authenticating and relocating that bundle, H200 owns pinned MinerU,
+post-BTP/QTP geometry, mapping construction, CPU validation, experiment smoke,
+production, retries, and aggregation. Use separate DocPrune and MinerU
+environments because their validated dependency stacks conflict. No retrieval
+or global index is permitted.

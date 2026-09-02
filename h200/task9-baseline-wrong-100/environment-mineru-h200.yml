@@ -1,0 +1,10 @@
+name: mineru-h200
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - git
+  - packaging
+  - pip:
+      - huggingface-hub==0.36.2

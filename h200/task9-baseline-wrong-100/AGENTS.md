@@ -18,11 +18,12 @@ copy SOL scheduler assumptions onto this server.
 ## First action: observation only
 
 The sparse Git checkout at `/mnt/data1/eunwooim/DocPrune` is the sole permitted
-setup action before the survey. After that checkout, and before environment
-creation, downloads, transfer, compilation, model loading, or GPU work, run the
-read-only commands in [`SURVEY_COMMANDS.sh`](SURVEY_COMMANDS.sh). Then record
-the outputs and conclusions in [`ENVIRONMENT_SURVEY.md`](ENVIRONMENT_SURVEY.md).
-Do not otherwise change the machine during the survey.
+setup action before the survey. After that checkout, run the read-only commands
+in [`SURVEY_COMMANDS.sh`](SURVEY_COMMANDS.sh) and record the results outside the
+clean execution checkout or in [`ENVIRONMENT_SURVEY.md`](ENVIRONMENT_SURVEY.md).
+After the survey is recorded, environment and model setup may proceed while the
+sealed input bundle is still transferring. No preprocessing or GPU work may
+start until that transfer is complete and checksum-verified.
 
 ## Scope
 
@@ -42,20 +43,23 @@ document them before running the smoke.
 
 ## Source/H200 work boundary
 
-The source computer must seal the fixed inputs, reuse authenticated MinerU page
-outputs, run MinerU only for missing unique pages, capture frozen post-BTP/QTP
-geometry, build all 100 mappings, and validate the complete bundle before
-transfer. The H200 agent must not recreate or modify those artifacts and must
-not install MinerU or its model. It only receives and authenticates the
-completed bundle, runs CPU-only transferred-input validation, then performs the
-smoke, production, retry, and aggregation stages.
+The source computer sealed the cohort and 100-QID/400-page retrieval-free fixed
+inputs and packaged the exact required PDF, page, feature, and provenance bytes.
+H200 authenticates and relocates those bytes without retrieval, then owns the
+pinned MinerU run, post-BTP/QTP geometry capture, region-mapping construction,
+CPU validation, experiment smoke, production, retry, and aggregation. Never
+reselect questions/pages, load the global retrieval index, or alter source
+bytes. Use separate DocPrune and MinerU environments because their validated
+Python/PyTorch/Transformers stacks conflict.
 
 ## Storage and GPU safety
 
 Never write caches, temporary files, environments, checkpoints, or outputs to
-`/`. Use `/mnt/data1/eunwooim` for the checkout/artifacts and
-`/mnt/data2/eunwooim` for environments/caches unless the survey proves those
-paths differ. Do not use ARC-only or cross-lab storage.
+`/`. Keep experiment artifacts under
+`/mnt/data1/eunwooim/DocPrune/task9-h200-local-data/` and environments/caches
+under `/mnt/data2/eunwooim` unless the survey proves those paths differ. Do not
+use ARC-only or cross-lab storage. Use one explicitly approved CoRAL GPU at a
+time by default; additional GPUs require separate explicit approval.
 
 CoRAL GPUs are physical IDs 4–7. Check them before every launch. A run expected
 to exceed 15 minutes requires a channel notice first. Do not use GPUs 0–3 in

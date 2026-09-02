@@ -188,9 +188,9 @@ It contains 100 new ordinary baseline-wrong questions from 100 distinct
 support-document components, reusing exact cached top-4 pages. Use 256 fit
 masks and zero holdout masks. After its sparse checkout, the H200 agent's first
 action is the read-only survey in
-`h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`; SOL is no longer the
-final model-execution environment for this phase. Before transfer, the
-source/SOL agent must seal fixed inputs, reuse authenticated MinerU pages, run
-MinerU only for missing unique pages, capture geometry, build and validate all
-100 mappings, and package the authenticated bundle. H200 must not recreate
-those inputs or mappings.
+`h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`. Once recorded, separate
+DocPrune and MinerU environments may be prepared while the sealed CPU-input
+bundle transfers. SOL sealed and packaged the cohort and 100-QID/400-page
+fixed inputs; H200 authenticates and relocates those bytes, then owns pinned
+MinerU, geometry capture, mapping construction, CPU validation, and experiment
+execution. No retrieval or global index is permitted.

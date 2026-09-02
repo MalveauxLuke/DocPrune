@@ -26,6 +26,8 @@ checkpoints/
 viewer/
 pilot_data/
 sol_results/
+task9-h200-local-data/
+h200/task9-baseline-wrong-100/paths.env
 
 data/*
 !data/README.md

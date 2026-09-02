@@ -580,30 +580,31 @@ unresolved under the locked procedure.
   the same 256 interventions and make generated-answer outcomes primary.
 - [x] Prepare path-parameterized cohort, fixed-input, fit-only analysis, batch,
   selected-arm, aggregation, and H200 handoff tooling.
-- [~] On the source/SOL computer, seal all 100 retrieval-free fixed inputs,
-  reuse exact authenticated MinerU page outputs, run pinned MinerU only for
-  missing unique pages, capture frozen post-BTP/QTP geometry, build exactly 100
-  authenticated mappings, and pass model-free validation for ordinals 0–99.
-  Fixed-input sealing is complete; preprocessing, mapping, and validation remain.
-- [ ] On the source/SOL computer, package those completed artifacts with exact
-  cached pages/features and a content-addressed byte-count/SHA-256 manifest.
-- [ ] On the CoRAL H200 host, perform and record the required read-only
-  environment survey before setup or execution.
-- [ ] Transfer the repository and completed authenticated source-built bundle
-  to CoRAL storage without writing to `/` or cross-lab storage; copy the pinned
-  Qwen snapshot only if the H200 survey shows it is absent.
-- [ ] Build/validate the H200 environment, authenticate the transferred bundle,
-  run CPU-only validation for all 100 ordinals, run one exact smoke question,
-  then distribute the remaining questions across
-  available CoRAL GPUs 4–7 only after the required channel notice.
+- [x] On the source/SOL computer, seal all 100 retrieval-free fixed inputs and
+  package the exact cohort, selected rows, 400 PNGs, 253 unique PDFs, 253 unique
+  feature shards, and provenance metadata without the global retrieval index.
+  The 1,014 raw files total 2,826,385,204 bytes; `MANIFEST.sha256` has SHA-256
+  `d5eb76ff0e0382d487387e31d9a28cde37ae1de8020644a111ec659d2f1f5bb5`.
+- [~] Transfer that sealed CPU-input bundle through the Mac bridge to
+  `/mnt/data1/eunwooim/DocPrune/task9-h200-local-data/inputs/transferred/` and
+  verify every checksum. Do not preprocess a partial transfer.
+- [x] Prepare tracked H200 setup for two isolated environments: frozen
+  DocPrune and pinned MinerU. A single environment is rejected because their
+  validated Python/PyTorch/Transformers versions conflict. Environment setup
+  may overlap the transfer after the read-only survey is recorded.
+- [ ] On H200, authenticate and relocate the fixed inputs without changing
+  source bytes; run pinned MinerU on the 400 sealed pages, capture frozen
+  post-BTP/QTP geometry for 100 QIDs, build exactly 100 mappings, and pass
+  model-free validation for ordinals 0–99. No retrieval or global index.
+- [ ] After separate exact-GPU approval, run one experiment smoke and then
+  questions 1–99 sequentially as resumable one-question units on one approved
+  CoRAL GPU. Additional GPUs require separate explicit approval.
 - [ ] Aggregate exactly 100 admitted results with support-component-clustered
   uncertainty and preserve a unified analysis JSON.
 
-Current next action: complete the source/SOL preparation checklist in
-`h200/task9-baseline-wrong-100/SOURCE_PREPARATION_TODO.md`. The H200 operator
-may perform the read-only survey in parallel, but no input bundle is transferred
-until source-side fixed inputs, MinerU, geometry, mappings, validation, and
-packaging are complete.
+Current next action: while the Mac-to-H200 transfer finishes, pull this branch
+and create the two isolated H200 environments after the recorded survey. Then
+verify all 1,014 transferred files before relocation or preprocessing.
 
 ## Task 12 — Close the stage
 
@@ -623,8 +624,8 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Complete the seven source/SOL preparation steps in
-`h200/task9-baseline-wrong-100/SOURCE_PREPARATION_TODO.md`, then transfer the
-authenticated bundle to the surveyed H200 destination. The H200 agent must not
-rebuild fixed inputs, MinerU output, geometry, or mappings. No method-holdout
+Finish and verify the Mac-to-H200 transfer while the H200 agent prepares the
+separate DocPrune and MinerU environments. After verification, H200 relocates
+the sealed fixed inputs, runs pinned MinerU and geometry, builds/validates all
+100 mappings, and requests approval for one exact smoke GPU. No method-holdout
 run is currently authorized. Task 10 remains inactive and separately gated.

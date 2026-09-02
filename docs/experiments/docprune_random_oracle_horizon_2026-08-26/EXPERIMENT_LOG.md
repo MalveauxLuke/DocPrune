@@ -1457,6 +1457,9 @@ during this preparation.
 
 ### Task 9 source/H200 execution-boundary correction — 2026-09-02
 
+**Historical and superseded later on 2026-09-02 by the H200 preprocessing
+ownership amendment below.**
+
 Before any confirmation outcomes were produced, the user corrected the
 operational division of work. The source/SOL computer must seal the 100 fixed
 inputs, run pinned MinerU, capture frozen post-BTP/QTP geometry, build and
@@ -1511,3 +1514,28 @@ global_index_loaded: false
 The two earlier interactive attempts were externally terminated before terminal
 publication; their partial roots were automatically removed and are
 non-canonical. No GPU or model execution occurred during fixed-input sealing.
+
+### Task 9 H200 preprocessing ownership amendment — 2026-09-02
+
+Before any MinerU, geometry, mapping, or confirmation outcome was produced, the
+user amended the earlier source/H200 boundary. SOL remains authoritative for
+the sealed cohort and CPU fixed inputs. H200 now authenticates and relocates
+those bytes and owns pinned MinerU execution, post-BTP/QTP geometry capture,
+mapping construction, model-free validation, experiment smoke, and production.
+The scientific cohort, pages, features, 256/0 mask design, arms, model, prompt,
+decoding, and analysis contract are unchanged.
+
+The sealed transfer subset is
+`/scratch/lmalveau/docprune/task9-baseline-wrong100-transfer-c0c9bee-v1`:
+1,014 raw files, 2,826,385,204 raw bytes, with `MANIFEST.sha256` SHA-256
+`d5eb76ff0e0382d487387e31d9a28cde37ae1de8020644a111ec659d2f1f5bb5`.
+It contains the 400 sealed page images, 253 unique required PDFs, 253 unique
+feature shards, cohort/fixed-input/source rows, and provenance metadata. It
+contains no global retrieval index, model snapshot, MinerU output, geometry, or
+mapping output. All 1,014 source-file checksums passed before transfer.
+
+H200 uses separate environments because the validated DocPrune stack
+(Python 3.10, PyTorch 2.4.1, Transformers 4.46.3) conflicts with the validated
+MinerU stack (Python 3.11 and Transformers 4.57.6 with its own PyTorch stack).
+Environment setup may overlap the transfer after the read-only survey, but no
+preprocessing or GPU work may begin until the transfer is complete and verified.

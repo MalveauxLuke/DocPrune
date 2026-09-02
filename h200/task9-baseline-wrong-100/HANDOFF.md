@@ -66,52 +66,84 @@ model files, mappings, and outputs stay outside Git.
 Apart from the sparse checkout, do not install, transfer, load a model, or
 touch a GPU before this phase is recorded.
 
-## Phase 1 — checkout and environment
+## Phase 1 — environments while transfer continues
 
 After the survey:
 
 1. Copy `paths.env.example` to `paths.env` and change only survey-disproved
    paths.
-2. Create the environment under `/mnt/data2/eunwooim/.conda/`, never under `/`
-   or the default home cache. `environment-h200.yml` preserves the successful
-   SOL versions and adds scikit-learn 1.7.2. Treat those versions as a strong
-   freeze; if an H200/driver incompatibility makes one impossible, record the
-   minimal substitution before proceeding.
-3. Export every cache/temp variable from `paths.env` before installation or
-   model access.
-4. Run only targeted import/version checks. Do not run the full test suite.
-5. Record the original clean 40-character execution commit. Do not create a
-   local survey-record commit; preserve survey notes outside the execution
-   checkout if necessary to keep it clean.
+2. Manually accept any Conda channel terms reported by the previous failed
+   setup attempt. Do not bypass or automate account acceptance.
+3. Export every cache/temp variable from `paths.env`, then run
+   `setup_environments.sh`. It creates separate environments under
+   `/mnt/data2/eunwooim/.conda/envs/`: `docprune-h200` uses the frozen
+   Python 3.10/PyTorch 2.4.1/Transformers 4.46.3 stack; `mineru-h200` uses the
+   pinned MinerU source at `d9cd58a` and its compatible Python 3.11 stack.
+   A single environment is prohibited because the validated dependency sets
+   conflict.
+4. The setup also checks out M3DocRAG at `29e6ac2` and downloads the exact
+   MinerU model revision under `/mnt/data2/eunwooim` caches. Run only its
+   targeted import/version checks; do not run the full test suite or load a GPU
+   model.
+5. Record the clean 40-character execution commit. Keep survey notes outside
+   the execution checkout if necessary.
 
-## Phase 2 — receive and validate the completed bundle
+Environment setup may overlap the data transfer. Everything below waits for a
+complete verified transfer.
 
-The source computer performs every construction step before transfer. It seals
-the fixed inputs, reuses authenticated MinerU outputs by exact page/render hash,
-runs MinerU only for missing unique pages, captures frozen post-BTP/QTP
-geometry, builds all 100 mappings, runs model-free validation, and publishes a
-content-addressed bundle with byte counts and SHA-256 manifests. This division
-is mandatory.
+## Phase 2 — authenticate and relocate sealed inputs
 
-The H200 agent must not run any of these construction commands:
+The transferred bundle is the source-built CPU cohort, not completed MinerU,
+geometry, or mapping output. It contains the unchanged cohort, selected source
+rows, 400 sealed PNG inputs, the exact required PDFs and feature shards, fixed
+fixture/input manifests, and their provenance metadata. It excludes the global
+retrieval index and model snapshots.
 
-- `seal_task9_confirmation_inputs.py`;
-- `run_task8_mineru_smoke.py` or the MinerU backend;
-- `run_task9_preliminary_geometry_capture.py`;
-- `build_task9_preliminary_region_mapping.py`.
+1. Require `rsync` to finish and reject any remaining partial file.
+2. Verify `MANIFEST.sha256.sha256`, then all 1,014 entries in
+   `MANIFEST.sha256`; reject missing, mismatched, or extra raw files.
+3. Place the verified directory at
+   `task9-h200-local-data/inputs/transferred/` and run
+   `relocate_task9_h200_inputs.py` once. This writes new authenticated H200-local
+   fixture/input manifests while preserving transferred source bytes.
 
-After the survey confirms destination paths, receive the already completed
-bundle described in `TRANSFER_MANIFEST.md`, authenticate its manifest and all
-sealed identities, and run `run_task9_confirmation_batch.py --validate-only`
-for ordinals 0–99. This CPU-only check must resolve exactly one correctly named
-mapping per QID and report 256 fit masks and zero holdout masks. No retrieval
-command is permitted.
+   ```bash
+   "$TASK9_ENV_PREFIX/bin/python" \
+     "$TASK9_REPO/examples/relocate_task9_h200_inputs.py" \
+     --bundle-root "$TASK9_TRANSFER_ROOT" \
+     --source-fixed-root "$TASK9_TRANSFER_ROOT/raw/scratch/lmalveau/docprune/task9-baseline-wrong100-inputs-c0c9bee-v1" \
+     --output-root "$TASK9_FIXED_ROOT"
+   ```
 
-## Phase 3 — smoke and admission
+4. Inventory the cohort, selected rows, cached page identities, 400 page bytes,
+   required PDFs/features, and model snapshots. The small source run config,
+   index manifest, and processor contract are tracked in `runtime-metadata/`;
+   preserve their recorded hashes when preparing H200-local runtime metadata.
+   Stop if any fixed identity is missing or retrieval would be required.
+
+## Phase 3 — MinerU, geometry, and mappings
+
+1. Before GPU use, check all GPUs and propose one physical CoRAL GPU ID. Obtain
+   explicit approval for that exact GPU. Post in the channel if expected use
+   exceeds 15 minutes.
+2. Run a one-page pinned MinerU smoke, recording tool/model revisions, input and
+   output hashes, runtime, completion manifest, and GPU identity.
+3. After admission, process the 400 sealed pages resumably on the same approved
+   GPU. Never perform retrieval or inspect answer outcomes.
+4. Run a one-question geometry smoke in the DocPrune environment, then capture
+   all 100 QIDs resumably after admission. Authenticate page order, features,
+   model resources, and token geometry.
+5. Build exactly 100 mappings on CPU and run
+   `run_task9_confirmation_batch.py --validate-only` for ordinals 0–99. Require
+   256 fit masks, zero holdouts, complete region/residual coverage, and no
+   retrieval/global index.
+
+## Phase 4 — experiment smoke and admission
 
 1. Check GPUs 4–7 with `nvidia-smi`.
 2. If the smoke may exceed 15 minutes, post in the channel first.
-3. Choose one idle CoRAL physical GPU and run `launch_smoke.sh GPU_ID`.
+3. Choose one idle CoRAL physical GPU and run `launch_smoke.sh GPU_ID` only
+   after separate explicit approval.
 4. In the same smoke stage, confirm completion-manifest admission, exactly 256
    fit masks, zero holdouts, exact fixture/mapping hashes, dynamic native
    layer/budget, all five arms, finite likelihoods, and recorded H200
@@ -120,13 +152,14 @@ command is permitted.
 
 The admitted smoke is question 0 and is retained as canonical production data.
 
-## Phase 4 — production and aggregation
+## Phase 5 — production and aggregation
 
 Production is expected to exceed 15 minutes, so post in the channel first.
-After confirming GPUs 4–7 remain available, run `launch_production.sh`. It
-processes questions 1–99 as one-question units across the four CoRAL GPUs;
-question 0 comes from the admitted smoke. Failed units can be rerun individually
-without repeating completed questions.
+After separate approval, recheck the selected GPU and run
+`launch_production.sh GPU_ID`. It processes questions 1–99 sequentially as
+resumable one-question units on one approved GPU; question 0 comes from the
+admitted smoke. Failed units can be rerun individually without repeating
+completed questions. Multiple GPUs are not implicitly authorized.
 
 After all 100 unique QIDs are admitted, run `aggregate_task9_confirmation.py`
 with both the smoke root and production root. Preserve its unified JSON, file
@@ -136,6 +169,10 @@ retries in the experiment log.
 ## Runtime code entry points
 
 - Intervention run: [`../../examples/run_task9_regional_development.py`](../../examples/run_task9_regional_development.py)
+- H200 input relocation: [`../../examples/relocate_task9_h200_inputs.py`](../../examples/relocate_task9_h200_inputs.py)
+- MinerU preparation/finalization: [`../../examples/run_task8_mineru_smoke.py`](../../examples/run_task8_mineru_smoke.py)
+- Geometry capture: [`../../examples/run_task9_preliminary_geometry_capture.py`](../../examples/run_task9_preliminary_geometry_capture.py)
+- Region mapping: [`../../examples/build_task9_preliminary_region_mapping.py`](../../examples/build_task9_preliminary_region_mapping.py)
 - Fit-only analysis: [`../../examples/analyze_task9_confirmation_attribution.py`](../../examples/analyze_task9_confirmation_attribution.py)
 - Batch driver: [`../../examples/run_task9_confirmation_batch.py`](../../examples/run_task9_confirmation_batch.py)
 - Selected arms: [`../../examples/run_task9_preliminary_selected_arms.py`](../../examples/run_task9_preliminary_selected_arms.py)
@@ -143,8 +180,9 @@ retries in the experiment log.
 
 ## Stop conditions
 
-Stop before GPU work if the cohort hash differs, a selected QID/page differs,
-retrieval would be required, the checkout is dirty, the model/prompt/decoding
-revision cannot be preserved, mappings are incomplete, GPU ownership is
-unclear, or caches would write to `/` or cross-lab storage. Record the exact
-blocker; do not improvise a scientifically different run.
+Stop before GPU work if transfer verification is incomplete, the cohort hash
+differs, a selected QID/page/feature differs, retrieval would be required, the
+checkout is dirty, the model/prompt/decoding revision cannot be preserved, GPU
+ownership is unclear, or caches would write to `/` or cross-lab storage. Stop
+before experiment smoke if mappings are incomplete. Record the exact blocker;
+do not improvise a scientifically different run.
