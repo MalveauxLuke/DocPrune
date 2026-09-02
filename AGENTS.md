@@ -13,6 +13,9 @@ explicitly activates work.
 ## Working rules
 
 - Preserve immutable sources and keep generated or large artifacts outside Git.
+  A task may keep runtime inputs and outputs inside its working checkout only
+  under an explicitly ignored project-local directory; never stage or commit
+  those bytes.
 - Make small, reviewable changes and surface material assumptions.
 - Do not start an experiment, model run, or SOL job without a current task and
   explicit handoff.

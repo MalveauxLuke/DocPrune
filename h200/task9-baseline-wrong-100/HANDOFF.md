@@ -124,8 +124,9 @@ retrieval index and model snapshots.
 ## Phase 3 — MinerU, geometry, and mappings
 
 1. Before GPU use, check all GPUs and propose one physical CoRAL GPU ID. Obtain
-   explicit approval for that exact GPU. Post in the channel if expected use
-   exceeds 15 minutes.
+   explicit approval for that exact GPU. Normal CoRAL use needs no per-job
+   notice; check first and post for use beyond 15 minutes only when borrowing
+   outside the CoRAL allocation.
 2. Run a one-page pinned MinerU smoke, recording tool/model revisions, input and
    output hashes, runtime, completion manifest, and GPU identity.
 3. After admission, process the 400 sealed pages resumably on the same approved
@@ -140,10 +141,11 @@ retrieval index and model snapshots.
 
 ## Phase 4 — experiment smoke and admission
 
-1. Check GPUs 4–7 with `nvidia-smi`.
-2. If the smoke may exceed 15 minutes, post in the channel first.
-3. Choose one idle CoRAL physical GPU and run `launch_smoke.sh GPU_ID` only
-   after separate explicit approval.
+1. Check current processes and memory on GPUs 4–7 with `nvidia-smi`.
+2. Propose exactly one CoRAL physical GPU ID and obtain explicit approval for
+   that allocation.
+3. Confirm the operator is present in the shared channel or has a relay, then
+   run `launch_smoke.sh GPU_ID` on only the approved GPU.
 4. In the same smoke stage, confirm completion-manifest admission, exactly 256
    fit masks, zero holdouts, exact fixture/mapping hashes, dynamic native
    layer/budget, all five arms, finite likelihoods, and recorded H200
@@ -154,12 +156,13 @@ The admitted smoke is question 0 and is retained as canonical production data.
 
 ## Phase 5 — production and aggregation
 
-Production is expected to exceed 15 minutes, so post in the channel first.
-After separate approval, recheck the selected GPU and run
+Normal use of an assigned CoRAL GPU needs no per-job announcement. After
+separate approval, recheck the selected GPU and run
 `launch_production.sh GPU_ID`. It processes questions 1–99 sequentially as
 resumable one-question units on one approved GPU; question 0 comes from the
 admitted smoke. Failed units can be rerun individually without repeating
-completed questions. Multiple GPUs are not implicitly authorized.
+completed questions. Multiple GPUs are never implicitly authorized and require separate approval for
+the exact count and IDs.
 
 After all 100 unique QIDs are admitted, run `aggregate_task9_confirmation.py`
 with both the smoke root and production root. Preserve its unified JSON, file

@@ -61,7 +61,14 @@ under `/mnt/data2/eunwooim` unless the survey proves those paths differ. Do not
 use ARC-only or cross-lab storage. Use one explicitly approved CoRAL GPU at a
 time by default; additional GPUs require separate explicit approval.
 
-CoRAL GPUs are physical IDs 4–7. Check them before every launch. A run expected
-to exceed 15 minutes requires a channel notice first. Do not use GPUs 0–3 in
-normal operation. If temporarily borrowing another lab's idle GPU, remain
-reachable and vacate within 15 minutes of a request.
+CoRAL GPUs are physical IDs 4–7. Check current processes and memory before every
+launch because dynamically allocated work may not be obvious. Default to one
+explicitly approved physical GPU per run. Never infer multi-GPU permission from
+availability; additional GPUs require separate approval for their exact count
+and IDs.
+
+Normal use of an assigned CoRAL GPU does not require a per-job announcement.
+Anyone running work must be present in the shared channel or have a relay. Do
+not use GPUs 0–3 normally. Before borrowing another lab.s idle GPU, check first;
+if borrowing will exceed 15 minutes, post in the channel. Remain reachable and
+ready to vacate a borrowed GPU within 15 minutes of a request.
