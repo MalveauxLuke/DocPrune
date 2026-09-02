@@ -166,6 +166,161 @@ def build_task9_preliminary_random_cohort(
     return cohort
 
 
+def build_task9_baseline_wrong_confirmation_cohort(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    eligibility_records: Sequence[Mapping[str, object]],
+    excluded_qids: Sequence[str],
+    seed: str,
+    sample_size: int = 100,
+) -> dict[str, object]:
+    """Select new baseline-wrong questions, preferring independent support components."""
+
+    from docprune.evaluation import list_em
+
+    if not isinstance(seed, str) or not seed:
+        raise ValueError("selection seed must be a nonempty string")
+    if type(sample_size) is not int or sample_size <= 0:
+        raise ValueError("sample_size must be a positive integer")
+    excluded = tuple(excluded_qids)
+    if (
+        any(not isinstance(qid, str) or not qid for qid in excluded)
+        or len(set(excluded)) != len(excluded)
+    ):
+        raise ValueError("excluded QIDs must be unique nonempty strings")
+
+    support_by_qid: dict[str, list[str]] = {}
+    for raw in eligibility_records:
+        if not isinstance(raw, Mapping) or set(raw) < {"qid", "supporting_document_ids"}:
+            raise ValueError("eligibility records require qid and supporting_document_ids")
+        qid = raw["qid"]
+        supports = raw["supporting_document_ids"]
+        if (
+            not isinstance(qid, str)
+            or not qid
+            or qid in support_by_qid
+            or not isinstance(supports, Sequence)
+            or isinstance(supports, str | bytes)
+            or not supports
+            or any(not isinstance(doc_id, str) or not doc_id for doc_id in supports)
+        ):
+            raise ValueError("eligibility support identity is invalid")
+        support_by_qid[qid] = sorted(set(supports))
+
+    projected: dict[str, dict[str, object]] = {}
+    excluded_set = set(excluded)
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise ValueError("cohort input row must be a mapping")
+        qid = row.get("question_id")
+        question = row.get("question")
+        answers = row.get("answers")
+        prediction = row.get("predicted_answer")
+        pages = row.get("retrieved_pages")
+        if not isinstance(qid, str) or not qid or qid in projected:
+            raise ValueError("cohort question IDs must be unique nonempty strings")
+        if qid not in support_by_qid:
+            raise ValueError(f"cohort row is absent from eligibility records: {qid}")
+        if (
+            not isinstance(question, str)
+            or not question
+            or not isinstance(answers, list)
+            or not answers
+            or any(not isinstance(answer, str) or not answer for answer in answers)
+            or not isinstance(prediction, str)
+            or not isinstance(pages, list)
+            or len(pages) != 4
+        ):
+            raise ValueError(f"cohort result row is invalid: {qid}")
+        checked_pages: list[dict[str, object]] = []
+        for page in pages:
+            if not isinstance(page, Mapping) or set(page) != {"doc_id", "page_index", "score"}:
+                raise ValueError(f"cohort cached top-4 page schema is invalid: {qid}")
+            checked_pages.append(dict(page))
+        if qid in excluded_set or list_em(prediction, answers) == 1.0:
+            continue
+        projected[qid] = {
+            "question_id": qid,
+            "question": question,
+            "answers": list(answers),
+            "unpruned_predicted_answer": prediction,
+            "retrieved_pages": checked_pages,
+            "supporting_document_ids": support_by_qid[qid],
+            "baseline_em": 0.0,
+            "baseline_stratum": "baseline_wrong",
+        }
+    if len(projected) < sample_size:
+        raise ValueError(
+            f"baseline-wrong pool has {len(projected)} questions but requires {sample_size}"
+        )
+
+    components = support_document_components(
+        [
+            {"qid": qid, "supporting_document_ids": row["supporting_document_ids"]}
+            for qid, row in projected.items()
+        ]
+    )
+
+    def order_key(kind: str, identity: str) -> tuple[str, str]:
+        digest = hashlib.sha256(f"{seed}\0{kind}\0{identity}".encode()).hexdigest()
+        return digest, identity
+
+    ordered_components = sorted(
+        components["components"],
+        key=lambda component: order_key("component", component["component_id"]),
+    )
+    representatives: list[str] = []
+    remaining: list[str] = []
+    for component in ordered_components:
+        ordered_qids = sorted(
+            component["qids"], key=lambda qid: order_key("question", qid)
+        )
+        representatives.append(ordered_qids[0])
+        remaining.extend(ordered_qids[1:])
+    selected_qids = representatives[:sample_size]
+    fallback = len(representatives) < sample_size
+    if fallback:
+        selected_qids.extend(
+            sorted(remaining, key=lambda qid: order_key("fallback", qid))[
+                : sample_size - len(selected_qids)
+            ]
+        )
+    selected_records = [projected[qid] for qid in selected_qids]
+    selected_components = support_document_components(
+        [
+            {"qid": qid, "supporting_document_ids": projected[qid]["supporting_document_ids"]}
+            for qid in selected_qids
+        ]
+    )
+    cohort: dict[str, object] = {
+        "schema_version": 1,
+        "status": "selected",
+        "purpose": "Task 9 new baseline-wrong 100-question confirmation",
+        "baseline_wrong_definition": (
+            "canonical list exact match is zero for the fixed unpruned model, cached retrieval, "
+            "prompt, decoding, and model revision"
+        ),
+        "selection_method": (
+            "exclude prior-pilot QIDs; form support-document connected components; hash-order "
+            "components and one hash-ordered representative per component; if fewer than N "
+            "components, hash-order remaining eligible questions and cluster by support component"
+        ),
+        "seed": seed,
+        "sample_size": sample_size,
+        "excluded_qids": list(excluded),
+        "eligible_baseline_wrong_count": len(projected),
+        "eligible_support_component_count": len(components["components"]),
+        "selection_used_document_fallback": fallback,
+        "selected_qids": selected_qids,
+        "selected_records": selected_records,
+        "support_components": selected_components,
+        "fixed_page_count": 4,
+        "retrieval_run": False,
+    }
+    cohort["cohort_sha256"] = _canonical_json_sha256(cohort)
+    return cohort
+
+
 def build_task9_preliminary_fixture_inputs(
     cohort: Mapping[str, object],
 ) -> tuple[dict[str, object], list[dict[str, str]]]:
@@ -224,6 +379,68 @@ def build_task9_preliminary_fixture_inputs(
         "question_selection": "24-baseline-correct/24-baseline-wrong",
         "cohort_sha256": supplied_sha,
         "question_ids": observed_qids,
+        "rows": rows,
+    }
+    return reference, eligible
+
+
+def build_task9_confirmation_fixture_inputs(
+    cohort: Mapping[str, object],
+) -> tuple[dict[str, object], list[dict[str, str]]]:
+    """Project a sealed baseline-wrong confirmation cohort into fixed-page inputs."""
+
+    supplied_sha = cohort.get("cohort_sha256")
+    unsigned = dict(cohort)
+    unsigned.pop("cohort_sha256", None)
+    selected = cohort.get("selected_qids")
+    records = cohort.get("selected_records")
+    if (
+        supplied_sha != _canonical_json_sha256(unsigned)
+        or cohort.get("purpose") != "Task 9 new baseline-wrong 100-question confirmation"
+        or not isinstance(selected, list)
+        or not selected
+        or len(selected) != cohort.get("sample_size")
+        or not isinstance(records, list)
+        or len(records) != len(selected)
+    ):
+        raise ValueError("Task 9 confirmation cohort identity is invalid")
+    rows: dict[str, dict[str, object]] = {}
+    eligible: list[dict[str, str]] = []
+    observed: list[str] = []
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise ValueError("Task 9 confirmation selected record is invalid")
+        qid = record.get("question_id")
+        question = record.get("question")
+        pages = record.get("retrieved_pages")
+        if (
+            not isinstance(qid, str)
+            or not qid
+            or not isinstance(question, str)
+            or not question
+            or record.get("baseline_stratum") != "baseline_wrong"
+            or record.get("baseline_em") != 0.0
+            or not isinstance(pages, list)
+            or len(pages) != 4
+        ):
+            raise ValueError("Task 9 confirmation selected record fields are invalid")
+        checked_pages: list[dict[str, object]] = []
+        for page in pages:
+            if not isinstance(page, Mapping) or set(page) != {"doc_id", "page_index", "score"}:
+                raise ValueError("Task 9 confirmation fixed page schema is invalid")
+            checked_pages.append(dict(page))
+        observed.append(qid)
+        rows[qid] = {"retrieved_pages": checked_pages}
+        eligible.append({"qid": qid, "question": question})
+    if observed != selected or len(set(observed)) != len(observed):
+        raise ValueError("Task 9 confirmation selected record order is invalid")
+    reference: dict[str, object] = {
+        "schema_version": 1,
+        "selection_is_outcome_blind": False,
+        "fixed_page_selection_is_outcome_blind": True,
+        "question_selection": "100-new-baseline-wrong-support-component-preferred",
+        "cohort_sha256": supplied_sha,
+        "question_ids": observed,
         "rows": rows,
     }
     return reference, eligible

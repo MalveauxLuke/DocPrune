@@ -72,6 +72,33 @@ def _sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def test_region_mask_design_allows_fit_only_confirmation() -> None:
+    """Catch reintroducing holdout interventions into the frozen confirmation run."""
+
+    design = build_region_mask_design(
+        _regions(),
+        **_identity_kwargs(),
+        fit_mask_count=256,
+        holdout_mask_count=0,
+    )
+
+    assert design["fit_mask_count"] == 256
+    assert len(design["fit_masks"]) == 256
+    assert design["holdout_mask_count"] == 0
+    assert design["holdout_masks"] == []
+    assert fit_contextcite_lasso(design, _fit_outcomes(design))["fit_mask_count"] == 256
+
+    comparison = build_task9_preliminary_mask_design(
+        _regions(),
+        **_identity_kwargs(),
+        fit_mask_count=256,
+        global_holdout_mask_count=0,
+        budget_local_holdout_mask_count=0,
+    )
+    assert comparison["global_design"] == design
+    assert comparison["budget_local_holdout_masks"] == []
+
+
 def _fit_outcomes(
     design: dict[str, object],
     *,
@@ -559,6 +586,63 @@ def test_preliminary_attribution_analysis_connects_global_local_and_arm_selectio
     assert result["gold_margin"]["available"] is True
     assert result["selections"]["gold_margin_available"] is True
     assert [row["requested_token_count"] for row in result["selections"]["budgets"]] == [6]
+
+
+def test_confirmation_attribution_fits_without_reporting_holdout_fidelity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catch requiring LDS holdouts or emitting fake fidelity for the new-question test."""
+
+    analyzer = getattr(task9_attribution, "analyze_task9_confirmation_attribution", None)
+    assert analyzer is not None, "fit-only confirmation attribution analyzer is missing"
+    regions = [{"source_id": f"region-{index:02d}", "token_cost": 1} for index in range(12)]
+    primary = build_region_mask_design(
+        regions,
+        **_identity_kwargs(),
+        fit_mask_count=8,
+        holdout_mask_count=0,
+    )
+    secondary = build_region_mask_design(
+        regions,
+        **_identity_kwargs(target_kind=_SECONDARY_TARGET_KIND),
+        fit_mask_count=8,
+        holdout_mask_count=0,
+    )
+
+    def fixed_solver(masks: object, targets: object) -> tuple[object, float]:
+        del targets
+        coefficients = task9_attribution.np.zeros(task9_attribution.np.asarray(masks).shape[1])
+        coefficients[0] = 1.0
+        return coefficients, 0.0
+
+    monkeypatch.setattr(task9_attribution, "_fit_contextcite_solver", fixed_solver)
+
+    def outcomes(design: dict[str, object], value: float) -> list[dict[str, object]]:
+        return [
+            {
+                "split": "fit",
+                "seed": row["seed"],
+                "vector_sha256": row["vector_sha256"],
+                "attribution_identity_sha256": design["attribution_identity_sha256"],
+                "normalized_target": value + float(row["vector"][0]),
+            }
+            for row in design["fit_masks"]
+        ]
+
+    result = analyzer(
+        primary_design=primary,
+        primary_outcomes=outcomes(primary, 0.0),
+        secondary_design=secondary,
+        secondary_outcomes=outcomes(secondary, -1.0),
+        regions=regions,
+        requested_token_count=6,
+        gold_margin_available=True,
+    )
+
+    assert result["scope"] == "new-question-downstream-confirmation"
+    assert "fidelity" not in result["gold_support"]
+    assert result["gold_margin"]["available"] is True
+    assert result["selections"]["gold_margin_available"] is True
 
 
 def test_contextcite_lasso_rejects_noncanonical_fit_inputs_before_solver_import() -> None:

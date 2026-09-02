@@ -188,3 +188,15 @@ submit a method holdout. The
 preliminary unified JSON is
 `/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-unified-v1/analysis.json`
 (internal SHA-256 `985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8c5`).
+
+Superseding Task 9 next action (2026-09-02): prepare and execute the approved
+100-question baseline-wrong confirmation on the CoRAL H200 server. The cohort
+is sealed locally at
+`/home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json`
+with internal SHA-256
+`0bdfdde29b568f54ea541453abeca196cfb49f4b6630f084f80e6c21f158514e`.
+It contains 100 new ordinary baseline-wrong questions from 100 distinct
+support-document components, reusing exact cached top-4 pages. Use 256 fit
+masks and zero holdout masks. The H200 agent's first action is the read-only
+survey in `h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`; SOL is no
+longer the execution environment for this phase.

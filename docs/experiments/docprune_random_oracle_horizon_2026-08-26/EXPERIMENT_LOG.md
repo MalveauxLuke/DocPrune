@@ -1424,3 +1424,33 @@ preserve at least 18/20 rescue opportunities and 118/120 correct-stratum
 answers and satisfy the same average F1/likelihood tolerances. If 192 fails,
 retain 256; if it passes, evaluate 128 under the same frozen rule. These gates
 were recorded before reduced-mask GPU outcomes were read.
+
+### Task 9 H200 baseline-wrong confirmation preparation — 2026-09-02
+
+The user approved a second experiment on 100 new ordinary baseline-wrong
+questions, separate from the preliminary 48. The frozen 192-mask functional
+comparison did not justify reducing the estimator, so this experiment retains
+256 fitting masks. It removes the 32 global and 32 native-budget-local holdouts
+because downstream generated-answer outcomes—not surrogate LDS—are the
+confirmation endpoint.
+
+The cohort sealer joined the authenticated Task 6 holdout result rows with its
+sealed support-document records, explicitly excluded the preliminary-48 QIDs,
+and preferred one question per support-document component. Sealed local output:
+
+```text
+path: /home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json
+internal cohort SHA-256: 0bdfdde29b568f54ea541453abeca196cfb49f4b6630f084f80e6c21f158514e
+eligible baseline-wrong: 731
+eligible support components: 724
+selected: 100
+document fallback used: false
+retrieval run: false
+```
+
+Because 724 independent eligible components were available, all 100 selected
+questions are support-component independent and no fallback fill was needed.
+The source cached-results file contains 2,441 rows; the sealer restricts it to
+the exact 1,213 sealed Task 6 holdout QIDs before baseline classification. No
+H200 survey, environment mutation, model load, smoke, or GPU job occurred
+during this preparation.

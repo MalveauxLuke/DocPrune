@@ -568,6 +568,34 @@ Acceptance: every result is input-, layer-, budget-, runtime-, and cohort-valid;
 the primary outcome is classified only as equivalent, superior, inferior, or
 unresolved under the locked procedure.
 
+## Task 9 H200 baseline-wrong confirmation — approved 2026-09-02
+
+- [x] Retain 256 fitting masks after the frozen 192-mask comparison failed.
+- [x] Seal 100 new baseline-wrong questions from the authenticated 1,213-question
+  Task 6 holdout, excluding the preliminary 48 and preferring one question per
+  support-document component.
+- [x] Freeze exact cached top-4 pages, no retrieval, dynamic DocPrune layer and
+  budget, whole-region physical deletion, and the same pilot comparison arms.
+- [x] Remove all 64 extra surrogate holdout masks; fit support and margin from
+  the same 256 interventions and make generated-answer outcomes primary.
+- [x] Prepare path-parameterized cohort, fixed-input, fit-only analysis, batch,
+  selected-arm, aggregation, and H200 handoff tooling.
+- [ ] On the CoRAL H200 host, perform and record the required read-only
+  environment survey before setup or execution.
+- [ ] Transfer the repository, sealed cohort, exact cached top-4 page/feature
+  artifacts, model cache, and mapping prerequisites to CoRAL storage without
+  writing to `/` or cross-lab storage.
+- [ ] Build/validate the H200 environment, prepare the 100 mappings, run one
+  exact smoke question, then distribute the remaining questions across
+  available CoRAL GPUs 4–7 only after the required channel notice.
+- [ ] Aggregate exactly 100 admitted results with support-component-clustered
+  uncertainty and preserve a unified analysis JSON.
+
+Current next action: transfer this prepared branch and the sealed cohort to the
+H200 operator. That agent first performs the read-only survey in
+`h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`; it does not redesign the
+experiment. No SOL/HTC job is part of this phase.
+
 ## Task 12 — Close the stage
 
 - [ ] Append source inventories, cohort seals, power analysis, job IDs, GPU

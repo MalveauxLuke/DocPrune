@@ -142,10 +142,10 @@ def main() -> None:
     args = _parser().parse_args()
     if (
         args.fit_mask_count <= 0
-        or args.holdout_mask_count <= 0
+        or args.holdout_mask_count < 0
         or args.budget_local_holdout_mask_count < 0
     ):
-        raise ValueError("Task 9 mask counts must be positive")
+        raise ValueError("Task 9 fit masks must be positive; holdouts must be nonnegative")
     global_mask_count = args.fit_mask_count + args.holdout_mask_count
     mask_count = global_mask_count + args.budget_local_holdout_mask_count
     for path in (
@@ -163,6 +163,8 @@ def main() -> None:
         raise ValueError("Task 9 preliminary cohort path and checksum must be provided together")
     if args.preliminary_cohort is not None and not args.preliminary_cohort.is_absolute():
         raise ValueError("Task 9 preliminary cohort path must be absolute")
+    if args.budget_local_holdout_mask_count and args.preliminary_cohort is None:
+        raise ValueError("Task 9 budget-local masks require a comparison cohort")
     if args.output.exists() or args.output.is_symlink():
         raise FileExistsError(f"Task 9 output already exists: {args.output}")
     if not args.output.parent.is_dir():
@@ -327,7 +329,7 @@ def main() -> None:
         "fit_mask_count": args.fit_mask_count,
     }
     preliminary_design = None
-    if args.budget_local_holdout_mask_count:
+    if preliminary_record is not None:
         preliminary_design = build_task9_preliminary_mask_design(
             regions,
             **design_kwargs,

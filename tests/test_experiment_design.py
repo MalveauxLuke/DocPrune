@@ -27,6 +27,114 @@ DEVELOPMENT_REGISTRY = (
 TASK9_PRELIMINARY_SEALER = ROOT / "examples" / "seal_task9_preliminary_random48.py"
 
 
+def _confirmation_row(qid: str, prediction: str = "wrong") -> dict[str, object]:
+    return {
+        "question_id": qid,
+        "question": f"Question {qid}",
+        "answers": ["gold"],
+        "predicted_answer": prediction,
+        "retrieved_pages": [
+            {"doc_id": f"retrieved-{qid}-{index}", "page_index": index, "score": 4 - index}
+            for index in range(4)
+        ],
+    }
+
+
+def test_task9_confirmation_prefers_independent_support_documents() -> None:
+    """Catch selecting two confirmation questions that share a support document."""
+
+    rows = [
+        _confirmation_row("correct", "gold"),
+        *[_confirmation_row(qid) for qid in ("q1", "q2", "q3", "q4", "excluded")],
+    ]
+    supports = [
+        {"qid": "correct", "supporting_document_ids": ["doc-correct"]},
+        {"qid": "q1", "supporting_document_ids": ["doc-shared"]},
+        {"qid": "q2", "supporting_document_ids": ["doc-shared"]},
+        {"qid": "q3", "supporting_document_ids": ["doc-three"]},
+        {"qid": "q4", "supporting_document_ids": ["doc-four"]},
+        {"qid": "excluded", "supporting_document_ids": ["doc-excluded"]},
+    ]
+
+    cohort = experiment_design.build_task9_baseline_wrong_confirmation_cohort(
+        rows,
+        eligibility_records=supports,
+        excluded_qids=["excluded"],
+        seed="confirmation-v1",
+        sample_size=3,
+    )
+
+    assert cohort["eligible_baseline_wrong_count"] == 4
+    assert cohort["selection_used_document_fallback"] is False
+    assert len(cohort["selected_records"]) == 3
+    selected_supports = [
+        set(record["supporting_document_ids"]) for record in cohort["selected_records"]
+    ]
+    assert all(
+        left.isdisjoint(right)
+        for index, left in enumerate(selected_supports)
+        for right in selected_supports[index + 1 :]
+    )
+    assert all(record["baseline_em"] == 0.0 for record in cohort["selected_records"])
+    assert all(len(record["retrieved_pages"]) == 4 for record in cohort["selected_records"])
+
+
+def test_task9_confirmation_records_support_cluster_fallback() -> None:
+    """Catch silently pretending questions are document-independent after fallback fill."""
+
+    rows = [_confirmation_row(qid) for qid in ("q1", "q2", "q3")]
+    supports = [
+        {"qid": "q1", "supporting_document_ids": ["doc-shared"]},
+        {"qid": "q2", "supporting_document_ids": ["doc-shared"]},
+        {"qid": "q3", "supporting_document_ids": ["doc-three"]},
+    ]
+
+    cohort = experiment_design.build_task9_baseline_wrong_confirmation_cohort(
+        rows,
+        eligibility_records=supports,
+        excluded_qids=[],
+        seed="confirmation-v1",
+        sample_size=3,
+    )
+
+    assert cohort["selection_used_document_fallback"] is True
+    assert cohort["selected_qids"] == ["q3", "q1", "q2"]
+    assert len(cohort["support_components"]["components"]) == 2
+
+
+def test_task9_confirmation_fixture_reuses_exact_cached_top4() -> None:
+    """Catch reordering or replacing the four sealed pages during fixture projection."""
+
+    rows = [_confirmation_row(qid) for qid in ("q1", "q2")]
+    supports = [
+        {"qid": "q1", "supporting_document_ids": ["doc-one"]},
+        {"qid": "q2", "supporting_document_ids": ["doc-two"]},
+    ]
+    cohort = experiment_design.build_task9_baseline_wrong_confirmation_cohort(
+        rows,
+        eligibility_records=supports,
+        excluded_qids=[],
+        seed="confirmation-v1",
+        sample_size=2,
+    )
+
+    reference, eligible = experiment_design.build_task9_confirmation_fixture_inputs(cohort)
+
+    assert reference["question_ids"] == cohort["selected_qids"]
+    assert eligible == [
+        {
+            "qid": record["question_id"],
+            "question": record["question"],
+        }
+        for record in cohort["selected_records"]
+    ]
+    assert all(
+        reference["rows"][record["question_id"]]["retrieved_pages"]
+        == record["retrieved_pages"]
+        for record in cohort["selected_records"]
+    )
+
+
 def test_experiment_design_is_a_dedicated_module() -> None:
     """Catch coupling Task 2 back into evaluation or model-loading modules."""
 

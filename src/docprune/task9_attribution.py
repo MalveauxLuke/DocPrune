@@ -241,9 +241,9 @@ def build_region_mask_design(
         type(fit_mask_count) is not int
         or fit_mask_count <= 0
         or type(holdout_mask_count) is not int
-        or holdout_mask_count <= 0
+        or holdout_mask_count < 0
     ):
-        raise ValueError("regional attribution mask counts must be positive integers")
+        raise ValueError("fit masks must be positive and holdout masks must be nonnegative")
     attribution_identity = _build_attribution_identity(
         question_id=question_id,
         forced_boundary=forced_boundary,
@@ -317,8 +317,8 @@ def build_task9_preliminary_mask_design(
             or not 0 < float(value) < 1
         ):
             raise ValueError(f"{label} must be finite and strictly between zero and one")
-    if type(budget_local_holdout_mask_count) is not int or budget_local_holdout_mask_count <= 0:
-        raise ValueError("budget-local holdout count must be a positive integer")
+    if type(budget_local_holdout_mask_count) is not int or budget_local_holdout_mask_count < 0:
+        raise ValueError("budget-local holdout count must be a nonnegative integer")
     validated = _validated_regions(regions, allow_zero_cost=True)
     positive = [
         {"source_id": source_id, "token_cost": cost} for source_id, cost in validated if cost > 0
@@ -1074,7 +1074,7 @@ def _validated_mask_design(
         type(fit_mask_count) is not int
         or fit_mask_count <= 0
         or type(holdout_mask_count) is not int
-        or holdout_mask_count <= 0
+        or holdout_mask_count < 0
     ):
         raise ValueError("ContextCite mask design counts are invalid")
     expected_fit = [
@@ -2308,6 +2308,154 @@ def analyze_task9_preliminary_attribution(
     return result
 
 
+def analyze_task9_confirmation_attribution(
+    *,
+    primary_design: Mapping[str, object],
+    primary_outcomes: Sequence[Mapping[str, object]],
+    secondary_design: Mapping[str, object],
+    secondary_outcomes: Sequence[Mapping[str, object]],
+    regions: Sequence[Mapping[str, object]],
+    requested_token_count: int,
+    gold_margin_available: bool,
+) -> dict[str, object]:
+    """Fit frozen 256-mask targets and select arms without holdout diagnostics."""
+
+    primary_identity = _validated_attribution_identity(
+        primary_design.get("attribution_identity"),
+        expected_sha256=primary_design.get("attribution_identity_sha256"),
+    )
+    secondary_identity = _validated_attribution_identity(
+        secondary_design.get("attribution_identity"),
+        expected_sha256=secondary_design.get("attribution_identity_sha256"),
+    )
+    identity_fields = (
+        "question_id",
+        "forced_boundary",
+        "mapping_artifact_sha256",
+        "prompt_input_sha256",
+    )
+    if (
+        primary_identity["target_kind"] != _PRIMARY_TARGET_KIND
+        or secondary_identity["target_kind"] != _SECONDARY_TARGET_KIND
+        or any(primary_identity[key] != secondary_identity[key] for key in identity_fields)
+        or type(gold_margin_available) is not bool
+        or primary_design.get("holdout_mask_count") != 0
+        or secondary_design.get("holdout_mask_count") != 0
+    ):
+        raise ValueError("confirmation attribution target identities are incompatible")
+    validated = _validated_regions(regions, allow_zero_cost=False)
+    checked_regions = [
+        {"source_id": source_id, "token_cost": cost} for source_id, cost in validated
+    ]
+    total_cost = sum(cost for _, cost in validated)
+    if (
+        type(requested_token_count) is not int
+        or requested_token_count <= 0
+        or requested_token_count > total_cost
+    ):
+        raise ValueError("native DocPrune budget is outside the regional token population")
+
+    primary_surrogate = fit_contextcite_lasso(primary_design, primary_outcomes)
+    primary_stability = evaluate_contextcite_refit_stability(
+        primary_design,
+        primary_outcomes,
+        primary_surrogate,
+        checked_regions,
+        requested_budget=requested_token_count,
+    )
+    margin: dict[str, object]
+    margin_scores: Mapping[str, float] | None = None
+    if gold_margin_available:
+        if len(primary_outcomes) != len(secondary_outcomes):
+            raise ValueError("confirmation gold-margin targets require paired outcomes")
+        margin_design = build_region_mask_design(
+            checked_regions,
+            question_id=primary_identity["question_id"],
+            forced_boundary=primary_identity["forced_boundary"],
+            mapping_artifact_sha256=primary_identity["mapping_artifact_sha256"],
+            prompt_input_sha256=primary_identity["prompt_input_sha256"],
+            target_kind=_MARGIN_TARGET_KIND,
+            reference_set_token_ids_sha256=primary_identity[
+                "reference_set_token_ids_sha256"
+            ],
+            generated_response_token_ids_sha256=secondary_identity[
+                "generated_response_token_ids_sha256"
+            ],
+            fit_mask_count=primary_design["fit_mask_count"],
+            holdout_mask_count=0,
+        )
+        margin_outcomes: list[dict[str, object]] = []
+        for primary_row, secondary_row, mask in zip(
+            primary_outcomes,
+            secondary_outcomes,
+            margin_design["fit_masks"],
+            strict=True,
+        ):
+            if (
+                primary_row.get("split") != "fit"
+                or secondary_row.get("split") != "fit"
+                or primary_row.get("seed") != secondary_row.get("seed")
+                or primary_row.get("vector_sha256") != secondary_row.get("vector_sha256")
+                or primary_row.get("vector_sha256") != mask["vector_sha256"]
+            ):
+                raise ValueError("confirmation gold-margin outcomes are not mask-paired")
+            margin_outcomes.append({
+                "split": "fit",
+                "seed": mask["seed"],
+                "vector_sha256": mask["vector_sha256"],
+                "attribution_identity_sha256": margin_design[
+                    "attribution_identity_sha256"
+                ],
+                "normalized_target": _finite_float(
+                    primary_row.get("normalized_target"), label="gold target"
+                )
+                - _finite_float(
+                    secondary_row.get("normalized_target"), label="alternative target"
+                ),
+            })
+        margin_surrogate = fit_contextcite_lasso(margin_design, margin_outcomes)
+        margin = {
+            "available": True,
+            "surrogate": margin_surrogate,
+            "stability": evaluate_contextcite_refit_stability(
+                margin_design,
+                margin_outcomes,
+                margin_surrogate,
+                checked_regions,
+                requested_budget=requested_token_count,
+            ),
+        }
+        margin_scores = margin_surrogate["coefficients"]
+    else:
+        margin = {
+            "available": False,
+            "reason": "unpruned response is not a distinct non-gold alternative",
+        }
+    selections = build_task9_preliminary_arm_selections(
+        checked_regions,
+        question_id=primary_identity["question_id"],
+        requested_token_count=requested_token_count,
+        gold_support_scores=primary_surrogate["coefficients"],
+        gold_margin_scores=margin_scores,
+    )
+    result: dict[str, object] = {
+        "schema_version": "docprune-task9-confirmation-attribution-analysis-v1",
+        "scope": "new-question-downstream-confirmation",
+        "question_id": primary_identity["question_id"],
+        "forced_boundary": primary_identity["forced_boundary"],
+        "fit_mask_count": primary_design["fit_mask_count"],
+        "holdout_mask_count": 0,
+        "gold_support": {
+            "surrogate": primary_surrogate,
+            "stability": primary_stability,
+        },
+        "gold_margin": margin,
+        "selections": selections,
+    }
+    result["analysis_sha256"] = _canonical_sha256(result)
+    return result
+
+
 def _defined_pairwise_summary(values: Sequence[object]) -> dict[str, object]:
     defined = [
         _finite_float(value, label="stability value") for value in values if value is not None
@@ -3106,6 +3254,7 @@ def aggregate_contextcite_admission_metrics(
 
 
 __all__ = [
+    "analyze_task9_confirmation_attribution",
     "analyze_task9_preliminary_question",
     "analyze_task9_preliminary_attribution",
     "build_region_mask_design",

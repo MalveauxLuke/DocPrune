@@ -221,6 +221,7 @@ def admit_task9_regional_development(
     expected_fit_mask_count: int = 64,
     expected_holdout_mask_count: int = 32,
     expected_budget_local_holdout_mask_count: int = 0,
+    expected_preliminary: bool | None = None,
 ) -> dict[str, object]:
     """Authenticate a terminal one-question dual-target artifact."""
 
@@ -228,14 +229,21 @@ def admit_task9_regional_development(
         type(expected_fit_mask_count) is not int
         or expected_fit_mask_count <= 0
         or type(expected_holdout_mask_count) is not int
-        or expected_holdout_mask_count <= 0
+        or expected_holdout_mask_count < 0
         or type(expected_budget_local_holdout_mask_count) is not int
         or expected_budget_local_holdout_mask_count < 0
+        or (expected_preliminary is not None and type(expected_preliminary) is not bool)
     ):
         raise ValueError("Task 9 expected mask counts are invalid")
     global_mask_count = expected_fit_mask_count + expected_holdout_mask_count
     expected_mask_count = global_mask_count + expected_budget_local_holdout_mask_count
-    preliminary = expected_budget_local_holdout_mask_count > 0
+    preliminary = (
+        expected_budget_local_holdout_mask_count > 0
+        if expected_preliminary is None
+        else expected_preliminary
+    )
+    if expected_budget_local_holdout_mask_count > 0 and not preliminary:
+        raise ValueError("Task 9 budget-local masks require preliminary comparison metadata")
 
     output = Path(root)
     if not output.is_absolute() or output.is_symlink() or not output.is_dir():

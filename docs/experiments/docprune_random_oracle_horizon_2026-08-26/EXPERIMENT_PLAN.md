@@ -818,3 +818,33 @@ outcomes are inspected. Implementation status belongs in
 failures, results, and decisions belong in
 [`EXPERIMENT_LOG.md`](EXPERIMENT_LOG.md). Chat history is not experimental
 authority.
+
+### Approved Task 9 baseline-wrong confirmation amendment — 2026-09-02
+
+After the completed stratified random 48-question development pilot showed four
+baseline-wrong rescues and no baseline-correct harm, and after the frozen
+192-mask functional comparison failed, the user approved a new confirmation
+cohort of 100 ordinary baseline-wrong questions using 256 fitting masks.
+
+The cohort is sampled randomly from the authenticated Task 6 holdout failures,
+excludes all preliminary-48 QIDs, and prefers one question per support-document
+connected component. If 100 independent components are unavailable, one per
+component is taken first, the remainder is filled randomly, and inference is
+clustered by support component. This cohort is not distractor enriched.
+
+Each question reuses its exact cached ordered top-4 pages. Arms are unpruned,
+native dynamic DocPrune, gold-support regional ContextCite, gold-margin regional
+ContextCite, and the existing region-size-aware random control, all compared at
+the native dynamic layer and budget through whole-region physical deletion.
+The primary endpoint is the generated downstream answer. The prior additional
+32 global plus 32 budget-local masks are removed: each new question uses 256
+fit masks and zero surrogate holdouts. The method, Lasso, mask distribution,
+selection, prompt, decoding, model revision, and comparisons are frozen before
+GPU outcomes. Fit-only stability remains descriptive and cannot be reported as
+held-out LDS/RMSE.
+
+This is a new-question confirmation of an answer-conditioned regional
+ContextCite diagnostic. It is not vanilla ContextCite, a token oracle, a
+deployable selector, or a prevalence estimate outside ordinary baseline
+failures. H200 CoRAL execution policy is authoritative for this phase; SOL
+documents are historical implementation context only.
