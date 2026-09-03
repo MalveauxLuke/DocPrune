@@ -40,7 +40,7 @@ git -C "$TASK9_M3DOCRAG_SOURCE" checkout --detach "$M3DOCRAG_COMMIT"
 PYTHONPATH="$TASK9_REPO/src" "$TASK9_ENV_PREFIX/bin/python" -c \
   'import sklearn, torch, transformers, docprune; print(torch.__version__, transformers.__version__, sklearn.__version__)'
 "$TASK9_MINERU_ENV_PREFIX/bin/python" -c \
-  'import torch, transformers, mineru; print(torch.__version__, transformers.__version__)'
+  'import torch, torchvision, transformers, mineru; print(torch.__version__, torchvision.__version__, transformers.__version__)'
 "$TASK9_ENV_PREFIX/bin/pip" check
 "$TASK9_MINERU_ENV_PREFIX/bin/pip" check
 git -C "$TASK9_MINERU_SOURCE" rev-parse HEAD
