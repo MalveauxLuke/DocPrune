@@ -19,6 +19,7 @@ records missing paths as well as populated paths so the lifecycle is auditable.
 | `artifact_root` | `/mnt/data1/eunwooim/DocPrune/task9-h200-local-data` | All Task 9 transferred inputs, relocated inputs, tools, manifests, preprocessing output, run output, and aggregation output | Preserve until results are archived; project-owned |
 | `docprune_env` | `/mnt/data2/eunwooim/.conda/envs/docprune-h200` | Frozen DocPrune runtime | Reproducible from tracked environment file |
 | `mineru_env` | `/mnt/data2/eunwooim/.conda/envs/mineru-h200` | Isolated pinned MinerU runtime | Reproducible from tracked environment file and pinned source |
+| `mineru_model_materialized` | `/mnt/data2/eunwooim/mineru-models/task9-mineru2.5-pro-2604-d3f5e08` | Real-file hard-linked view of the pinned Hugging Face snapshot required by no-symlink authentication | Reproducible; hard links share underlying bytes with the cache |
 | `conda_packages` | `/mnt/data2/eunwooim/.conda/pkgs` | Conda download/extraction cache, potentially shared with this user's other environments | Cache; inspect ownership/use before cleanup |
 | `hf_cache` | `/mnt/data2/eunwooim/hf-cache` | Hugging Face model cache, including the pinned MinerU snapshot | Re-downloadable; may be shared by other projects |
 | `torch_cache` | `/mnt/data2/eunwooim/torch-cache` | Torch cache | Re-downloadable; may be shared |

@@ -127,6 +127,38 @@ retrieval index and model snapshots.
    explicit approval for that exact GPU. Normal CoRAL use needs no per-job
    notice; check first and post for use beyond 15 minutes only when borrowing
    outside the CoRAL allocation.
+Before item 2, prepare the deterministic one-page smoke from ordinal 0,
+rank 0. The wrapper derives an authenticated one-page fixture without changing
+the canonical fixture and materializes the pinned model cache as real
+hard-linked files:
+
+```bash
+source h200/task9-baseline-wrong-100/paths.env
+PYTHONPATH="$TASK9_REPO/src" "$TASK9_ENV_PREFIX/bin/python" \
+  "$TASK9_REPO/examples/run_task9_h200_mineru_smoke.py" prepare \
+  --source-fixture "$TASK9_FIXTURE" \
+  --source-fixture-sha256 e349c5b983c41d55b1e3171e8ca918a2ef55b085561bb841f22908255fa8c3b0 \
+  --source-smoke-manifest "$TASK9_FIXED_ROOT/qid-inputs/000-827842edd27ca031b931422f6cfcc30f/smoke-input-manifest.json" \
+  --source-model-snapshot "$HF_HOME/hub/models--opendatalab--MinerU2.5-Pro-2604-1.2B/snapshots/d3f5e08d073c21466bbabe21c71bb1e9c2e595da" \
+  --model-dir "$TASK9_MINERU_MODEL_DIR" \
+  --job-root "$TASK9_MINERU_ROOT/smoke-ordinal-000-rank-00" \
+  --runtime-commit "$(git rev-parse HEAD)"
+```
+
+Recheck the approved physical GPU immediately before launch. Run the monitored
+wrapper only if memory use, both utilization fields, and compute processes are
+all zero. It is restricted to approved physical GPU 5 and stops our process
+group if a foreign process appears:
+
+```bash
+PYTHONPATH="$TASK9_REPO/src" "$TASK9_ENV_PREFIX/bin/python" \
+  "$TASK9_REPO/examples/run_task9_h200_mineru_smoke.py" run \
+  --job-root "$TASK9_MINERU_ROOT/smoke-ordinal-000-rank-00" \
+  --mineru-executable "$TASK9_MINERU_ENV_PREFIX/bin/mineru" \
+  --gpu-id 5 \
+  --gpu-uuid GPU-f9077b23-7301-08eb-4b68-59345b46c22c
+```
+
 2. Run a one-page pinned MinerU smoke, recording tool/model revisions, input and
    output hashes, runtime, completion manifest, and GPU identity.
 3. After admission, process the 400 sealed pages resumably on the same approved

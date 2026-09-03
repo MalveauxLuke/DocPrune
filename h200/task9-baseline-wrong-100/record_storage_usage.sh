@@ -39,6 +39,7 @@ record_path mineru_source "$TASK9_MINERU_SOURCE"
 record_path m3docrag_source "$TASK9_M3DOCRAG_SOURCE"
 record_path docprune_env "$TASK9_ENV_PREFIX"
 record_path mineru_env "$TASK9_MINERU_ENV_PREFIX"
+record_path mineru_model_materialized "$TASK9_MINERU_MODEL_DIR"
 record_path conda_packages /mnt/data2/eunwooim/.conda/pkgs
 record_path hf_cache "$HF_HOME"
 record_path torch_cache "$TORCH_HOME"
