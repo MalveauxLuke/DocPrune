@@ -33,10 +33,17 @@ locked oracle-headroom confirmation data.
   boundary `B13`. The QK read layer may vary only according to the prespecified
   layer sweep; it does not change the B13 deletion target. Reject any runner
   that substitutes native dynamic DocPrune layers for this teacher boundary.
-- Model 2, the pre-answer QK-linear probe, is the initial implementation.
-- Model 3 rank-4 bilinear is the only prespecified escalation.
-- Models 0 and 1 are deferred for this initial implementation. Do not add them
-  opportunistically on H200.
+- Train matched independent probes at every zero-based decoder read block
+  `0..13` for metadata/DocPrune, pooled region hidden state, compact pre-answer
+  QK, and hidden-plus-QK feature families. Every feature precedes answer-token
+  teacher forcing and every model predicts the same B13 target.
+- Select the best single-layer family on validation only, then compare it with
+  the prespecified small local-trajectory linear model and its matched current,
+  mean, delta, capacity, shuffled-history, and shuffled-order controls.
+- Full-prefix low-rank aggregation is conditional on the frozen local-
+  trajectory validation gate. Rank-4 question-region bilinear probing remains
+  a conditional within-layer diagnostic. Do not add an RNN or transformer over
+  layers.
 - Preserve document-disjoint splits, exact cached top-4 page identities,
   question-equal weighting, the frozen VLM/deletion semantics, and the sealed
   32-mask schedule.
@@ -74,6 +81,8 @@ only failed resumable units.
 Do not train a probe or inspect aggregate scientific outcomes during Phase 1
 unless the pushed handoff explicitly admits that step. Report artifact counts
 and integrity only so SOL can finish implementation without outcome leakage.
+Phase 1 B13 outcomes are shared labels for every later read-layer probe; Phase
+1 does not select a read layer or establish a trajectory claim.
 
 ## Phase 2 — pull finalized implementation and execute
 
@@ -86,6 +95,8 @@ Before executing it:
 - run targeted CPU validators;
 - confirm the 48-question Gate 0 decision and model/split choices were frozen
   before new-cohort outcomes were inspected; and
+- confirm validation-only best-snapshot and local-trajectory selection rules,
+  including their matched controls, were frozen before primary-test access;
 - stop if exact commands, expected counts, resume behavior, or output roots are
   absent.
 

@@ -1561,6 +1561,34 @@ and packaging; H200 owns all new model/GPU work through a two-push handoff.
 This entry records authorization and planned ownership only. No cohort, model,
 job, or result for this new track existed at the time of the amendment.
 
+### Task 9 shared-probe layer/trajectory amendment — 2026-09-03
+
+Before the 600-question cohort was sealed and before any new teacher outcome,
+feature, probe, or routed-QA result existed, the user supplied and approved a
+second design review with SHA-256
+`c3b592268fd61b7d27591a371a64051a64b3c34bea0d08b0c652fa6870c55bc4`.
+Its project-specific decision is preserved in
+`TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`.
+
+The cohort, 32-mask schedule, centered gold/self targets, fixed B13 physical-
+deletion teacher boundary, no-retrieval contract, and two-push SOL/H200 split
+remain unchanged. The representation experiment now trains matched independent
+probes at every read block `0..13` for metadata/DocPrune, pooled-region-state,
+pre-answer QK, and combined feature families. Validation selects the best
+single-layer family before a small controlled local-trajectory linear model is
+compared with it. Full-prefix low-rank aggregation is conditional on a frozen
+local-trajectory gate; rank-4 question-region bilinear probing remains a
+conditional within-layer diagnostic rather than the automatic first
+escalation.
+
+Trajectory claims require matched current/mean/delta/capacity/history/order
+controls. Predictive improvement alone cannot be described as evidence that
+distractors progressively balance correct and incorrect beliefs. A later
+multi-boundary causal diagnostic is explicitly unapproved pending its own
+cohort, boundary grid, compute envelope, and execution handoff. No experiment,
+model, retrieval, GPU, or new-cohort outcome was run or inspected while making
+this pre-outcome amendment.
+
 ### Task 9 H200 environment compatibility correction — 2026-09-02
 
 The prepared H200 setup initially installed the pinned MinerU source without

@@ -188,12 +188,17 @@ Continue two isolated Task 9 tracks.
    shared-probe feasibility track under
    `TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md`. It first seals the new
    document-disjoint cohort and minimum H200 teacher-data scaffolding, pushes
-   them, then completes Model 2 implementation and a second exact H200 handoff.
+   them, then completes the amended layerwise probe implementation and a second
+   exact H200 handoff.
    A separate H200 agent starts only after receiving the authenticated first
    bundle. All new shared-probe GPU jobs run on H200; SOL performs cohort,
    implementation, CPU analysis, testing, and packaging. Shared-probe teacher
-   labels use one fixed physical-deletion boundary, `B13`; any pre-answer QK
-   read-layer sweep predicts that same B13 target.
+   labels use one fixed physical-deletion boundary, `B13`; independent
+   pre-answer probes at decoder blocks `0..13` predict that same B13 target.
+   Metadata/DocPrune, region-state, QK, and combined feature families are
+   required controls. A small local-trajectory model follows the layer sweep;
+   full-prefix aggregation is conditional on validation evidence that local
+   dynamics add value beyond the best snapshot.
 
 Never mix the 48-question development pilot, locked 100-question confirmation,
 or new 600-question cohort. No retrieval or global-index access is permitted.

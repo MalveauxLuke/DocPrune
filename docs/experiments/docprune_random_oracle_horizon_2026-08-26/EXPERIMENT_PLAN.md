@@ -877,10 +877,16 @@ less-aggressive, and pair/small-set interventions. Gold and self supervision
 come from the same masked computation and training targets the centered mask
 outcomes directly rather than per-question LASSO coefficients.
 
-Initial implementation begins with the pre-answer QK-linear probe (Model 2).
-The rank-4 bilinear probe (Model 3) is the only prespecified escalation. Models
-0 and 1 are deferred for the initial implementation; this is a staging choice,
-not a claim that their scientific controls are unnecessary.
+The initial representation experiment is amended by
+[`TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md).
+It trains matched independent probes at every zero-based read block `0..13`
+for metadata/DocPrune, pooled-region-state, pre-answer QK, and combined feature
+families. Validation selects the best single-layer snapshot before a small
+controlled local-trajectory linear model is compared with it. Full-prefix
+low-rank layer aggregation is conditional on the local trajectory passing its
+frozen validation gate. Rank-4 question-region bilinear probing remains a
+conditional within-layer expressivity diagnostic rather than the automatic
+first escalation.
 
 The intervention target is fixed across the entire new cohort: semantic-region
 positions are physically deleted at the already validated decoder boundary
@@ -890,6 +896,15 @@ The QK feature read layer is a separate variable and may be swept across
 prespecified pre-answer layers while every label continues to measure deletion
 at B13. This cleanly tests where the fixed B13 deletion response becomes
 decodable without changing the response being predicted.
+
+The read-layer sweep and any later deletion-boundary sweep are distinct
+experiments. The initial study varies only the read block while holding the
+teacher deletion target at B13. A later multi-boundary causal diagnostic is not
+authorized without its own outcome-blind cohort, exact boundaries, compute
+envelope, and execution handoff. Multi-layer predictive success alone cannot
+be interpreted as evidence that distractors progressively balance correct and
+incorrect beliefs; that mechanism requires explicit layerwise gold/self
+divergence and later causal-boundary evidence.
 
 SOL owns cohort sealing, implementation, CPU Gate 0 analysis, focused tests,
 and authenticated packaging. CoRAL H200 owns every new model/GPU job. To

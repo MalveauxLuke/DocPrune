@@ -612,6 +612,11 @@ verify all 1,014 transferred files before relocation or preprocessing.
   initial-scope decision without rewriting the source analysis.
 - [x] Define separate SOL and H200 handoffs and a two-push workflow. This
   planning commit does not implement or execute the experiment.
+- [x] Amend the initial representation study before cohort sealing or new
+  outcomes: matched independent probes at read blocks `0..13`, required
+  metadata/DocPrune, region-state, QK, and combined controls, followed by a
+  controlled local-trajectory comparison. Full-prefix aggregation and a later
+  causal-boundary diagnostic remain conditional.
 - [ ] On SOL, synchronize the H200-updated branch and quickly seal a new
   600-question document-disjoint cohort using authenticated cached top-4 pages
   and features. Exclude both the 48-question development pilot and locked
@@ -630,10 +635,19 @@ verify all 1,014 transferred files before relocation or preprocessing.
 - [ ] In parallel, run the existing 48×256 development data through the Gate 0
   target-structure analysis and freeze the numerical decision before reading
   new-cohort outcomes.
-- [ ] Implement Model 2 QK-linear direct mask-outcome training, separate gold
-  and self heads, document-disjoint loading, held-out response evaluation, and
-  routed-QA evaluation. Defer Models 0 and 1; implement Model 3 only as the
-  prespecified escalation.
+- [ ] Implement matched independent linear probes at every read block `0..13`
+  for metadata/DocPrune, pooled region hidden state, compact pre-answer QK, and
+  hidden-plus-QK features. Train separate gold/self heads directly on centered
+  mask outcomes with question-equal weighting and document-disjoint loading.
+- [ ] Freeze validation-only selection of the best single-layer family, then
+  compare it with the prespecified local-trajectory model and its current,
+  mean, delta, parameter-matched, within-question earlier-state-shuffle, and
+  layer-order controls. Call a gain trajectory information only when the order
+  and history controls support that interpretation.
+- [ ] Implement held-out response and routed-QA evaluation without test
+  leakage. Implement full-prefix low-rank aggregation only if the local
+  trajectory passes its frozen validation gate. Keep rank-4 question-region
+  bilinear probing conditional; do not add an RNN/transformer trajectory model.
 - [ ] Push a second clean SOL commit containing the finalized H200 commands,
   validators, resume rules, sparse-checkout paths, and updated H200 handoff.
 - [ ] On H200, authenticate the first bundle and run only admitted resumable

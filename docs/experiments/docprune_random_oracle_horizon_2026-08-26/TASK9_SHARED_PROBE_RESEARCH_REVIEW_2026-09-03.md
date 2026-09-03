@@ -1215,3 +1215,9 @@ or reinterpret the review.
   for this experiment runs on SOL.
 - This file is scientific/design authority. Machine-specific sequencing and
   transfer ownership are governed by the paired SOL and H200 handoffs.
+
+The initial model staging in this addendum is superseded, before cohort
+sealing or new outcomes, by
+[`TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md).
+The fixed B13 target, cohort, teacher schedule, and direct gold/self outcome
+contract remain unchanged.
