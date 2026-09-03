@@ -178,19 +178,22 @@ attempt root: /scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2
 
 ## Next action
 
-Prepare and execute the approved
-100-question baseline-wrong confirmation on the CoRAL H200 server. The cohort
-is sealed locally at
-`/home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json`
-with internal SHA-256
-`0bdfdde29b568f54ea541453abeca196cfb49f4b6630f084f80e6c21f158514e`.
-It contains 100 new ordinary baseline-wrong questions from 100 distinct
-support-document components, reusing exact cached top-4 pages. Use 256 fit
-masks and zero holdout masks. After its sparse checkout, the H200 agent's first
-action is the read-only survey in
-`h200/task9-baseline-wrong-100/ENVIRONMENT_SURVEY.md`. Once recorded, separate
-DocPrune and MinerU environments may be prepared while the sealed CPU-input
-bundle transfers. SOL sealed and packaged the cohort and 100-QID/400-page
-fixed inputs; H200 authenticates and relocates those bytes, then owns pinned
-MinerU, geometry capture, mapping construction, CPU validation, and experiment
-execution. No retrieval or global index is permitted.
+Continue two isolated Task 9 tracks.
+
+1. The existing H200 workflow continues the locked 100-question
+   baseline-wrong confirmation under
+   `TASK9_H200_BASELINE_WRONG100_HANDOFF_2026-09-02.md`. Its cohort and
+   scientific contract remain unchanged.
+2. A fresh SOL implementation agent begins the appended 600-question
+   shared-probe feasibility track under
+   `TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md`. It first seals the new
+   document-disjoint cohort and minimum H200 teacher-data scaffolding, pushes
+   them, then completes Model 2 implementation and a second exact H200 handoff.
+   A separate H200 agent starts only after receiving the authenticated first
+   bundle. All new shared-probe GPU jobs run on H200; SOL performs cohort,
+   implementation, CPU analysis, testing, and packaging. Shared-probe teacher
+   labels use one fixed physical-deletion boundary, `B13`; any pre-answer QK
+   read-layer sweep predicts that same B13 target.
+
+Never mix the 48-question development pilot, locked 100-question confirmation,
+or new 600-question cohort. No retrieval or global-index access is permitted.

@@ -606,6 +606,49 @@ Current next action: while the Mac-to-H200 transfer finishes, pull this branch
 and create the two isolated H200 environments after the recorded survey. Then
 verify all 1,014 transferred files before relocation or preprocessing.
 
+## Task 9 shared-probe feasibility track — approved 2026-09-03
+
+- [x] Preserve the external research review verbatim and append the approved
+  initial-scope decision without rewriting the source analysis.
+- [x] Define separate SOL and H200 handoffs and a two-push workflow. This
+  planning commit does not implement or execute the experiment.
+- [ ] On SOL, synchronize the H200-updated branch and quickly seal a new
+  600-question document-disjoint cohort using authenticated cached top-4 pages
+  and features. Exclude both the 48-question development pilot and locked
+  100-question confirmation cohort.
+- [ ] Freeze 360 balanced train, 120 balanced validation, 60 balanced primary
+  test, and 60 natural-prevalence secondary-test questions, subject to exact
+  eligibility validation. Stop rather than introducing cross-split document
+  overlap.
+- [ ] Implement and CPU-validate the prespecified 32-mask teacher schedule and
+  minimum H200 data-generation scaffolding, then push it with the sealed cohort
+  manifest, sparse-checkout paths, and transfer checksums.
+- [ ] Freeze every teacher intervention at decoder boundary `B13`. Implement
+  the QK read-layer sweep as a separate feature axis; no read-layer choice may
+  alter the B13 deletion target or silently substitute a dynamic DocPrune
+  boundary.
+- [ ] In parallel, run the existing 48×256 development data through the Gate 0
+  target-structure analysis and freeze the numerical decision before reading
+  new-cohort outcomes.
+- [ ] Implement Model 2 QK-linear direct mask-outcome training, separate gold
+  and self heads, document-disjoint loading, held-out response evaluation, and
+  routed-QA evaluation. Defer Models 0 and 1; implement Model 3 only as the
+  prespecified escalation.
+- [ ] Push a second clean SOL commit containing the finalized H200 commands,
+  validators, resume rules, sparse-checkout paths, and updated H200 handoff.
+- [ ] On H200, authenticate the first bundle and run only admitted resumable
+  GPU teacher-data phases. After the second push, validate the finalized code,
+  train without test leakage, seal model selection, evaluate held-out outcomes,
+  and aggregate.
+- [ ] Record exact commits, cohort/split hashes, transfer manifests, GPU
+  identities, retries, Gate 0 decision, model-selection seal, and final results
+  in the experiment log.
+
+Operational authority:
+[`TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md`](../../../agent-context/TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md)
+and
+[`h200/task9-shared-probe/HANDOFF.md`](../../../h200/task9-shared-probe/HANDOFF.md).
+
 ## Task 12 — Close the stage
 
 - [ ] Append source inventories, cohort seals, power analysis, job IDs, GPU
@@ -624,8 +667,11 @@ these documents plus the active SOL handoff.
 
 ## Current next action
 
-Finish and verify the Mac-to-H200 transfer while the H200 agent prepares the
-separate DocPrune and MinerU environments. After verification, H200 relocates
-the sealed fixed inputs, runs pinned MinerU and geometry, builds/validates all
-100 mappings, and requests approval for one exact smoke GPU. No method-holdout
-run is currently authorized. Task 10 remains inactive and separately gated.
+Run two independent Task 9 tracks without mixing their data or artifacts. The
+existing H200 agent may continue the locked 100-question confirmation under its
+current handoff. A fresh SOL implementation agent follows
+`TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md`, first sealing the new 600-question
+cohort and pushing minimum H200 teacher-data scaffolding, then completing the
+probe implementation and second handoff. A separate H200 agent begins the new
+shared-probe track only after receiving the first authenticated cohort bundle
+and admitted commit. No new shared-probe GPU job runs on SOL.

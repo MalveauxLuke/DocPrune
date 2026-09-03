@@ -852,3 +852,50 @@ source/SOL computer constructs and validates the complete fixed-input, MinerU,
 geometry, and mapping bundle before transfer. H200 authenticates that bundle
 and performs only CPU input validation, smoke, production, retry, and
 aggregation; it must not reconstruct experiment inputs or mappings.
+
+### Approved Task 9 shared-probe feasibility amendment — 2026-09-03
+
+The user approved an appended Task 9 experiment that asks whether frozen
+pre-answer document-VLM features can predict gold- and self-conditioned
+post-boundary physical-deletion responses across unseen documents. The complete
+scientific motivation and recommended design are preserved verbatim in
+[`TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md`](TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md).
+
+This experiment is separate from both existing Task 9 cohorts. The 48-question
+pilot remains development data for the target-structure/additivity gate. The
+locked 100-question baseline-wrong confirmation remains a confirmation cohort
+and may not become probe-training or model-selection data.
+
+The new target is 600 document-disjoint questions from the authenticated
+existing corpus, using only their exact cached top-4 pages and persisted
+features. No fresh retrieval or global-index access is authorized. The cohort
+contains balanced correct/wrong train, validation, and primary-test partitions
+plus a separate natural-prevalence secondary test, all frozen before new
+intervention outcomes are inspected. Each training question uses the
+prespecified 32-mask mixture of singleton, native-budget-local,
+less-aggressive, and pair/small-set interventions. Gold and self supervision
+come from the same masked computation and training targets the centered mask
+outcomes directly rather than per-question LASSO coefficients.
+
+Initial implementation begins with the pre-answer QK-linear probe (Model 2).
+The rank-4 bilinear probe (Model 3) is the only prespecified escalation. Models
+0 and 1 are deferred for the initial implementation; this is a staging choice,
+not a claim that their scientific controls are unnecessary.
+
+The intervention target is fixed across the entire new cohort: semantic-region
+positions are physically deleted at the already validated decoder boundary
+`B13`, preserving the established positional-identity semantics. Dynamic
+per-question DocPrune layers are not teacher-label boundaries for this study.
+The QK feature read layer is a separate variable and may be swept across
+prespecified pre-answer layers while every label continues to measure deletion
+at B13. This cleanly tests where the fixed B13 deletion response becomes
+decodable without changing the response being predicted.
+
+SOL owns cohort sealing, implementation, CPU Gate 0 analysis, focused tests,
+and authenticated packaging. CoRAL H200 owns every new model/GPU job. To
+parallelize safely, SOL first pushes the sealed cohort and minimum admitted
+teacher-data scaffolding; H200 begins resumable data generation while SOL
+finishes the probe implementation, then pulls a second finalized commit and
+handoff before training or evaluation. No new MinerU smoke is required unless
+the pinned MinerU implementation, model, command semantics, or output contract
+changes materially.

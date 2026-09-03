@@ -1540,6 +1540,27 @@ MinerU stack (Python 3.11 and Transformers 4.57.6 with its own PyTorch stack).
 Environment setup may overlap the transfer after the read-only survey, but no
 preprocessing or GPU work may begin until the transfer is complete and verified.
 
+### Task 9 shared-probe planning amendment — 2026-09-03
+
+Before any new shared-probe cohort was sealed or any corresponding GPU outcome
+was produced, the user approved an appended Task 9 feasibility experiment based
+on the verbatim review in
+`TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md`. The target is a new
+600-question document-disjoint cohort using existing authenticated cached
+top-4 pages and features, excluding both the 48-question development pilot and
+the locked 100-question confirmation.
+
+The initial implementation trains Model 2, a pre-answer QK-linear probe,
+directly from centered gold/self mask outcomes using a prespecified 32-mask
+mixture per question. Model 3 is the only prespecified escalation. Models 0 and
+1 are deferred for this first implementation but remain potential later
+controls. The deletion target is frozen at decoder boundary `B13` for every
+question; QK read-layer sweeps remain separate and always predict that same B13
+response. SOL owns sealing, implementation, CPU Gate 0 analysis, focused tests,
+and packaging; H200 owns all new model/GPU work through a two-push handoff.
+This entry records authorization and planned ownership only. No cohort, model,
+job, or result for this new track existed at the time of the amendment.
+
 ### Task 9 H200 environment compatibility correction — 2026-09-02
 
 The prepared H200 setup initially installed the pinned MinerU source without
