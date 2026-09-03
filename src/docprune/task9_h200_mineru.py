@@ -51,8 +51,27 @@ def _write_exclusive(path: Path, value: object) -> str:
 def _materialize_snapshot(source: Path, destination: Path) -> None:
     if not source.is_dir() or source.is_symlink():
         raise ValueError("MinerU source snapshot must be a real directory")
-    if destination.exists() or destination.is_symlink():
-        raise FileExistsError(f"materialized MinerU model already exists: {destination}")
+    if destination.is_symlink():
+        raise ValueError("materialized MinerU model must be a real directory")
+    if destination.exists():
+        if not destination.is_dir():
+            raise ValueError("materialized MinerU model must be a real directory")
+        source_entries = sorted(source.iterdir(), key=lambda path: path.name)
+        destination_entries = sorted(destination.iterdir(), key=lambda path: path.name)
+        if not source_entries or [path.name for path in source_entries] != [
+            path.name for path in destination_entries
+        ]:
+            raise ValueError("materialized MinerU model does not match source snapshot")
+        for source_entry, destination_entry in zip(source_entries, destination_entries):
+            resolved = source_entry.resolve(strict=True)
+            if (
+                not resolved.is_file()
+                or not destination_entry.is_file()
+                or destination_entry.is_symlink()
+                or _sha256(resolved) != _sha256(destination_entry)
+            ):
+                raise ValueError("materialized MinerU model does not match source snapshot")
+        return
     destination.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{destination.name}.", dir=destination.parent))
     try:
@@ -317,7 +336,20 @@ def _gpu_query(gpu_id: int) -> tuple[str, str]:
     return gpu, processes
 
 
-def _foreign_gpu_pids(process_rows: str, gpu_uuid: str, allowed_session: int) -> list[int]:
+def _is_descendant(pid: int, ancestor_pid: int) -> bool:
+    while pid > 1:
+        if pid == ancestor_pid:
+            return True
+        try:
+            status = (Path("/proc") / str(pid) / "status").read_text().splitlines()
+            ppid_line = next(line for line in status if line.startswith("PPid:"))
+            pid = int(ppid_line.split()[1])
+        except (FileNotFoundError, IndexError, PermissionError, StopIteration, ValueError):
+            return False
+    return pid == ancestor_pid
+
+
+def _foreign_gpu_pids(process_rows: str, gpu_uuid: str, allowed_ancestor: int) -> list[int]:
     foreign: list[int] = []
     for line in process_rows.splitlines():
         fields = [field.strip() for field in line.split(",")]
@@ -325,11 +357,10 @@ def _foreign_gpu_pids(process_rows: str, gpu_uuid: str, allowed_session: int) ->
             continue
         try:
             pid = int(fields[1])
-            session = os.getsid(pid)
-        except (ValueError, ProcessLookupError, PermissionError):
+        except ValueError:
             foreign.append(-1)
             continue
-        if session != allowed_session:
+        if not _is_descendant(pid, allowed_ancestor):
             foreign.append(pid)
     return foreign
 
