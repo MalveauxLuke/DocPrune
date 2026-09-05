@@ -1,0 +1,63 @@
+{
+  "artifact_root": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune",
+  "completion_ledger_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/completion-ledger.json",
+  "completion_ledger_sha256": "eecb264faf9da3db32ebc197429bdfbd112a53990d52853699f4f002e051cef3",
+  "corpus_integrity_sha256": "e2581c9766157e800ba195d37905c0c25611cf4057d03e2fa32fc23e79280e39",
+  "embedding_metadata_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/embeddings.json",
+  "embeddings": {
+    "dtype": "float32",
+    "shape": [
+      45977140,
+      128
+    ]
+  },
+  "embeddings_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/embeddings.safetensors",
+  "embeddings_sha256": "90887ca38ef184b09f18c52182734f0d1e8caa8e34a4d7c0c77bcacd20b383bd",
+  "index_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/index.faiss",
+  "index_sha256": "3f28b825ad6760a50e75e04bbbb4a6c83e4bf45a903e47dabfee5f32f7632d7f",
+  "m3docrag_commit": "29e6ac2294d6b87075a1d45b8a8df175b214248a",
+  "manifest_sha256": "93c6ffe6986307cc127352f8368279a75325ada6164310e1d07e0bb962838f78",
+  "mode": "docprune",
+  "page_count": 4,
+  "processor_contract_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/gate/processor-contract.json",
+  "processor_contract_sha256": "0ca949740960a9835e3a76c17e01c6f5d9b36b85eb908cdec2a4002304fb315b",
+  "pruning_config": {
+    "enabled": true,
+    "page_settings": {
+      "attention_threshold": 0.075,
+      "background_error_tolerance": 1.0,
+      "comprehension_threshold": 45.0,
+      "qa_background_threshold": 0.8,
+      "question_threshold": 0.4,
+      "retrieval_background_threshold": 1.0
+    },
+    "reconstruction_defaults": {
+      "attention_head_aggregation": "mean",
+      "ctp_timing": "prefill_last_prompt_token",
+      "gaussian_sigma": 1.0,
+      "grayscale": "bt601_uint8",
+      "group_retention": "any",
+      "source": "reconstruction_default"
+    },
+    "siglip_patch_size": 14
+  },
+  "resources": {
+    "colpali": {
+      "model": "vidore/colpali-v1.2",
+      "revision": "961b51745de3e9adb3468ac5c9ccca0ac626c217"
+    },
+    "colpali_backbone": {
+      "model": "vidore/colpaligemma-3b-pt-448-base",
+      "revision": "30ab955d073de4a91dc5a288e8c97226647e3e5a"
+    },
+    "qwen": {
+      "model": "Qwen/Qwen2-VL-7B-Instruct",
+      "revision": "eed13092ef92e448dd6875b2a00151bd3f7db0ac"
+    }
+  },
+  "runtime_commit": "4e2473bdbbc2e4eca0e92c30d4a0633044501ccf",
+  "schema_version": 5,
+  "source_order_sha256": "7f9421e20a37ccd263945e20028e1207c2e086c1ae834a033224a713f6c044b8",
+  "token2pageuid_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/token2pageuid.json",
+  "token2pageuid_sha256": "ec82b3b11ed326a9648d7eb8849837ef4a179b2122f865ace7f177bdacd3bb26"
+}

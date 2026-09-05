@@ -19,6 +19,7 @@ def prepare_qa_pruning_masks(
     image_grid_thw: torch.Tensor,
     document_tokens: Sequence[torch.Tensor],
     document_source_hw: Sequence[tuple[int, int]],
+    document_raster_indices: Sequence[torch.Tensor] | None = None,
     question_tokens: torch.Tensor,
     patch_size: int,
     page_config: PagePruningConfig,
@@ -42,6 +43,8 @@ def prepare_qa_pruning_masks(
         == page_count
     ):
         raise ValueError("images, document tokens, source grids, and Qwen grids must align by page")
+    if document_raster_indices is not None and len(document_raster_indices) != page_count:
+        raise ValueError("document raster indices must align by page")
     if torch.as_tensor(question_tokens).ndim != 2:
         raise ValueError("question_tokens must have shape [tokens, dim]")
 
@@ -58,10 +61,15 @@ def prepare_qa_pruning_masks(
             raise ValueError("resized image dimensions must match its Qwen patch grid")
         source_height, source_width = document_source_hw[page_index]
         document = torch.as_tensor(document_tokens[page_index])
-        if document.ndim != 2 or document.shape[0] != source_height * source_width:
+        expected_document_count = (
+            source_height * source_width
+            if document_raster_indices is None
+            else int(torch.as_tensor(document_raster_indices[page_index]).numel())
+        )
+        if document.ndim != 2 or document.shape[0] != expected_document_count:
             raise ValueError(
                 "document_tokens must be visual-only; explicitly slice ColPali special tokens "
-                "to match document_source_hw"
+                "to match document_source_hw or document_raster_indices"
             )
         page_layout = VisualLayout(grid[page_index : page_index + 1], spatial_merge_size=2)
         scores = background_scores(
@@ -87,6 +95,11 @@ def prepare_qa_pruning_masks(
                 threshold=page_config.question_threshold,
                 sigma=reconstruction.gaussian_sigma,
                 retention=reconstruction.group_retention,
+                raster_indices=(
+                    None
+                    if document_raster_indices is None
+                    else torch.as_tensor(document_raster_indices[page_index], dtype=torch.long)
+                ),
             )
         )
     return VisionPruningMasks(

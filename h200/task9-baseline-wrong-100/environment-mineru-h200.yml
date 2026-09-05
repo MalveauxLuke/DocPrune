@@ -1,0 +1,14 @@
+name: mineru-h200
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - git
+  - packaging
+  - pip:
+      - huggingface-hub==0.36.2
+      - torch==2.13.0
+      - torchvision==0.28.0
+      - transformers==4.57.6
+      - accelerate>=1.5.1,<2

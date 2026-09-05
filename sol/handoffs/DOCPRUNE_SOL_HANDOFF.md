@@ -149,11 +149,10 @@ identical inputs.
 This probe loads processors and configuration only. It does not load model
 weights, generate answers, or run an evaluation.
 
-The supplement identifies `Qwen/Qwen2-VL-7B-Instruct`,
-`vidore/colpali-v1`, and `m3docrag/m3docvqa` but gives no immutable revisions.
-Qwen was resolved on 2026-08-15 to the reconstruction pin below. Resolve the
-ColPali revision using the authenticated Hugging Face session; do not
-substitute a differently named ColPali repository.
+This superseded handoff historically named the legacy ColPali resource. Its
+executable snippet now records the corrected immutable v1.2 adapter and
+PaliGemma backbone contract; the active benchmark handoff remains the only
+execution authority.
 
 Set `M3DOCVQA_PAGE_ROOT` to the existing derived page-image directory on SOL.
 The probe deterministically selects the lexicographically first PNG, JPEG, or
@@ -169,17 +168,11 @@ export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
 export TOKENIZERS_PARALLELISM=false
 export QWEN_MODEL="Qwen/Qwen2-VL-7B-Instruct"
 export QWEN_REVISION="eed13092ef92e448dd6875b2a00151bd3f7db0ac"
-export COLPALI_MODEL="vidore/colpali-v1"
+export COLPALI_MODEL="vidore/colpali-v1.2"
+export COLPALI_REVISION="961b51745de3e9adb3468ac5c9ccca0ac626c217"
+export COLPALI_BACKBONE_MODEL="vidore/colpaligemma-3b-pt-448-base"
+export COLPALI_BACKBONE_REVISION="30ab955d073de4a91dc5a288e8c97226647e3e5a"
 : "${M3DOCVQA_PAGE_ROOT:?set M3DOCVQA_PAGE_ROOT to the existing page-image directory}"
-
-export COLPALI_REVISION="$(python - <<'PY'
-from huggingface_hub import HfApi
-info = HfApi().model_info("vidore/colpali-v1", revision="main")
-if not info.sha or len(info.sha) != 40:
-    raise SystemExit("ColPali did not resolve to a 40-character revision")
-print(info.sha)
-PY
-)"
 
 export PROBE_IMAGE="$(python - <<'PY'
 import os
@@ -204,6 +197,8 @@ docprune-m3docvqa probe-processors \
   --qwen-revision "$QWEN_REVISION" \
   --colpali-model "$COLPALI_MODEL" \
   --colpali-revision "$COLPALI_REVISION" \
+  --colpali-backbone-model "$COLPALI_BACKBONE_MODEL" \
+  --colpali-backbone-revision "$COLPALI_BACKBONE_REVISION" \
   --output "$RUN_ROOT/processor-contract.json" \
   | tee "$RUN_ROOT/processor-contract.stdout.json"
 
@@ -217,14 +212,18 @@ the error and stop without substituting another model.
 
 ### Output schema
 
-`$RUN_ROOT/processor-contract.json` has schema version 1:
+`$RUN_ROOT/processor-contract.json` has schema version 2:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "resources": {
     "qwen": {"model": "...", "revision": "40 hex characters"},
-    "colpali": {"model": "...", "revision": "40 hex characters"}
+    "colpali": {"model": "vidore/colpali-v1.2", "revision": "961b...c217"},
+    "colpali_backbone": {
+      "model": "vidore/colpaligemma-3b-pt-448-base",
+      "revision": "30ab...e5a"
+    }
   },
   "page": {"raw_size_wh": [0, 0]},
   "qwen": {
@@ -240,9 +239,11 @@ the error and stop without substituting another model.
     "attention_token_count": 0,
     "candidate_visual_token_count": 0,
     "image_token_id": 0,
+    "image_seq_length": 1024,
     "image_token_positions": [],
     "inferred_visual_grid_hw": [0, 0],
     "pixel_values_shape": [],
+    "raster_indices": [],
     "sequence_length": 0
   },
   "mapping_checks": {
@@ -250,16 +251,14 @@ the error and stop without substituting another model.
     "qwen_merge_groups_valid": false,
     "raster_order_verified": false
   },
-  "unresolved": [
-    "ColPali raster order requires review against the pinned processor implementation."
-  ]
+  "colpali_processor_evidence": {"supported": false},
+  "unresolved": []
 }
 ```
 
 The report intentionally excludes raw token IDs, image pixels, credentials,
-weights, and dataset content. `raster_order_verified` remains false until the
-pinned ColPali implementation is reviewed; this is expected and is why the
-benchmark remains on hold.
+weights, and dataset content. This historical handoff is superseded and does
+not authorize a benchmark.
 
 ## Return and stop
 

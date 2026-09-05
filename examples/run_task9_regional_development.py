@@ -1,0 +1,528 @@
+#!/usr/bin/env python3
+"""Run one frozen Task 9 regional development artifact."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+from pathlib import Path
+
+import torch
+
+from docprune.answerers import (
+    DocPruneQwenAnswerer,
+    _input_ids_identity,
+    _prepare_batch_with_prompt,
+    prepare_task7_likelihood_target_for_question,
+)
+from docprune.config import load_config
+from docprune.ctp_policy import aggregate_native_threshold_policy, btp_qtp_no_ctp_policy
+from docprune.m3docrag import RetrievalOutput
+from docprune.m3docvqa_factory import build_workload
+from docprune.qwen2vl.preprocessing import prepare_qwen_page, prepared_raster_image
+from docprune.segmentation import load_region_mapping
+from docprune.task6_runtime import load_fixed_page_fixture
+from docprune.task9_attribution import (
+    build_region_mask_design,
+    build_regional_development_plan,
+    build_regional_development_targets,
+    build_regional_intervention_plan,
+    build_task9_preliminary_intervention_plan,
+    build_task9_preliminary_mask_design,
+)
+from docprune.task9_live import (
+    publish_task9_regional_development,
+    score_task9_regional_development_once,
+)
+
+
+def _sha256(path: Path) -> str:
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        raise ValueError(f"authenticated input must be an absolute regular file: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    content = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    ).encode("utf-8")
+    return hashlib.sha256(content).hexdigest()
+
+
+def _boundary(value: str) -> str | int:
+    if value in {"input", "dynamic"}:
+        return value
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            "boundary must be dynamic, input, or a block index"
+        ) from error
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("boundary block index must be nonnegative")
+    return parsed
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--run-config", type=Path, required=True)
+    parser.add_argument("--index-manifest", type=Path, required=True)
+    parser.add_argument("--fixture", type=Path, required=True)
+    parser.add_argument("--fixture-sha256", required=True)
+    parser.add_argument("--mapping", type=Path, required=True)
+    parser.add_argument("--mapping-sha256", required=True)
+    parser.add_argument("--expected-geometry-count", type=int, required=True)
+    parser.add_argument("--expected-geometry-sha256", required=True)
+    parser.add_argument("--qid", required=True)
+    parser.add_argument("--boundary", type=_boundary, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--runtime-dir", type=Path, required=True)
+    parser.add_argument("--runtime-commit", required=True)
+    parser.add_argument("--fit-mask-count", type=int, default=64)
+    parser.add_argument("--holdout-mask-count", type=int, default=32)
+    parser.add_argument("--budget-local-holdout-mask-count", type=int, default=0)
+    parser.add_argument("--preliminary-cohort", type=Path)
+    parser.add_argument("--preliminary-cohort-sha256")
+    parser.add_argument("--validate-only", action="store_true")
+    return parser
+
+
+def _runtime_identity(runtime_dir: Path, runtime_commit: str) -> None:
+    if not runtime_dir.is_absolute() or len(runtime_commit) != 40:
+        raise ValueError("Task 9 runtime identity is invalid")
+    observed_commit = subprocess.run(
+        ["git", "-C", str(runtime_dir), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    observed_status = subprocess.run(
+        ["git", "-C", str(runtime_dir), "status", "--porcelain", "--untracked-files=all"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if observed_commit != runtime_commit or observed_status:
+        raise ValueError("Task 9 execution requires the exact clean committed runtime")
+
+
+def _preliminary_cohort_record(
+    path: Path, expected_sha256: str, *, qid: str, question: str
+) -> dict[str, object]:
+    if _sha256(path) != expected_sha256:
+        raise ValueError("Task 9 preliminary cohort checksum mismatch")
+    payload = json.loads(path.read_bytes())
+    records = payload.get("selected_records") if isinstance(payload, dict) else None
+    matches = (
+        [row for row in records if isinstance(row, dict) and row.get("question_id") == qid]
+        if isinstance(records, list)
+        else []
+    )
+    if len(matches) != 1 or matches[0].get("question") != question:
+        raise ValueError("Task 9 preliminary cohort question identity mismatch")
+    answers = matches[0].get("answers")
+    if (
+        not isinstance(answers, list)
+        or not answers
+        or any(not isinstance(answer, str) or not answer for answer in answers)
+    ):
+        raise ValueError("Task 9 preliminary cohort accepted answers are invalid")
+    return matches[0]
+
+
+def main() -> None:
+    args = _parser().parse_args()
+    if (
+        args.fit_mask_count <= 0
+        or args.holdout_mask_count < 0
+        or args.budget_local_holdout_mask_count < 0
+    ):
+        raise ValueError("Task 9 fit masks must be positive; holdouts must be nonnegative")
+    global_mask_count = args.fit_mask_count + args.holdout_mask_count
+    mask_count = global_mask_count + args.budget_local_holdout_mask_count
+    for path in (
+        args.config,
+        args.run_config,
+        args.index_manifest,
+        args.fixture,
+        args.mapping,
+        args.output,
+        args.runtime_dir,
+    ):
+        if not path.is_absolute():
+            raise ValueError("Task 9 paths must be absolute")
+    if (args.preliminary_cohort is None) != (args.preliminary_cohort_sha256 is None):
+        raise ValueError("Task 9 preliminary cohort path and checksum must be provided together")
+    if args.preliminary_cohort is not None and not args.preliminary_cohort.is_absolute():
+        raise ValueError("Task 9 preliminary cohort path must be absolute")
+    if args.budget_local_holdout_mask_count and args.preliminary_cohort is None:
+        raise ValueError("Task 9 budget-local masks require a comparison cohort")
+    if args.output.exists() or args.output.is_symlink():
+        raise FileExistsError(f"Task 9 output already exists: {args.output}")
+    if not args.output.parent.is_dir():
+        raise ValueError("Task 9 output parent must already exist")
+    _runtime_identity(args.runtime_dir, args.runtime_commit)
+    input_hashes = {
+        "config_sha256": _sha256(args.config),
+        "run_config_sha256": _sha256(args.run_config),
+        "index_manifest_sha256": _sha256(args.index_manifest),
+        "fixed_page_fixture_sha256": _sha256(args.fixture),
+        "mapping_artifact_sha256": _sha256(args.mapping),
+    }
+    if input_hashes["fixed_page_fixture_sha256"] != args.fixture_sha256:
+        raise ValueError("Task 9 fixed-page fixture checksum mismatch")
+    if input_hashes["mapping_artifact_sha256"] != args.mapping_sha256:
+        raise ValueError("Task 9 mapping checksum mismatch")
+    fixture = load_fixed_page_fixture(
+        args.fixture,
+        expected_sha256=args.fixture_sha256,
+        validate_external_bytes=False,
+    )
+    fixed_question = fixture.question(args.qid)
+    fixed_samples = fixture.selected_samples((args.qid,))
+    if len(fixed_samples) != 1:
+        raise ValueError("Task 9 fixed fixture did not resolve one selected sample")
+    fixed_sample = fixed_samples[0]
+    preliminary_record = (
+        None
+        if args.preliminary_cohort is None
+        else _preliminary_cohort_record(
+            args.preliminary_cohort,
+            args.preliminary_cohort_sha256,
+            qid=args.qid,
+            question=fixed_sample.question,
+        )
+    )
+    mapping = load_region_mapping(args.mapping, validate_raw_artifacts=True)
+    if (
+        mapping.geometry_count != args.expected_geometry_count
+        or mapping.geometry_sha256 != args.expected_geometry_sha256
+        or any(
+            page.fixture_question_id != args.qid
+            for artifact in mapping.artifacts
+            for page in artifact.pages
+        )
+    ):
+        raise ValueError("Task 9 mapping does not match the fixed question geometry")
+    boundary_label = "B_input" if args.boundary == "input" else f"B_{args.boundary}"
+    if args.validate_only:
+        print(
+            json.dumps(
+                {
+                    "status": "validated-task9-development-without-model-or-output",
+                    "qid": fixed_question.qid,
+                    "boundary": boundary_label,
+                    "mask_count": mask_count,
+                    "seed_order": list(range(mask_count)),
+                    "geometry_count": mapping.geometry_count,
+                    "geometry_sha256": mapping.geometry_sha256,
+                    "mapping_internal_sha256": mapping.sha256,
+                    **input_hashes,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+        return
+
+    work = args.output.parent / f".{args.output.name}.work-{os.getpid()}"
+    work.mkdir()
+    workload = build_workload(
+        operation="evaluate",
+        config=load_config(args.config),
+        page_count=4,
+        output=work / "bootstrap",
+        mode="docprune",
+        run_config=args.run_config,
+        index_manifest=args.index_manifest,
+        sample_ids=(args.qid,),
+        ctp_policy=btp_qtp_no_ctp_policy(),
+        fixed_page_fixture=args.fixture,
+        fixed_page_fixture_sha256=args.fixture_sha256,
+        execution_runtime_commit=args.runtime_commit,
+    )
+    samples = tuple(workload.samples)
+    if len(samples) != 1 or samples[0].question_id != args.qid:
+        raise ValueError("Task 9 workload selected the wrong fixed question")
+    sample = samples[0]
+    runner = workload.runner
+    runner.warmup(sample)
+    retrieval = runner.retriever.retrieve(sample.question, 4)
+    if not isinstance(retrieval, RetrievalOutput):
+        raise ValueError("Task 9 did not receive fixed cached retrieval features")
+    images = [
+        runner.page_loader.load_page(page.doc_id, page.page_index) for page in retrieval.pages
+    ]
+    answerer = runner.answerer
+    answerer.frozen_post_qtp_geometry = mapping.geometry
+    native_selection = None
+    if args.boundary == "dynamic":
+        native_answerer = DocPruneQwenAnswerer(
+            answerer.model,
+            answerer.processor,
+            page_config=answerer.page_config,
+            reconstruction=answerer.reconstruction,
+            qa_stage="full",
+            max_new_tokens=answerer.max_new_tokens,
+            ctp_policy=aggregate_native_threshold_policy(),
+            frozen_post_qtp_geometry=mapping.geometry,
+        )
+        native_output = native_answerer.answer(
+            images,
+            sample.question,
+            retrieval_output=retrieval,
+        )
+        native_selection = native_output.policy_selection
+        if (
+            native_selection is None
+            or type(native_selection.native_layer) is not int
+            or native_selection.boundary != f"B_{native_selection.native_layer}"
+            or native_output.trace.ctp_layer != native_selection.native_layer
+            or native_selection.visual_population != mapping.geometry_count
+            or native_selection.achieved_budget != len(native_selection.retained_visual_ids)
+            or not 0 < native_selection.achieved_budget < mapping.geometry_count
+        ):
+            raise ValueError("Task 9 native DocPrune did not produce a usable dynamic selection")
+        args.boundary = native_selection.native_layer
+        boundary_label = native_selection.boundary
+    accepted_references = (
+        sample.answers if preliminary_record is None else tuple(preliminary_record["answers"])
+    )
+    target = prepare_task7_likelihood_target_for_question(
+        answerer.processor,
+        page_count=4,
+        question=sample.question,
+        accepted_references=accepted_references,
+    )
+    prepared = [prepare_qwen_page(answerer.processor, image) for image in images]
+    prompt, batch = _prepare_batch_with_prompt(
+        answerer.processor,
+        [prepared_raster_image(page) for page in prepared],
+        sample.question,
+    )
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    input_shape, input_sha256 = _input_ids_identity(torch.as_tensor(batch["input_ids"]))
+    if target["assistant_prompt_sha256"] != prompt_sha256:
+        raise ValueError("Task 9 target and scoring prompt differ")
+    reference_ids = tuple(tuple(row) for row in target["target_token_ids"])
+    reference_hash = _canonical_sha256([list(row) for row in reference_ids])
+    regions = [
+        {"source_id": source.source_id, "token_cost": len(source.token_ids)}
+        for source in mapping.sources
+    ] + [{"source_id": source_id, "token_cost": 0} for source_id in mapping.empty_region_source_ids]
+    design_kwargs = {
+        "question_id": args.qid,
+        "forced_boundary": boundary_label,
+        "mapping_artifact_sha256": args.mapping_sha256,
+        "prompt_input_sha256": input_sha256,
+        "target_kind": "max-accepted-reference-mean-loglikelihood",
+        "reference_set_token_ids_sha256": reference_hash,
+        "generated_response_token_ids_sha256": None,
+        "fit_mask_count": args.fit_mask_count,
+    }
+    preliminary_design = None
+    if preliminary_record is not None:
+        preliminary_design = build_task9_preliminary_mask_design(
+            regions,
+            **design_kwargs,
+            primary_budget_fraction=(
+                native_selection.achieved_budget / mapping.geometry_count
+                if native_selection is not None
+                else 0.65
+            ),
+            global_holdout_mask_count=args.holdout_mask_count,
+            budget_local_holdout_mask_count=args.budget_local_holdout_mask_count,
+        )
+        primary_design = preliminary_design["global_design"]
+        primary_plan = build_task9_preliminary_intervention_plan(
+            mapping,
+            preliminary_design,
+            mapping_artifact_sha256=args.mapping_sha256,
+        )
+    else:
+        primary_design = build_region_mask_design(
+            regions,
+            **design_kwargs,
+            holdout_mask_count=args.holdout_mask_count,
+        )
+        primary_plan = (
+            *build_regional_intervention_plan(
+                mapping,
+                primary_design,
+                mapping_artifact_sha256=args.mapping_sha256,
+                split="fit",
+            ),
+            *build_regional_intervention_plan(
+                mapping,
+                primary_design,
+                mapping_artifact_sha256=args.mapping_sha256,
+                split="holdout",
+            ),
+        )
+    shared = score_task9_regional_development_once(
+        answerer,
+        images=images,
+        question=sample.question,
+        retrieval_output=retrieval,
+        forced_interventions=tuple(row["forced_intervention"] for row in primary_plan),
+        reference_target_token_ids=reference_ids,
+        expected_mask_count=mask_count,
+    )
+    generated_ids = shared.unpruned_generated_response_token_ids
+    terminal_eos = shared.unpruned_terminal_eos_token_id
+    generation_trace = shared.unpruned_generation_trace
+    if (
+        not generated_ids
+        or terminal_eos not in {151645, 151643}
+        or generation_trace is None
+        or generation_trace.ctp_layer is not None
+        or generation_trace.post_ctp_visual_tokens != generation_trace.post_qtp_visual_tokens
+    ):
+        raise ValueError("Task 9 generated-response identity is incomplete")
+    generated_hash = _canonical_sha256(list(generated_ids))
+    secondary_design = build_region_mask_design(
+        regions,
+        question_id=args.qid,
+        forced_boundary=boundary_label,
+        mapping_artifact_sha256=args.mapping_sha256,
+        prompt_input_sha256=input_sha256,
+        target_kind="unpruned-generated-response-mean-loglikelihood",
+        reference_set_token_ids_sha256=None,
+        generated_response_token_ids_sha256=generated_hash,
+        fit_mask_count=args.fit_mask_count,
+        holdout_mask_count=args.holdout_mask_count,
+    )
+    development_plan = build_regional_development_plan(
+        mapping,
+        primary_design,
+        secondary_design,
+        mapping_artifact_sha256=args.mapping_sha256,
+    )
+    all_raw_likelihoods = [
+        list(branch.teacher_forced_loglikelihoods) for branch in shared.result.branches
+    ]
+    raw_likelihoods = all_raw_likelihoods[:global_mask_count]
+    targets = build_regional_development_targets(
+        primary_design,
+        secondary_design,
+        development_plan,
+        mean_sequence_loglikelihoods=raw_likelihoods,
+        reference_sequence_count=len(reference_ids),
+    )
+    query_scores = list(shared.result.query_aggregate_attention_scores)
+    if len(query_scores) != mapping.geometry_count:
+        raise ValueError("Task 9 query-attention scores do not match the regional mapping")
+    query_region_scores = {
+        source.source_id: sum(query_scores[token_id] for token_id in source.token_ids)
+        for source in mapping.sources
+    }
+    manifest: dict[str, object] = {
+        "schema_version": 2 if preliminary_design is not None else 1,
+        "status": "configured-task9-regional-development",
+        "runtime_commit": args.runtime_commit,
+        "qid": args.qid,
+        "boundary": boundary_label,
+        "mask_count": mask_count,
+        "seed_order": [row["seed"] for row in primary_plan],
+        "config_path": str(args.config),
+        "fixed_page_fixture_path": str(args.fixture),
+        "mapping_path": str(args.mapping),
+        "index_manifest_path": str(args.index_manifest),
+        "run_config_path": str(args.run_config),
+        **input_hashes,
+        "mapping_internal_sha256": mapping.sha256,
+        "geometry_count": mapping.geometry_count,
+        "geometry_sha256": mapping.geometry_sha256,
+        "assistant_prompt_sha256": prompt_sha256,
+        "prefill_input_ids_shape": list(input_shape),
+        "prefill_input_ids_sha256": input_sha256,
+        "reference_set_token_ids_sha256": reference_hash,
+        "generated_response_token_ids_sha256": generated_hash,
+        "primary_attribution_identity_sha256": primary_design["attribution_identity_sha256"],
+        "secondary_attribution_identity_sha256": secondary_design["attribution_identity_sha256"],
+        "primary_target_dataset_sha256": targets["primary"]["target_dataset_sha256"],
+        "secondary_target_dataset_sha256": targets["secondary"]["target_dataset_sha256"],
+        "fixed_page_provenance": True,
+        "cached_retrieved_pages_reused": True,
+        "global_index_loaded": False,
+        "retrieval_search_run": False,
+    }
+    if preliminary_design is not None:
+        manifest["budget_local_holdout_mask_count"] = args.budget_local_holdout_mask_count
+        manifest["preliminary_design_sha256"] = preliminary_design["design_sha256"]
+        if preliminary_record is None or args.preliminary_cohort is None:
+            raise ValueError("Task 9 preliminary scoring requires the sealed cohort")
+        manifest["preliminary_cohort_path"] = str(args.preliminary_cohort)
+        manifest["preliminary_cohort_sha256"] = args.preliminary_cohort_sha256
+        manifest["baseline_stratum"] = preliminary_record["baseline_stratum"]
+        if native_selection is not None:
+            manifest["native_docprune_selection"] = native_selection.to_dict()
+    manifest["run_manifest_sha256"] = _canonical_sha256(manifest)
+    raw_result: dict[str, object] = {
+        "schema_version": 2 if preliminary_design is not None else 1,
+        "status": "completed-task9-regional-development",
+        "run_manifest_sha256": manifest["run_manifest_sha256"],
+        "reference_sequence_count": len(reference_ids),
+        "raw_mean_sequence_loglikelihoods": raw_likelihoods,
+        "development_plan": [
+            {key: value for key, value in row.items() if key != "forced_intervention"}
+            for row in development_plan
+        ],
+        "forced_interventions": [
+            branch.forced_intervention.to_dict() for branch in shared.result.branches
+        ],
+        "generated_response_token_ids": list(generated_ids),
+        "generated_response_token_ids_sha256": generated_hash,
+        "terminal_eos_token_id": terminal_eos,
+        "unpruned_generation_trace": {
+            "original_visual_tokens": generation_trace.original_visual_tokens,
+            "post_btp_visual_tokens": generation_trace.post_btp_visual_tokens,
+            "post_qtp_visual_tokens": generation_trace.post_qtp_visual_tokens,
+            "post_ctp_visual_tokens": generation_trace.post_ctp_visual_tokens,
+            "ctp_layer": generation_trace.ctp_layer,
+        },
+        "original_visual_tokens": shared.result.original_visual_tokens,
+        "post_btp_visual_tokens": shared.result.post_btp_visual_tokens,
+        "post_qtp_visual_tokens": shared.result.post_qtp_visual_tokens,
+        "checkpoint_cache_lengths": list(shared.result.checkpoint_cache_lengths),
+        "encoder_seconds": shared.result.encoder_seconds,
+        "prefix_decoder_seconds": shared.result.prefix_decoder_seconds,
+        "branch_decoder_seconds": list(shared.result.branch_decoder_seconds),
+        "unpruned_generation_encoder_seconds": shared.unpruned_generation_encoder_seconds,
+        "unpruned_generation_decoder_seconds": shared.unpruned_generation_decoder_seconds,
+        "peak_allocated_gpu_bytes": shared.peak_allocated_gpu_bytes,
+        "cuda_device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+    }
+    if preliminary_design is not None:
+        raw_result["budget_local_mean_sequence_loglikelihoods"] = all_raw_likelihoods[
+            global_mask_count:
+        ]
+        raw_result["budget_local_plan"] = [
+            {key: value for key, value in row.items() if key != "forced_intervention"}
+            for row in primary_plan[global_mask_count:]
+        ]
+        raw_result["query_aggregate_attention_scores"] = query_scores
+        raw_result["query_region_aggregate_logit_sums"] = query_region_scores
+        if native_selection is not None:
+            raw_result["native_docprune_selection"] = native_selection.to_dict()
+    raw_result["raw_result_sha256"] = _canonical_sha256(raw_result)
+    completion = publish_task9_regional_development(
+        args.output,
+        manifest,
+        raw_result,
+        targets["primary"],
+        targets["secondary"],
+    )
+    print(json.dumps(completion, sort_keys=True, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()

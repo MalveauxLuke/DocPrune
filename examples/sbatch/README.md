@@ -14,7 +14,10 @@ command, outputs, and recovery authority.
 | [`02_single_gpu_run.sbatch`](02_single_gpu_run.sbatch) | Normal single-A100 research job shell | Distilled from `run_segment_evidence_stage1_baselines.sbatch` |
 | [`03_job_array.sbatch`](03_job_array.sbatch) | Bounded four-shard array pattern | Extends the retained safety, provenance, and scratch conventions |
 | [`10_docprune_smoke.sbatch`](10_docprune_smoke.sbatch) | Pinned environment, GPU imports, tests, and config smoke | Active DocPrune reproduction |
-| [`11_docprune_m3docvqa.sbatch`](11_docprune_m3docvqa.sbatch) | Gated top-1/top-2/top-4 evaluation runner | Active DocPrune reproduction |
+| [`11_docprune_m3docvqa.sbatch`](11_docprune_m3docvqa.sbatch) | One validated immutable evaluation cell | Active DocPrune reproduction |
+| [`12_docprune_m3docvqa_gate.sbatch`](12_docprune_m3docvqa_gate.sbatch) | Processor, mapping, fixed-sample, and pruning gate | Active M3DocVQA handoff |
+| [`13_docprune_m3docvqa_index.sbatch`](13_docprune_m3docvqa_index.sbatch) | One mode/page-specific resumable index | Active M3DocVQA handoff |
+| [`14_docprune_m3docvqa_eval_array.sbatch`](14_docprune_m3docvqa_eval_array.sbatch) | Six-cell baseline/DocPrune evaluation array | Active M3DocVQA handoff |
 | [`20_m3docvqa_download_array.sbatch`](20_m3docvqa_download_array.sbatch) | Pinned M3DocVQA dev PDF acquisition shards | Staged acquisition/probe handoff |
 
 The named source wrappers are preserved below

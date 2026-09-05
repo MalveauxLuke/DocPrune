@@ -124,9 +124,57 @@ export PYTHONNOUSERSITE=1
 export PYTHONPATH="$M3DOCRAG_DIR/m3docvqa/src"
 cd "$DATA_ROOT"
 
-python "$M3DOCRAG_DIR/m3docvqa/main.py" download_mmqa \
-  --output_dir="$DATA_ROOT/multimodalqa" \
-  2>&1 | tee "$DATA_ROOT/setup/download-mmqa.log"
+mkdir -p "$DATA_ROOT/multimodalqa"
+
+# Download the five official source archives resumably.  Keep the .gz files:
+# CorpusIdentity validates them against setup/mmqa-archives.sha256.
+{
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_dev.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_dev.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_images.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_images.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_tables.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_tables.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_texts.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_texts.jsonl.gz"
+  curl --fail --location --retry 5 --retry-delay 2 --continue-at - \
+    --output "$DATA_ROOT/multimodalqa/MMQA_train.jsonl.gz" \
+    "https://github.com/allenai/multimodalqa/raw/refs/heads/master/dataset/MMQA_train.jsonl.gz"
+} 2>&1 | tee "$DATA_ROOT/setup/download-mmqa.log"
+
+sha256sum \
+  "$DATA_ROOT/multimodalqa/MMQA_dev.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_images.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_tables.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_texts.jsonl.gz" \
+  "$DATA_ROOT/multimodalqa/MMQA_train.jsonl.gz" \
+  > "$DATA_ROOT/setup/mmqa-archives.sha256"
+
+# Use the pinned M3DocRAG decompressor directly.  Unlike download_mmqa, this
+# leaves the checked .gz archives intact after materializing their JSONL files.
+python - <<'PY' 2>&1 | tee "$DATA_ROOT/setup/decompress-mmqa.log"
+import os
+from pathlib import Path
+
+from m3docvqa.mmqa_downloader import decompress_gz_file
+
+root = Path(os.environ["DATA_ROOT"]) / "multimodalqa"
+for archive_name in (
+    "MMQA_dev.jsonl.gz",
+    "MMQA_images.jsonl.gz",
+    "MMQA_tables.jsonl.gz",
+    "MMQA_texts.jsonl.gz",
+    "MMQA_train.jsonl.gz",
+):
+    archive_path = root / archive_name
+    if not archive_path.is_file():
+        raise FileNotFoundError(archive_path)
+    decompress_gz_file(archive_path, archive_path.with_suffix(""))
+PY
 
 python "$M3DOCRAG_DIR/m3docvqa/main.py" generate_wiki_mapping \
   --text="$DATA_ROOT/multimodalqa/MMQA_texts.jsonl" \
@@ -392,7 +440,10 @@ export HF_HOME="/scratch/lmalveau/docprune/cache/huggingface"
 export HUGGINGFACE_HUB_CACHE="$HF_HOME/hub"
 export QWEN_MODEL="Qwen/Qwen2-VL-7B-Instruct"
 export QWEN_REVISION="eed13092ef92e448dd6875b2a00151bd3f7db0ac"
-export COLPALI_MODEL="vidore/colpali-v1"
+export COLPALI_MODEL="vidore/colpali-v1.2"
+export COLPALI_REVISION="961b51745de3e9adb3468ac5c9ccca0ac626c217"
+export COLPALI_BACKBONE_MODEL="vidore/colpaligemma-3b-pt-448-base"
+export COLPALI_BACKBONE_REVISION="30ab955d073de4a91dc5a288e8c97226647e3e5a"
 export PROBE_IMAGE="$(python - <<'PY'
 import json
 import os
@@ -414,17 +465,8 @@ export TOKENIZERS_PARALLELISM=false
 mkdir -p "$HF_HOME"
 cd "$PROJECT_DIR"
 
-COLPALI_REVISION="$(python - <<"PY"
-from huggingface_hub import HfApi
-
-info = HfApi().model_info("vidore/colpali-v1", revision="main")
-if not info.sha or len(info.sha) != 40:
-    raise SystemExit("ColPali did not resolve to a 40-character revision")
-print(info.sha)
-PY
-)"
-export COLPALI_REVISION
 printf "%s\n" "$COLPALI_REVISION" > "$PROBE_ROOT/colpali-revision.txt"
+printf "%s\n" "$COLPALI_BACKBONE_REVISION" > "$PROBE_ROOT/colpali-backbone-revision.txt"
 
 docprune-m3docvqa probe-processors \
   --page-image "$PROBE_IMAGE" \
@@ -432,6 +474,8 @@ docprune-m3docvqa probe-processors \
   --qwen-revision "$QWEN_REVISION" \
   --colpali-model "$COLPALI_MODEL" \
   --colpali-revision "$COLPALI_REVISION" \
+  --colpali-backbone-model "$COLPALI_BACKBONE_MODEL" \
+  --colpali-backbone-revision "$COLPALI_BACKBONE_REVISION" \
   --output "$PROBE_ROOT/processor-contract.json" \
   | tee "$PROBE_ROOT/processor-contract.stdout.json"
 

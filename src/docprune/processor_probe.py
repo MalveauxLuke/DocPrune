@@ -7,6 +7,8 @@ import math
 import re
 import tempfile
 from collections.abc import Mapping
+from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +16,66 @@ import torch
 from PIL import Image
 
 COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+QWEN_MODEL = "Qwen/Qwen2-VL-7B-Instruct"
+QWEN_REVISION = "eed13092ef92e448dd6875b2a00151bd3f7db0ac"
+COLPALI_MODEL = "vidore/colpali-v1.2"
+COLPALI_REVISION = "961b51745de3e9adb3468ac5c9ccca0ac626c217"
+COLPALI_BACKBONE_MODEL = "vidore/colpaligemma-3b-pt-448-base"
+COLPALI_BACKBONE_REVISION = "30ab955d073de4a91dc5a288e8c97226647e3e5a"
+COLPALI_ENGINE_VERSION = "0.3.1"
+TRANSFORMERS_VERSION = "4.46.3"
+COLPALI_IMAGE_SEQ_LENGTH = 1024
+COLPALI_GRID_HW = (32, 32)
+
+
+@dataclass(frozen=True)
+class ColPaliVisualMapping:
+    image_token_id: int
+    visual_start: int
+    visual_stop: int
+    grid_hw: tuple[int, int]
+    raster_indices: tuple[int, ...]
 
 
 def require_immutable_revision(value: str, *, name: str) -> str:
     if not COMMIT_PATTERN.fullmatch(value):
         raise ValueError(f"{name} must be a 40-character hexadecimal commit hash")
     return value.lower()
+
+
+def _require_pinned_resource(value: str, *, expected: str, name: str) -> str:
+    if value != expected:
+        raise ValueError(f"{name} must equal the pinned {expected}")
+    return value
+
+
+def require_pinned_processor_resources(
+    *,
+    qwen_model: str,
+    qwen_revision: str,
+    colpali_model: str,
+    colpali_revision: str,
+    colpali_backbone_model: str,
+    colpali_backbone_revision: str,
+) -> None:
+    _require_pinned_resource(qwen_model, expected=QWEN_MODEL, name="qwen_model")
+    _require_pinned_resource(qwen_revision, expected=QWEN_REVISION, name="qwen_revision")
+    _require_pinned_resource(colpali_model, expected=COLPALI_MODEL, name="colpali_model")
+    _require_pinned_resource(
+        colpali_revision,
+        expected=COLPALI_REVISION,
+        name="colpali_revision",
+    )
+    _require_pinned_resource(
+        colpali_backbone_model,
+        expected=COLPALI_BACKBONE_MODEL,
+        name="colpali_backbone_model",
+    )
+    _require_pinned_resource(
+        colpali_backbone_revision,
+        expected=COLPALI_BACKBONE_REVISION,
+        name="colpali_backbone_revision",
+    )
 
 
 def _value(container: object, name: str) -> Any:
@@ -64,6 +120,120 @@ def _perfect_square_grid(token_count: int) -> list[int] | None:
     return [side, side] if side * side == token_count and token_count > 0 else None
 
 
+def _image_seq_length(processor: object) -> int | None:
+    for owner in (processor, getattr(processor, "image_processor", None)):
+        if owner is None:
+            continue
+        value = getattr(owner, "image_seq_length", None)
+        if value is not None:
+            return int(value)
+    return None
+
+
+def _package_version(package: str) -> str | None:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return None
+
+
+def _colpali_processor_evidence(processor: object) -> dict[str, object]:
+    """Record the version-specific structure that defines ColPali's raster order."""
+
+    colpali_version = _package_version("colpali-engine")
+    transformers_version = _package_version("transformers")
+    processor_class = type(processor)
+    image_processor = getattr(processor, "image_processor", None)
+    image_seq_length = _image_seq_length(processor)
+    supported_class = False
+    supported_paligemma_base = False
+    supported_siglip_image_processor = False
+    try:
+        from colpali_engine.models import ColPaliProcessor
+        from transformers import PaliGemmaProcessor, SiglipImageProcessor
+
+        supported_class = processor_class is ColPaliProcessor
+        supported_paligemma_base = isinstance(processor, PaliGemmaProcessor)
+        supported_siglip_image_processor = type(image_processor) is SiglipImageProcessor
+    except ImportError:
+        pass
+    supported = (
+        colpali_version == COLPALI_ENGINE_VERSION
+        and transformers_version == TRANSFORMERS_VERSION
+        and supported_class
+        and supported_paligemma_base
+        and supported_siglip_image_processor
+        and image_seq_length == COLPALI_IMAGE_SEQ_LENGTH
+    )
+    return {
+        "colpali_engine_version": colpali_version,
+        "expected_colpali_engine_version": COLPALI_ENGINE_VERSION,
+        "expected_grid_hw": list(COLPALI_GRID_HW),
+        "expected_image_seq_length": COLPALI_IMAGE_SEQ_LENGTH,
+        "expected_transformers_version": TRANSFORMERS_VERSION,
+        "image_processor_class": None
+        if image_processor is None
+        else f"{type(image_processor).__module__}.{type(image_processor).__qualname__}",
+        "image_seq_length": image_seq_length,
+        "processor_class": f"{processor_class.__module__}.{processor_class.__qualname__}",
+        "processor_is_exact_colpali_engine_class": supported_class,
+        "processor_is_paligemma_processor": supported_paligemma_base,
+        "processor_uses_exact_siglip_image_processor": supported_siglip_image_processor,
+        "raster_index_formula": "row * 32 + column",
+        "supported": supported,
+        "transformers_version": transformers_version,
+    }
+
+
+def resolve_colpali_visual_mapping(
+    *,
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    image_token_id: int,
+    image_seq_length: int,
+) -> ColPaliVisualMapping:
+    """Prove the PaliGemma image-placeholder span maps to a square raster."""
+
+    if input_ids.ndim != 2 or input_ids.shape[0] != 1:
+        raise ValueError("one-page ColPali input_ids must have shape [1, sequence]")
+    if attention_mask.shape != input_ids.shape:
+        raise ValueError("ColPali attention_mask must match input_ids")
+    if image_seq_length <= 0:
+        raise ValueError("ColPali image_seq_length must be positive")
+
+    positions = (input_ids[0] == image_token_id).nonzero(as_tuple=False).flatten()
+    if len(positions) != image_seq_length:
+        raise ValueError(
+            "ColPali image-token positions must contain exactly "
+            f"{image_seq_length} placeholders"
+        )
+    visual_start = int(positions[0].item())
+    visual_stop = visual_start + image_seq_length
+    expected_positions = torch.arange(
+        visual_start,
+        visual_stop,
+        device=positions.device,
+        dtype=positions.dtype,
+    )
+    if not torch.equal(positions, expected_positions):
+        raise ValueError("ColPali image-token positions must be contiguous")
+    if not bool(attention_mask[0, visual_start:visual_stop].bool().all()):
+        raise ValueError("ColPali image-token positions must not be padded")
+    grid = _perfect_square_grid(image_seq_length)
+    if grid is None:
+        raise ValueError("ColPali image_seq_length must form a square visual grid")
+    raster_indices = tuple(range(image_seq_length))
+    if len(set(raster_indices)) != image_seq_length:
+        raise ValueError("ColPali raster indices must be unique")
+    return ColPaliVisualMapping(
+        image_token_id=image_token_id,
+        visual_start=visual_start,
+        visual_stop=visual_stop,
+        grid_hw=(grid[0], grid[1]),
+        raster_indices=raster_indices,
+    )
+
+
 def collect_processor_contract(
     *,
     image: Image.Image,
@@ -74,11 +244,19 @@ def collect_processor_contract(
     colpali_processor: object,
     colpali_model: str,
     colpali_revision: str,
+    colpali_backbone_model: str,
+    colpali_backbone_revision: str,
 ) -> dict[str, object]:
     """Collect only structural metadata needed to connect QTP to Qwen2-VL."""
 
-    qwen_revision = require_immutable_revision(qwen_revision, name="qwen_revision")
-    colpali_revision = require_immutable_revision(colpali_revision, name="colpali_revision")
+    require_pinned_processor_resources(
+        qwen_model=qwen_model,
+        qwen_revision=qwen_revision,
+        colpali_model=colpali_model,
+        colpali_revision=colpali_revision,
+        colpali_backbone_model=colpali_backbone_model,
+        colpali_backbone_revision=colpali_backbone_revision,
+    )
     messages = [
         {
             "role": "user",
@@ -123,29 +301,44 @@ def collect_processor_contract(
     if colpali_attention.shape != colpali_ids.shape:
         raise ValueError("ColPali attention_mask must match input_ids")
     image_token_id = _image_token_id(colpali_processor)
-    positions = (
-        []
-        if image_token_id is None
-        else (colpali_ids[0] == image_token_id).nonzero(as_tuple=False).flatten().tolist()
-    )
-    inferred_grid = _perfect_square_grid(len(positions))
-    unresolved: list[str] = [
-        "ColPali raster order requires review against the pinned processor implementation."
-    ]
+    positions = [] if image_token_id is None else (colpali_ids[0] == image_token_id).nonzero(
+        as_tuple=False
+    ).flatten().tolist()
+    image_seq_length = _image_seq_length(colpali_processor)
+    processor_evidence = _colpali_processor_evidence(colpali_processor)
+    mapping: ColPaliVisualMapping | None = None
+    unresolved: list[str] = []
     if image_token_id is None:
         unresolved.append("ColPali image token ID could not be detected.")
-    elif not positions:
-        unresolved.append("No ColPali image-token positions were detected.")
-    if inferred_grid is None:
-        unresolved.append("ColPali visual tokens do not form an inferred square grid.")
+    elif image_seq_length is None:
+        unresolved.append("ColPali processor is missing image_seq_length.")
+    else:
+        try:
+            mapping = resolve_colpali_visual_mapping(
+                input_ids=colpali_ids,
+                attention_mask=colpali_attention,
+                image_token_id=image_token_id,
+                image_seq_length=image_seq_length,
+            )
+        except ValueError as error:
+            unresolved.append(str(error))
     if not merge_valid:
         unresolved.append("Qwen fine-token count is not divisible by its merge area.")
+    if processor_evidence["supported"] is not True:
+        unresolved.append(
+            "ColPali raster order requires the supported ColPaliProcessor 0.3.1 and "
+            "Transformers 4.46.3 PaliGemma structure."
+        )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "resources": {
             "qwen": {"model": qwen_model, "revision": qwen_revision},
             "colpali": {"model": colpali_model, "revision": colpali_revision},
+            "colpali_backbone": {
+                "model": colpali_backbone_model,
+                "revision": colpali_backbone_revision,
+            },
         },
         "page": {"raw_size_wh": [int(image.width), int(image.height)]},
         "qwen": {
@@ -162,14 +355,20 @@ def collect_processor_contract(
             "candidate_visual_token_count": len(positions),
             "image_token_id": image_token_id,
             "image_token_positions": positions,
-            "inferred_visual_grid_hw": inferred_grid,
+            "image_seq_length": image_seq_length,
+            "inferred_visual_grid_hw": None if mapping is None else list(mapping.grid_hw),
             "pixel_values_shape": list(torch.as_tensor(_value(colpali_batch, "pixel_values")).shape),
+            "raster_indices": None if mapping is None else list(mapping.raster_indices),
             "sequence_length": int(colpali_ids.shape[1]),
+            "visual_start": None if mapping is None else mapping.visual_start,
+            "visual_stop": None if mapping is None else mapping.visual_stop,
         },
+        "colpali_processor_evidence": processor_evidence,
         "mapping_checks": {
-            "colpali_visual_grid_inferred": inferred_grid is not None,
+            "colpali_visual_grid_inferred": mapping is not None,
             "qwen_merge_groups_valid": merge_valid,
-            "raster_order_verified": False,
+            "raster_order_verified": mapping is not None
+            and processor_evidence["supported"] is True,
         },
         "unresolved": unresolved,
     }
@@ -204,7 +403,11 @@ def validate_processor_contract(payload: Mapping[str, object]) -> None:
     checks = payload.get("mapping_checks")
     if not isinstance(checks, Mapping):
         raise ValueError("processor contract is missing mapping_checks")
-    required = ("colpali_visual_grid_inferred", "qwen_merge_groups_valid")
+    required = (
+        "colpali_visual_grid_inferred",
+        "qwen_merge_groups_valid",
+        "raster_order_verified",
+    )
     failed = [name for name in required if checks.get(name) is not True]
     if failed:
         unresolved = payload.get("unresolved")
@@ -220,12 +423,20 @@ def run_processor_probe(
     qwen_revision: str,
     colpali_model: str,
     colpali_revision: str,
+    colpali_backbone_model: str,
+    colpali_backbone_revision: str,
     output: Path,
 ) -> dict[str, object]:
     """Load pinned processors, collect their shape contract, and write one report."""
 
-    qwen_revision = require_immutable_revision(qwen_revision, name="qwen_revision")
-    colpali_revision = require_immutable_revision(colpali_revision, name="colpali_revision")
+    require_pinned_processor_resources(
+        qwen_model=qwen_model,
+        qwen_revision=qwen_revision,
+        colpali_model=colpali_model,
+        colpali_revision=colpali_revision,
+        colpali_backbone_model=colpali_backbone_model,
+        colpali_backbone_revision=colpali_backbone_revision,
+    )
     if Path(output).exists():
         raise FileExistsError(f"processor contract already exists: {output}")
 
@@ -249,6 +460,8 @@ def run_processor_probe(
         colpali_processor=colpali_processor,
         colpali_model=colpali_model,
         colpali_revision=colpali_revision,
+        colpali_backbone_model=colpali_backbone_model,
+        colpali_backbone_revision=colpali_backbone_revision,
     )
     write_processor_contract(output, payload)
     validate_processor_contract(payload)

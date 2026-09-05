@@ -32,6 +32,54 @@ def cosine_sum_relevance(
     return pairwise.sum(dim=-1)
 
 
+def dense_relevance_from_sparse_tokens(
+    tokens: torch.Tensor,
+    raster_indices: torch.Tensor,
+    source_hw: tuple[int, int],
+    question_tokens: torch.Tensor,
+) -> torch.Tensor:
+    """Scatter sparse ColPali visual rows back to their original raster grid.
+
+    ``encode_colpali_page`` removes BTP-rejected image placeholders, so the
+    returned visual rows are no longer a dense 32-by-32 raster.  QTP must score
+    those rows at their original positions; compacting them into the upper-left
+    corner changes the spatial evidence.  Missing cells are represented by
+    ``-inf`` and are deliberately carried as an explicit mask by the QTP
+    pipeline rather than being treated as zero-valued evidence.
+    """
+
+    sparse = torch.as_tensor(tokens)
+    indices = torch.as_tensor(raster_indices, dtype=torch.long, device=sparse.device)
+    if sparse.ndim == 2:
+        sparse = sparse.unsqueeze(0)
+    if sparse.ndim != 3:
+        raise ValueError("tokens must have shape [tokens, dim] or [batch, tokens, dim]")
+    if indices.ndim == 1:
+        indices = indices.unsqueeze(0).expand(sparse.shape[0], -1)
+    if indices.ndim != 2 or indices.shape != sparse.shape[:2]:
+        raise ValueError("raster_indices must have one index for every sparse token")
+    if len(source_hw) != 2 or min(source_hw) <= 0:
+        raise ValueError("source_hw must contain positive height and width")
+    raster_count = int(source_hw[0]) * int(source_hw[1])
+    if bool(((indices < 0) | (indices >= raster_count)).any()):
+        raise ValueError("raster_indices must lie within source_hw")
+    if any(torch.unique(row).numel() != row.numel() for row in indices):
+        raise ValueError("raster_indices must be unique within each batch row")
+
+    question = torch.as_tensor(question_tokens, device=sparse.device, dtype=sparse.dtype)
+    if question.ndim == 2:
+        question = question.unsqueeze(0)
+    relevance = cosine_sum_relevance(sparse, question)
+    dense = torch.full(
+        (sparse.shape[0], raster_count),
+        -torch.inf,
+        dtype=relevance.dtype,
+        device=relevance.device,
+    )
+    dense.scatter_(1, indices.to(relevance.device), relevance)
+    return dense.view(sparse.shape[0], *source_hw)
+
+
 def resize_relevance_map(scores: torch.Tensor, *, target_hw: tuple[int, int]) -> torch.Tensor:
     """Bilinearly resize a batch of retrieval relevance maps."""
 
@@ -112,21 +160,54 @@ def question_keep_mask(
     threshold: float,
     sigma: float,
     retention: str = "any",
+    raster_indices: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Execute DocPrune QTP cosine, resize, smoothing, and threshold stages."""
 
-    relevance = cosine_sum_relevance(document_tokens, question_tokens)
     expected_source_tokens = source_hw[0] * source_hw[1]
-    if relevance.shape[1] != expected_source_tokens:
-        raise ValueError(
-            f"source_hw describes {expected_source_tokens} tokens, got {relevance.shape[1]}"
+    if raster_indices is None:
+        relevance = cosine_sum_relevance(document_tokens, question_tokens)
+        if relevance.shape[1] != expected_source_tokens:
+            raise ValueError(
+                f"source_hw describes {expected_source_tokens} tokens, got {relevance.shape[1]}"
+            )
+        maps = relevance.view(relevance.shape[0], *source_hw)
+        resized = resize_relevance_map(maps, target_hw=target_hw)
+        smoothed = gaussian_smooth_2d(resized, sigma=sigma)
+        return group_relevance_keep_mask(
+            smoothed.flatten(1),
+            threshold=threshold,
+            layout=layout,
+            retention=retention,
         )
-    maps = relevance.view(relevance.shape[0], *source_hw)
-    resized = resize_relevance_map(maps, target_hw=target_hw)
+
+    maps = dense_relevance_from_sparse_tokens(
+        document_tokens,
+        raster_indices,
+        source_hw,
+        question_tokens,
+    )
+    valid = torch.isfinite(maps)
+    # Interpolation and convolution do not define useful semantics for -inf.
+    # Score only finite cells, while nearest-neighbor validity keeps a rejected
+    # raster cell from becoming evidence through a neighboring cell.
+    finite_maps = torch.where(valid, maps, torch.zeros_like(maps))
+    resized = resize_relevance_map(finite_maps, target_hw=target_hw)
+    resized_valid = functional.interpolate(
+        valid.to(resized.dtype).unsqueeze(1),
+        size=target_hw,
+        mode="nearest",
+    ).squeeze(1).bool()
     smoothed = gaussian_smooth_2d(resized, sigma=sigma)
-    return group_relevance_keep_mask(
+    keep = group_relevance_keep_mask(
         smoothed.flatten(1),
         threshold=threshold,
         layout=layout,
         retention=retention,
     )
+    target_fine_valid = resized_valid.flatten(1)
+    group_indices = layout.group_fine_indices().to(target_fine_valid.device)
+    group_valid = target_fine_valid.reshape(-1)[group_indices].all(dim=-1)
+    if group_valid.numel() != keep.numel():
+        raise ValueError("masked QTP batch and visual layout page counts do not match")
+    return keep & group_valid.flatten()

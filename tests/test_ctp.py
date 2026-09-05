@@ -35,7 +35,7 @@ def test_comprehension_requires_batch_size_one() -> None:
         controller.observe(1, torch.ones((2, 4)))
 
 
-def test_visual_attention_scores_average_heads_from_last_query() -> None:
+def test_visual_attention_scores_average_heads_and_scales_by_visual_count() -> None:
     attention = torch.tensor(
         [
             [
@@ -47,10 +47,10 @@ def test_visual_attention_scores_average_heads_from_last_query() -> None:
 
     got = visual_attention_scores(attention, torch.tensor([1, 3]), head_aggregation="mean")
 
-    assert torch.allclose(got, torch.tensor([0.3, 0.5]), atol=1e-7)
+    assert torch.allclose(got, torch.tensor([0.6, 1.0]), atol=1e-7)
 
 
-def test_visual_attention_scores_can_take_maximum_head() -> None:
+def test_visual_attention_scores_maximizes_heads_and_scales_by_visual_count() -> None:
     attention = torch.tensor(
         [
             [
@@ -62,7 +62,43 @@ def test_visual_attention_scores_can_take_maximum_head() -> None:
 
     got = visual_attention_scores(attention, torch.tensor([1, 3]), head_aggregation="max")
 
-    assert torch.allclose(got, torch.tensor([0.4, 0.8]))
+    assert torch.allclose(got, torch.tensor([0.8, 1.6]))
+
+
+def test_visual_attention_scores_preserves_empty_visual_vector() -> None:
+    attention = torch.tensor(
+        [
+            [
+                [[0.0, 0.2, 0.0, 0.8, 0.0]],
+                [[0.0, 0.4, 0.0, 0.2, 0.0]],
+            ]
+        ]
+    )
+
+    got = visual_attention_scores(attention, torch.tensor([], dtype=torch.long))
+
+    assert got.shape == (0,)
+    assert got.dtype == attention.dtype
+
+
+def test_visual_attention_scores_preserves_empty_visual_vector_for_max_aggregation() -> None:
+    attention = torch.tensor(
+        [
+            [
+                [[0.0, 0.2, 0.0, 0.8, 0.0]],
+                [[0.0, 0.4, 0.0, 0.2, 0.0]],
+            ]
+        ]
+    )
+
+    got = visual_attention_scores(
+        attention,
+        torch.tensor([], dtype=torch.long),
+        head_aggregation="max",
+    )
+
+    assert got.shape == (0,)
+    assert got.dtype == attention.dtype
 
 
 def test_ctp_retains_nonvisual_tokens_and_attention_threshold_equality() -> None:
