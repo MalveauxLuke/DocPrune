@@ -6,9 +6,9 @@ Read, in order:
 
 1. [`../../AGENTS.md`](../../AGENTS.md)
 2. [`../../agent-context/CURRENT_TASK.md`](../../agent-context/CURRENT_TASK.md)
-3. [`../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md`](../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md)
-4. [`../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md`](../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md)
-5. [`../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md`](../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md)
+3. [`../../docs/experiments/task9-contextcite/EXPERIMENT_PLAN.md`](../../docs/experiments/task9-contextcite/EXPERIMENT_PLAN.md)
+4. [`../../docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md`](../../docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md)
+5. [`../../docs/experiments/task9-contextcite/EXPERIMENT_LOG.md`](../../docs/experiments/task9-contextcite/EXPERIMENT_LOG.md)
 6. [`HANDOFF.md`](HANDOFF.md) and [`CORAL_POLICY.md`](CORAL_POLICY.md)
 
 The CoRAL H200 rules here are runtime ground truth. SOL/HTC files are retained

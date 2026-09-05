@@ -21,7 +21,7 @@ DEVELOPMENT_REGISTRY = (
     ROOT
     / "docs"
     / "experiments"
-    / "docprune_random_oracle_horizon_2026-08-26"
+    / "task9-contextcite"
     / "development-qid-registry.json"
 )
 TASK9_PRELIMINARY_SEALER = ROOT / "examples" / "seal_task9_preliminary_random48.py"

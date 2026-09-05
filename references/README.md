@@ -1,15 +1,5 @@
 # References
 
-This area preserves document-QA papers and authored research notes. The
-source repository's architecture registry remains under
-[`agent-context/research/`](../agent-context/research/).
+The active reference set is intentionally small. Start with the [DocPrune paper record](papers/docprune-cvpr-2026.md), which links the paper, supplement, and known source-code status.
 
-Retention does not make an inherited architecture, dataset, experiment, or
-metric binding for this project.
-
-## Contents
-
-- [`papers/`](papers/README.md): seven approved canonical paper PDFs with
-  provenance and checksums, plus link-only paper records used during planning.
-- [`research-notes/`](research-notes/): authored BoundingDocs and DUDE review
-  notes retained from the source workspace.
+Unrelated document-QA papers inherited from the repository's earlier ColPali role were removed from the DocPrune working tree on 2026-09-05. They remain recoverable from Git tag `pre-docprune-organization-2026-09-05`.

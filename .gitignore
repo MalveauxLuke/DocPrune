@@ -30,7 +30,6 @@ task9-h200-local-data/
 h200/task9-baseline-wrong-100/paths.env
 
 data/*
-!data/README.md
 external/*/
 
 *.7z
@@ -50,8 +49,6 @@ external/*/
 *.tgz
 *.webp
 *.zip
-!references/papers/*.pdf
-
 slurm-*.out
 slurm-*.err
 /task9-h200-local-data/

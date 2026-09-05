@@ -1,39 +1,46 @@
-# Query-Relevant Document Token Pruning
+# DocPrune
 
-This repository implements and evaluates token compression in document QA.
-The goal is to reduce the number of visual/document tokens sent to an
-expensive multimodal answerer by pruning content that is irrelevant to the
-specific query while preserving all information required to answer correctly.
+DocPrune is a training-free document-token pruning system for multimodal question answering. This repository contains the implementation, controlled reproduction studies, regional ContextCite experiments, and cluster execution contracts used in the project.
 
-The central target is:
+## Current status
 
-\[
-P(\text{token/region needed for answer}\mid \text{document}, q)
-\]
+- The DocPrune implementation and Task 6–9 history are consolidated on `main`.
+- The full top-4 M3DocVQA comparison completed on 2,441 questions.
+- The controlled 245-question stage study localized the clearest quality loss to CTP.
+- The 48-question regional ContextCite development pilot produced four exact rescues among 24 baseline-wrong questions while preserving all 24 baseline-correct questions.
+- Reducing the regional surrogate from 256 to 192 fitting masks failed the frozen rescue/F1 gate.
+- Two H200 follow-ups are prepared: a locked 100-question baseline-wrong confirmation and a separate 600-question shared-probe study.
 
-The central research question is where query relevance should be estimated.
-
-The active implementation is a source-grounded, training-free reproduction of
-[DocPrune (CVPR 2026)](references/papers/docprune-cvpr-2026.md). It implements
-background-, question-, and comprehension-aware pruning for the pinned
-Qwen2-VL/M3DocRAG contract. Local equation, layout, adapter, cache, CLI, and
-provenance tests pass. No full model, GPU, SOL, accuracy, throughput, memory, or
-paper-parity result has been produced yet.
+These findings concern the local reconstruction and an adapted answer-conditioned, region-level ContextCite diagnostic. They are not evidence of parity with unpublished author code, vanilla ContextCite, or a deployable token oracle.
 
 ## Start here
 
-- [Agent context](agent-context/INDEX.md)
-- [Repository navigation](docs/NAVIGATION.md)
-- [Source inventory](docs/SOURCE_INVENTORY.md)
-- [Research references](references/README.md)
-- [Inherited specifications](docs/specifications/README.md)
-- [SOL operating guidance](docs/SOL_INSTRUCTIONS.md)
-- [SBATCH examples](examples/sbatch/README.md)
-- [DocPrune reproduction guide](docs/reproduction/DOCPRUNE.md)
-- [Known reconstruction gaps](docs/reproduction/RECONSTRUCTION_GAPS.md)
+1. [Project results](docs/results/README.md)
+2. [Current task](agent-context/CURRENT_TASK.md)
+3. [Task 9 experiment overview](docs/experiments/task9-contextcite/README.md)
+4. [Repository map](docs/NAVIGATION.md)
+5. [Reproduction guide](docs/reproduction/DOCPRUNE.md)
+6. [SOL and H200 operations](sol/README.md)
 
-Inherited research and historical cluster material are retained for reference.
-Only `agent-context/CURRENT_TASK.md` and `sol/CURRENT_SOL_TASK.md` activate work.
+## Repository layout
+
+```text
+agent-context/   Current authority and machine handoffs
+configs/         Versioned experiment configuration
+docs/
+  experiments/   Active scientific plans and immutable ledgers
+  results/       Human-facing consolidated findings and artifact index
+  reproduction/  Method fidelity, gaps, and benchmark documentation
+  history/       Superseded plans and conversation records
+examples/        Reusable command-line and scheduler entry points
+h200/            H200-specific execution contracts
+references/      DocPrune paper record
+sol/             SOL policy and historical execution handoffs
+src/docprune/    Implementation
+tests/           Contract and regression tests
+```
+
+Generated datasets, model weights, caches, and run outputs are intentionally outside Git. On SOL, local non-Git material is consolidated under `/home/lmalveau/docprune-data`; large experiment outputs remain under `/scratch/lmalveau/docprune`.
 
 ## Local verification
 
@@ -42,6 +49,6 @@ python -m venv .venv
 .venv/bin/pip install -e '.[dev,model]'
 .venv/bin/pytest -q
 .venv/bin/ruff check .
-.venv/bin/docprune-m3docvqa inspect \
-  --config configs/docprune-m3docvqa.toml --pages 4
 ```
+
+Experiment documents do not authorize a launch by themselves. Follow the current task and the applicable machine handoff.

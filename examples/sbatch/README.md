@@ -20,8 +20,9 @@ command, outputs, and recovery authority.
 | [`14_docprune_m3docvqa_eval_array.sbatch`](14_docprune_m3docvqa_eval_array.sbatch) | Six-cell baseline/DocPrune evaluation array | Active M3DocVQA handoff |
 | [`20_m3docvqa_download_array.sbatch`](20_m3docvqa_download_array.sbatch) | Pinned M3DocVQA dev PDF acquisition shards | Staged acquisition/probe handoff |
 
-The named source wrappers are preserved below
-`../../sol/archive/source-repo/archive/jobs/`.
+The historical source wrappers were removed from the active tree during the
+2026-09-05 organization pass and remain recoverable from Git history and the
+`pre-docprune-organization-2026-09-05` tag.
 
 ## Before submitting
 

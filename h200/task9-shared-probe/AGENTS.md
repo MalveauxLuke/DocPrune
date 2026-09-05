@@ -6,8 +6,8 @@ Read, in order:
 
 1. [`../../AGENTS.md`](../../AGENTS.md)
 2. [`../../agent-context/CURRENT_TASK.md`](../../agent-context/CURRENT_TASK.md)
-3. [`../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md`](../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md)
-4. [`../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](../../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md)
+3. [`../../docs/experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md`](../../docs/experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md)
+4. [`../../docs/experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md`](../../docs/experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md)
 5. [`../../agent-context/TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md`](../../agent-context/TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md)
 6. [`HANDOFF.md`](HANDOFF.md)
 7. [`../task9-baseline-wrong-100/CORAL_POLICY.md`](../task9-baseline-wrong-100/CORAL_POLICY.md)

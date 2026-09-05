@@ -1,55 +1,47 @@
-# Repository Navigation
+# Repository navigation
 
-## Active authority
+## Current work
 
-| Path | Purpose |
-|---|---|
-| [`README.md`](../README.md) | Project goal and research question |
-| [`AGENTS.md`](../AGENTS.md) | Minimal repository instructions |
-| [`agent-context/INDEX.md`](../agent-context/INDEX.md) | Short context routing |
-| [`agent-context/CURRENT_TASK.md`](../agent-context/CURRENT_TASK.md) | Current state and next action |
-| [`agent-context/chat-summaries/docprune_ctp_fidelity_random_controls_2026-08-27.md`](../agent-context/chat-summaries/docprune_ctp_fidelity_random_controls_2026-08-27.md) | Historical chat summary for DocPrune CTP fidelity, random controls, and Task 6 state |
-| [`sol/CURRENT_SOL_TASK.md`](../sol/CURRENT_SOL_TASK.md) | SOL execution stop/go authority |
+| Document | Purpose |
+| --- | --- |
+| [Current task](../agent-context/CURRENT_TASK.md) | Current authority, boundaries, and next action |
+| [Results](results/README.md) | Consolidated findings and artifact locations |
+| [Task 9 overview](experiments/task9-contextcite/README.md) | Cohorts, current state, and experiment-specific navigation |
+| [SOL operations](../sol/README.md) | SOL/H200 division of work and execution entry points |
 
-## Research and provenance
+## Method and reproduction
 
-| Path | Purpose |
-|---|---|
-| [`references/`](../references/README.md) | Retained papers and authored notes |
-| [`agent-context/research/`](../agent-context/research/architecture_registry/README.md) | Inherited research registry |
-| [`docs/specifications/`](specifications/README.md) | Inherited nonbinding specifications |
-| [`docs/SOURCE_INVENTORY.md`](SOURCE_INVENTORY.md) | Retain/remove record and verification data |
-| [`docs/superpowers/specs/2026-08-15-docprune-reproduction-design.md`](superpowers/specs/2026-08-15-docprune-reproduction-design.md) | Binding DocPrune reproduction design |
-| [`docs/superpowers/specs/2026-08-17-docprune-sol-recovery-design.md`](superpowers/specs/2026-08-17-docprune-sol-recovery-design.md) | Approved staged SOL recovery design |
-| [`docs/superpowers/plans/2026-08-17-docprune-sol-recovery.md`](superpowers/plans/2026-08-17-docprune-sol-recovery.md) | SOL recovery implementation plan |
-| [`docs/reproduction/DOCPRUNE.md`](reproduction/DOCPRUNE.md) | Implementation, commands, trace schema, and validation state |
-| [`docs/reproduction/RECONSTRUCTION_GAPS.md`](reproduction/RECONSTRUCTION_GAPS.md) | Paper omissions and explicit reconstruction choices |
-| [`docs/reproduction/DISCREPANCY_AUDIT.md`](reproduction/DISCREPANCY_AUDIT.md) | Preliminary score, retrieval, corpus, and pruning-fidelity audit |
-| [`docs/reproduction/CODE_PAPER_FIDELITY_AUDIT.md`](reproduction/CODE_PAPER_FIDELITY_AUDIT.md) | Executable source-by-source comparison with the DocPrune paper and supplement |
-| [`docs/reproduction/PAPER_AMBIGUITY_AUDIT_2026-08-26.md`](reproduction/PAPER_AMBIGUITY_AUDIT_2026-08-26.md) | Fresh paper-first ambiguity audit after aggregate-logit CTP diagnostics |
-| [`docs/reproduction/FAIR_CTP_BASELINE_2026-08-26.md`](reproduction/FAIR_CTP_BASELINE_2026-08-26.md) | Frozen controls and admission gate for fair CTP method comparisons |
-| [`docs/reproduction/docprune_handoff_2026-08-24/`](reproduction/docprune_handoff_2026-08-24/README.md) | Compact LLM handoff: completed benchmark, findings, exact artifacts, and next actions |
-| [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md`](experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md) | Revised scientific contract for native/ranking CTP, global and coverage-controlled random, regional attribution, and visual-state dependence |
-| [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md`](experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md) | Ordered execution anchor, paper-code-first setup, gates, and current next action |
-| [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md`](experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md) | Canonical source, run, artifact, failure, result, and decision ledger |
-| [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md) | Durable Task 9 fixed-B13 layerwise, controlled trajectory, metric/tie-break, and conditional-escalation amendment |
-| [`agent-context/chat-summaries/DOCPRUNE_CTP_AUDIT_AND_FAIR_BASELINE_2026-09-05.md`](../agent-context/chat-summaries/DOCPRUNE_CTP_AUDIT_AND_FAIR_BASELINE_2026-09-05.md) | Historical CTP audit, fair-baseline admission, random/oracle program, and 1,213-question holdout chat summary |
-| [`agent-context/chat-summaries/DOCPRUNE_RANDOM_CONTROLS_RETENTION_AND_EXPERIMENT_PROGRAM_2026-09-05.md`](../agent-context/chat-summaries/DOCPRUNE_RANDOM_CONTROLS_RETENTION_AND_EXPERIMENT_PROGRAM_2026-09-05.md) | Historical matched-random, retention, throughput, experiment-program, and cluster chat summary |
-| [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
+| Document | Purpose |
+| --- | --- |
+| [Implementation guide](reproduction/DOCPRUNE.md) | Architecture, commands, and trace schema |
+| [Reconstruction gaps](reproduction/RECONSTRUCTION_GAPS.md) | Paper omissions and explicit local choices |
+| [Code/paper fidelity audit](reproduction/CODE_PAPER_FIDELITY_AUDIT.md) | Source-by-source paper comparison |
+| [Discrepancy audit](reproduction/DISCREPANCY_AUDIT.md) | Retrieval, scoring, corpus, and pruning discrepancies |
+| [Paper ambiguity audit](reproduction/PAPER_AMBIGUITY_AUDIT_2026-08-26.md) | CTP ambiguity review |
+| [Fair CTP baseline](reproduction/FAIR_CTP_BASELINE_2026-08-26.md) | Frozen controls for method comparisons |
+| [DocPrune paper record](../references/papers/docprune-cvpr-2026.md) | Paper, supplement, and source links |
 
-## SOL and reusable examples
+## Task 9 canonical documents
+
+| Document | Purpose |
+| --- | --- |
+| [Scientific plan](experiments/task9-contextcite/EXPERIMENT_PLAN.md) | Approved design and claim boundary |
+| [Implementation plan](experiments/task9-contextcite/IMPLEMENTATION_PLAN.md) | Ordered tasks, gates, and current implementation state |
+| [Experiment log](experiments/task9-contextcite/EXPERIMENT_LOG.md) | Immutable jobs, artifacts, failures, and decisions |
+| [Mask-count analysis](experiments/task9-contextcite/analysis/mask-count-and-nesting-2026-09-02.md) | 64–256 mask ablation and adaptive-diagnostic analysis |
+| [Shared-probe design](experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md) | Frozen B13 target and layerwise probe design |
+| [Research review](experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md) | External review plus approved scope addendum |
+
+## Operations
 
 | Path | Purpose |
-|---|---|
-| [`docs/SOL_INSTRUCTIONS.md`](SOL_INSTRUCTIONS.md) | General SOL operating rules |
-| [`sol/README.md`](../sol/README.md) | Active SOL entry point |
-| [`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md) | Active commit-pinned M3DocVQA benchmark handoff |
-| [`sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md`](../sol/handoffs/DOCPRUNE_SOL_SMOKE_RECOVERY_HANDOFF.md) | Historical corrected-runtime smoke recovery |
-| [`sol/handoffs/DOCPRUNE_QWEN_FORCED_BOUNDARY_PARITY_DRAFT.md`](../sol/handoffs/DOCPRUNE_QWEN_FORCED_BOUNDARY_PARITY_DRAFT.md) | Draft-only Task 3 all-kept parity handoff; not execution authority |
-| [`sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](../sol/handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md) | Historical corpus acquisition and processor probe |
-| [`examples/sbatch/`](../examples/sbatch/README.md) | Project-neutral SBATCH examples |
-| [`environments/docprune-sol.yml`](../environments/docprune-sol.yml) | Candidate pinned SOL environment; GPU validation pending |
-| [`sol/archive/source-repo/`](../sol/archive/source-repo/) | Historical source handoffs and wrappers |
+| --- | --- |
+| [`sol/`](../sol/README.md) | SOL policy, state, and historical handoffs |
+| [`h200/task9-baseline-wrong-100/`](../h200/task9-baseline-wrong-100/HANDOFF.md) | Locked 100-question H200 confirmation |
+| [`h200/task9-shared-probe/`](../h200/task9-shared-probe/HANDOFF.md) | 600-question H200 teacher/probe execution |
+| [`examples/sbatch/`](../examples/sbatch/README.md) | Scheduler launchers |
+| [`environments/`](../environments/README.md) | Environment definitions |
 
-Historical files are reference material. Only the active authority table can
-activate work in this repository.
+## Historical material
+
+Superseded plans and conversation summaries are indexed in [history](history/README.md). The exact tree before the 2026-09-05 documentation cleanup is preserved by Git tag `pre-docprune-organization-2026-09-05`.

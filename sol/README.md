@@ -1,24 +1,11 @@
-# SOL Workspace
+# SOL operations
 
-The active task is the commit-pinned M3DocVQA benchmark handoff. It stages the
-processor gate, six page-specific indexes, and six evaluation cells behind
-explicit Slurm dependencies. No training is authorized.
+SOL now serves as the DocPrune source-development, validation, packaging, and CPU-analysis environment. New Task 9 GPU work is assigned to H200 by the current experiment contract.
 
-Read in this order:
+Start with:
 
-1. [`../AGENTS.md`](../AGENTS.md)
-2. [`../docs/SOL_INSTRUCTIONS.md`](../docs/SOL_INSTRUCTIONS.md)
-3. [`AGENTS.md`](AGENTS.md)
-4. [`CURRENT_SOL_TASK.md`](CURRENT_SOL_TASK.md)
+1. [Current SOL task](CURRENT_SOL_TASK.md)
+2. [Repository current task](../agent-context/CURRENT_TASK.md)
+3. [Task 9 overview](../docs/experiments/task9-contextcite/README.md)
 
-Reusable learning templates are under
-[`../examples/sbatch/`](../examples/sbatch/README.md). Historical handoffs,
-task specifications, and wrappers from the source repository are preserved
-under [`archive/source-repo/`](archive/source-repo/) and are not active.
-
-Active handoff:
-[`handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
-
-Historical acquisition/probe material remains under
-[`handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md`](handoffs/M3DOCVQA_DEV_ACQUISITION_PROBE_HANDOFF.md)
-and does not authorize benchmark execution.
+`handoffs/` contains immutable historical SOL execution contracts. Current H200 execution authority lives under `h200/` and `agent-context/`.

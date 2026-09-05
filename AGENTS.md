@@ -32,11 +32,11 @@ explicitly activates work.
 
 The canonical experiment documents are:
 
-- `docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md`
+- `docs/experiments/task9-contextcite/EXPERIMENT_PLAN.md`
   for the approved scientific design and claim boundary;
-- `docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md`
+- `docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md`
   for ordered tasks, status, acceptance gates, and the next action; and
-- `docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md`
+- `docs/experiments/task9-contextcite/EXPERIMENT_LOG.md`
   for source pins, jobs, artifacts, failures, results, and decisions.
 
 Read all three before working on that experiment. Update the implementation

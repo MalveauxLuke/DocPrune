@@ -4,7 +4,7 @@
 
 Prepare and implement the new Task 9 shared-probe feasibility experiment
 specified in
-[`../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md`](../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_RESEARCH_REVIEW_2026-09-03.md).
+[`../docs/experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md`](../docs/experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md).
 This is a new experiment track. Do not alter, reuse as training data, or block on
 the locked 100-question baseline-wrong confirmation.
 
@@ -16,11 +16,11 @@ CoRAL H200 server after the corresponding code and sealed inputs are delivered.
 
 1. [`../AGENTS.md`](../AGENTS.md)
 2. [`CURRENT_TASK.md`](CURRENT_TASK.md)
-3. [`../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md`](../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md)
-4. [`../docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md`](../docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md)
-5. [`../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md`](../docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md)
+3. [`../docs/experiments/task9-contextcite/EXPERIMENT_PLAN.md`](../docs/experiments/task9-contextcite/EXPERIMENT_PLAN.md)
+4. [`../docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md`](../docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md)
+5. [`../docs/experiments/task9-contextcite/EXPERIMENT_LOG.md`](../docs/experiments/task9-contextcite/EXPERIMENT_LOG.md)
 6. The shared-probe review linked above
-7. [`../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](../docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md)
+7. [`../docs/experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md`](../docs/experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md)
 8. [`../h200/task9-shared-probe/HANDOFF.md`](../h200/task9-shared-probe/HANDOFF.md)
 9. The existing H200 setup and runtime notes under
    [`../h200/task9-baseline-wrong-100/`](../h200/task9-baseline-wrong-100/)
