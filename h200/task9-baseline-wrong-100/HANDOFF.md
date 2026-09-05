@@ -41,7 +41,7 @@ not vanilla ContextCite or a token oracle.
 Local source before transfer:
 
 ```text
-/home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json
+/home/lmalveau/docprune-data/h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json
 file SHA-256: afead001a93666628126260deccfd1493ba5b1f2071e646da6d220a8969ab9fb
 internal SHA-256: 0bdfdde29b568f54ea541453abeca196cfb49f4b6630f084f80e6c21f158514e
 selected: 100

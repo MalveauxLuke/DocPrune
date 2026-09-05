@@ -1439,7 +1439,7 @@ sealed support-document records, explicitly excluded the preliminary-48 QIDs,
 and preferred one question per support-document component. Sealed local output:
 
 ```text
-path: /home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json
+path: /home/lmalveau/docprune-data/h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json
 internal cohort SHA-256: 0bdfdde29b568f54ea541453abeca196cfb49f4b6630f084f80e6c21f158514e
 eligible baseline-wrong: 731
 eligible support components: 724

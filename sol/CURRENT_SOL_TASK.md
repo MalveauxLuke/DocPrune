@@ -315,7 +315,7 @@ logits before visual softmax, plus a live QA probe for the mean-logit candidate 
 The authenticated CPU input remains the immutable 48-capture directory and sealed 16-question
 cohort `/scratch/lmalveau/docprune/ctp-normalization-diagnostic-v1/cohort.json`, SHA-256
 `2ada86e06b320240862b38f99de823d49f692514208db442d714dd0a71165b37`. The fresh CPU analysis is
-`/home/lmalveau/docprune-cpu-artifacts/ctp-scoring-fingerprint-v1/analysis.json`, SHA-256
+`/home/lmalveau/docprune-data/cpu-artifacts/ctp-scoring-fingerprint-v1/analysis.json`, SHA-256
 `f2f483fb5c61f27532e35dfda29187bd4fe088da08e35584a08cb4a636116e06`. It evaluated 93 formulas.
 The paper-textual `visual_softmax_after_mean_logits_x_post_qtp` candidate retains
 `33.7809%`, `38.8091%`, and `67.4313%` for top-1/2/4 against paper-derived conditional targets
@@ -467,7 +467,7 @@ or replace the canonical implementation yet. Next diagnose selected-token identi
 author-unspecified attention timing, head, and cache semantics before another large run.
 
 The post-245 CPU residual audit is
-`/home/lmalveau/docprune-cpu-artifacts/ctp-post245-residual-audit-v1/analysis.json`, file SHA-256
+`/home/lmalveau/docprune-data/cpu-artifacts/ctp-post245-residual-audit-v1/analysis.json`, file SHA-256
 `7a22949cc0d1c2d9dd36b2931edcb816f7cbcf41e2e51b168f6b0258d8eed76d` and internal digest
 `3317b5c4d02d6b7b4856c9183bec78b5482e9fad5d9d1b30924601d0c11ed31a`. Seven of the aggregate
 candidate's eight losses versus BTP+QTP trigger at zero-based layer 14; layer 16 is approximately
@@ -479,7 +479,7 @@ length changes only `111/56,235` available calibration top-4 tokens and has mask
 An architecture-grounded grouped-query diagnostic averages the seven query-head logits sharing
 each Qwen KV head, applies visual-only softmax within each of the four groups, averages the group
 maps, and applies post-QTP token-count scaling. Its immutable 48-capture CPU analysis is
-`/home/lmalveau/docprune-cpu-artifacts/ctp-scoring-fingerprint-kv-group-v3/analysis.json`, file
+`/home/lmalveau/docprune-data/cpu-artifacts/ctp-scoring-fingerprint-kv-group-v3/analysis.json`, file
 SHA-256 `6c8e2b06ab2f15ab6b1b5e549761347326e78d133233b205d2699302c120b2b6`. It ranks first of 94
 screened formulas with calibration top-1/2/4 conditional retention
 `34.3932%/42.0089%/68.5143%` and mean absolute target error `1.7203` points. It is still
@@ -495,7 +495,7 @@ and per-document features; cross-hardware cells are drift evidence only, and onl
 may be used for canonical QA interpretation.
 
 The CPU timing plausibility audit is
-`/home/lmalveau/docprune-cpu-artifacts/ctp-query-timing-audit-v1/analysis.json`, file SHA-256
+`/home/lmalveau/docprune-data/cpu-artifacts/ctp-query-timing-audit-v1/analysis.json`, file SHA-256
 `bffec9e696af79333785a73db3e3f29ed1cecbec6876e20d00e748cc797b082b` and internal digest
 `d000994304fff4c57d6ae3bf180d1569a8484488bd228e34fe5e5641cd51f9ef`. Local code completes
 CTP during prefill before selecting the first generated answer token. Re-encoding the 12
@@ -912,7 +912,7 @@ The single non-array L40S Task 3 seven-boundary all-kept parity gate completed
 and was admitted as job `62265662`; its sealed evidence is in
 [`handoffs/DOCPRUNE_QWEN_FORCED_BOUNDARY_PARITY_2026-08-27.md`](handoffs/DOCPRUNE_QWEN_FORCED_BOUNDARY_PARITY_2026-08-27.md).
 It binds clean runtime
-`/home/lmalveau/DocPrune-forced-boundary-runtime-36cb771` at
+`/home/lmalveau/docprune-data/runtimes/forced-boundary-36cb771` at
 `36cb771db3af91ee7a0b76803ec099b12dba31e4`, launcher SHA-256
 `bda211dc9c2ef958842d1323ef481fd94b2a9a1af0be344c88d3eae00b099054`, one
 L40S GPU/4 CPUs/64 GiB/20 minutes, and fresh root

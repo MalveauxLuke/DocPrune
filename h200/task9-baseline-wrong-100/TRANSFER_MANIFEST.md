@@ -23,7 +23,7 @@ or use a GPU until every transferred byte verifies.
 
 - Exact cohort bytes:
   - local path:
-    `/home/lmalveau/task9-h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json`
+    `/home/lmalveau/docprune-data/h200-artifacts/task9-baseline-wrong100-confirmation-v1/cohort.json`
   - file SHA-256:
     `afead001a93666628126260deccfd1493ba5b1f2071e646da6d220a8969ab9fb`
   - internal SHA-256:
