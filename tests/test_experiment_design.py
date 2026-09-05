@@ -21,7 +21,7 @@ DEVELOPMENT_REGISTRY = (
     ROOT
     / "docs"
     / "experiments"
-    / "task9-contextcite"
+    / "regional-attribution"
     / "development-qid-registry.json"
 )
 TASK9_PRELIMINARY_SEALER = ROOT / "examples" / "seal_task9_preliminary_random48.py"

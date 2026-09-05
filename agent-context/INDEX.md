@@ -1,11 +1,9 @@
 # Agent context index
 
-Read these in order:
+Open only the context required by the user's task:
 
-1. [Current task](CURRENT_TASK.md)
-2. [Task 9 experiment overview](../docs/experiments/task9-contextcite/README.md)
-3. [Implementation plan](../docs/experiments/task9-contextcite/IMPLEMENTATION_PLAN.md)
-4. [Experiment log](../docs/experiments/task9-contextcite/EXPERIMENT_LOG.md)
+- [Current task](CURRENT_TASK.md)
+- [Regional attribution experiment index](../docs/experiments/regional-attribution/INDEX.md)
 
 Machine-specific handoffs:
 

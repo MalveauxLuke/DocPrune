@@ -30,7 +30,7 @@ See [the consolidated results](../docs/results/README.md) for exact values and a
 - Probes: independent pre-answer decoder-block snapshots `B0..B13`, followed by a controlled compact local-trajectory model.
 - Initial scope excludes model families 0 and 1 as recorded in the research-review addendum.
 - GPU preparation and execution occur on H200; SOL owns source implementation, CPU validation, packaging, and result analysis.
-- Authority: [SOL handoff](TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md), [layerwise design](../docs/experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md), and [H200 handoff](../h200/task9-shared-probe/HANDOFF.md).
+- Authority: [canonical experiment plan](../docs/experiments/regional-attribution/EXPERIMENT_PLAN.md), [SOL handoff](TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md), and [H200 handoff](../h200/task9-shared-probe/HANDOFF.md).
 
 ## Nonnegotiable boundaries
 

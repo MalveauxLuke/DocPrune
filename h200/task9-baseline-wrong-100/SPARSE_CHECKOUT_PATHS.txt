@@ -8,7 +8,7 @@
 /agent-context/CURRENT_TASK.md
 /agent-context/TASK9_H200_BASELINE_WRONG100_HANDOFF_2026-09-02.md
 /agent-context/TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md
-/docs/experiments/task9-contextcite/
+/docs/experiments/regional-attribution/
 /docs/SOL_INSTRUCTIONS.md
 /h200/task9-baseline-wrong-100/
 /h200/task9-shared-probe/

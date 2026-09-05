@@ -6,7 +6,7 @@
 | --- | --- |
 | [Current task](../agent-context/CURRENT_TASK.md) | Current authority, boundaries, and next action |
 | [Results](results/README.md) | Consolidated findings and artifact locations |
-| [Task 9 overview](experiments/task9-contextcite/README.md) | Cohorts, current state, and experiment-specific navigation |
+| [Regional attribution experiments](experiments/regional-attribution/INDEX.md) | Current scientific authority and progressive navigation |
 | [SOL operations](../sol/README.md) | SOL/H200 division of work and execution entry points |
 
 ## Method and reproduction
@@ -21,16 +21,15 @@
 | [Fair CTP baseline](reproduction/FAIR_CTP_BASELINE_2026-08-26.md) | Frozen controls for method comparisons |
 | [DocPrune paper record](../references/papers/docprune-cvpr-2026.md) | Paper, supplement, and source links |
 
-## Task 9 canonical documents
+## Regional attribution experiments
 
 | Document | Purpose |
 | --- | --- |
-| [Scientific plan](experiments/task9-contextcite/EXPERIMENT_PLAN.md) | Approved design and claim boundary |
-| [Implementation plan](experiments/task9-contextcite/IMPLEMENTATION_PLAN.md) | Ordered tasks, gates, and current implementation state |
-| [Experiment log](experiments/task9-contextcite/EXPERIMENT_LOG.md) | Immutable jobs, artifacts, failures, and decisions |
-| [Mask-count analysis](experiments/task9-contextcite/analysis/mask-count-and-nesting-2026-09-02.md) | 64–256 mask ablation and adaptive-diagnostic analysis |
-| [Shared-probe design](experiments/task9-contextcite/research/shared-probe-layer-trajectory-2026-09-03.md) | Frozen B13 target and layerwise probe design |
-| [Research review](experiments/task9-contextcite/research/shared-probe-review-2026-09-03.md) | External review plus approved scope addendum |
+| [Folder index](experiments/regional-attribution/INDEX.md) | Choose only the document needed for the task |
+| [Scientific plan](experiments/regional-attribution/EXPERIMENT_PLAN.md) | Canonical design organized by task |
+| [Implementation status](experiments/regional-attribution/IMPLEMENTATION_PLAN.md) | High-level progress and next action |
+| [Experiment logs](experiments/regional-attribution/experiment-log/INDEX.md) | Track-specific jobs, artifacts, failures, and results |
+| [Mask-count analysis](experiments/regional-attribution/analysis/mask-count-and-nesting-2026-09-02.md) | 64–256 mask ablation and adaptive-diagnostic analysis |
 
 ## Operations
 

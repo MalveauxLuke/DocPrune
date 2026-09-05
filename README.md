@@ -17,7 +17,7 @@ These findings concern the local reconstruction and an adapted answer-conditione
 
 1. [Project results](docs/results/README.md)
 2. [Current task](agent-context/CURRENT_TASK.md)
-3. [Task 9 experiment overview](docs/experiments/task9-contextcite/README.md)
+3. [Regional attribution experiments](docs/experiments/regional-attribution/INDEX.md)
 4. [Repository map](docs/NAVIGATION.md)
 5. [Reproduction guide](docs/reproduction/DOCPRUNE.md)
 6. [SOL and H200 operations](sol/README.md)
