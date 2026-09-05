@@ -31,6 +31,7 @@
 | [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md`](experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_PLAN.md) | Revised scientific contract for native/ranking CTP, global and coverage-controlled random, regional attribution, and visual-state dependence |
 | [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md`](experiments/docprune_random_oracle_horizon_2026-08-26/IMPLEMENTATION_PLAN.md) | Ordered execution anchor, paper-code-first setup, gates, and current next action |
 | [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md`](experiments/docprune_random_oracle_horizon_2026-08-26/EXPERIMENT_LOG.md) | Canonical source, run, artifact, failure, result, and decision ledger |
+| [`docs/experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](experiments/docprune_random_oracle_horizon_2026-08-26/TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md) | Durable Task 9 fixed-B13 layerwise, controlled trajectory, metric/tie-break, and conditional-escalation amendment |
 | [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
 
 ## SOL and reusable examples

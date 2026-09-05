@@ -21,35 +21,65 @@ The initial representation study now has this order:
    low-capacity probe independently to predict the same B13 deletion outcomes.
    A read layer is where pre-answer features are obtained; it never changes the
    deletion boundary or label.
-3. At every read layer evaluate four prespecified feature families:
-   metadata plus native DocPrune controls, pooled region hidden state,
-   compact final-prompt-query-to-region QK summaries, and hidden plus QK.
-   Every feature is computed before any accepted or generated answer token is
-   teacher-forced.
+3. At every read layer evaluate the isolated geometry/region-metadata-only,
+   native-DocPrune-only, and question-only controls, in addition to pooled
+   region hidden state, compact final-prompt-query-to-region QK summaries, and
+   hidden plus QK. Do not collapse geometry and native DocPrune into one
+   combined shortcut control. Every feature is computed before any accepted or
+   generated answer token is teacher-forced.
 4. Select the best single-layer family using validation data only, with the
    selection rule frozen before primary-test access.
 5. Compare that snapshot with a small local-trajectory linear model. For each
    eligible endpoint `r` in `3..13`, the local model receives standardized
-   compact features at `r`, the adjacent difference `z_r-z_{r-1}`, and the
-   mean of `z_{r-3}..z_r`. Select its endpoint on validation only.
+   compact QK or hidden-plus-QK features at `r`, the adjacent difference
+   `z_r-z_{r-1}`, and the mean of `z_{r-3}..z_r`. It never receives raw
+   cross-layer hidden-state differences. Select its endpoint on validation
+   only. If neither QK nor hidden-plus-QK has positive validation gold
+   budget-local R², skip the trajectory comparison.
 6. A trajectory claim requires improvement over the validation-selected best
    snapshot and matched controls: current-layer only, recent-layer mean,
    current plus adjacent delta, parameter-matched single-layer capacity,
    shuffled earlier-layer identity within question, and shuffled layer order.
    If ordering controls do not degrade performance, describe the result as
-   multi-layer aggregation rather than trajectory information.
+   multi-layer aggregation rather than trajectory information. If an isolated
+   control wins snapshot selection, retain it as the selected baseline and do
+   not claim a richer representation or escalate on that basis.
 7. A full-prefix low-rank layer aggregation model is conditional. It may be
-   implemented only if the local-trajectory model passes its frozen validation
-   gate. Do not begin with an RNN, transformer over layers, or raw cross-layer
-   hidden-state differencing.
+   implemented only if the local-trajectory model passes the frozen gate below.
+   Do not begin with an RNN or transformer over layers.
 8. Rank-4 question-region bilinear probing remains a conditional within-layer
    expressivity diagnostic; it is no longer the sole or automatic first
    escalation.
 
 Gold and self heads remain separate at every layer. Baseline-wrong analysis
-must directly test whether their trajectories diverge; predictive trajectory
-performance alone does not establish that the model balances correct and
-incorrect interpretations.
+must directly test whether their predicted gold/self deletion deltas diverge.
+Use ε=`0.05` nat/token and, at each layer, report the separate predicted gold
+and self deltas, their signed difference, and the fraction with absolute
+difference at least ε, separately on baseline-wrong and oracle-rescuable
+slices. This is a descriptive diagnostic only; it cannot establish causality
+or serve as a selection gate. Predictive trajectory performance alone does not
+establish that the model balances correct and incorrect interpretations.
+
+## Frozen metrics, controls, and escalation gates
+
+The primary snapshot-selection metric is question-equal gold budget-local
+mask-response R² on balanced validation. Differences within `0.005` are
+tie-breaks, resolved in this order: baseline-wrong gold budget-local R², then
+safe-deletion AUPRC, then earlier read block, then simpler feature family. The
+same rule is frozen before primary-test access and is not changed for controls
+or trajectory endpoints.
+
+The full-prefix trigger is fixed: the local trajectory must improve gold
+budget-local R² by at least `0.02` over the best overall snapshot, have a
+support-component-bootstrap 95% lower bound above zero, degrade baseline-wrong
+R² by no more than `0.02`, and beat both shuffled-history and shuffled-order
+controls. If any condition fails, do not implement or interpret full-prefix
+aggregation as warranted.
+
+The rank-4 bilinear trigger is also fixed: Gate 0 must pass, and the best QK or
+combined linear model must fail at least one of positive baseline-wrong gold
+budget-local R² or Spearman `>= 0.30`. Otherwise keep the linear model and do
+not escalate. The later deletion-boundary sweep remains unapproved.
 
 ## Later causal-boundary diagnostic
 

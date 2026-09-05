@@ -34,19 +34,49 @@ locked oracle-headroom confirmation data.
   layer sweep; it does not change the B13 deletion target. Reject any runner
   that substitutes native dynamic DocPrune layers for this teacher boundary.
 - Train matched independent probes at every zero-based decoder read block
-  `0..13` for metadata/DocPrune, pooled region hidden state, compact pre-answer
-  QK, and hidden-plus-QK feature families. Every feature precedes answer-token
+  `0..13` for isolated geometry/region-metadata-only, native-DocPrune-only,
+  and question-only controls, plus pooled region hidden state, compact
+  pre-answer QK, and hidden-plus-QK feature families. Do not collapse geometry
+  and native DocPrune into one control. Every feature precedes answer-token
   teacher forcing and every model predicts the same B13 target.
 - Select the best single-layer family on validation only, then compare it with
-  the prespecified small local-trajectory linear model and its matched current,
-  mean, delta, capacity, shuffled-history, and shuffled-order controls.
+  the prespecified small local-trajectory linear model using only standardized
+  compact QK or hidden-plus-QK features at endpoint `r` in `3..13`: current,
+  adjacent-delta, and latest-four-layer-mean terms. If neither family has
+  positive validation gold budget-local R², skip trajectory comparison. Compare
+  it with matched current, mean, delta, capacity, shuffled-history, and
+  shuffled-order controls. If an isolated control wins, retain it as the
+  selected baseline and do not escalate on that basis.
 - Full-prefix low-rank aggregation is conditional on the frozen local-
   trajectory validation gate. Rank-4 question-region bilinear probing remains
   a conditional within-layer diagnostic. Do not add an RNN or transformer over
-  layers.
+  layers. Never compute, train on, or interpret raw cross-layer hidden-state
+  differences such as `h_r-h_{r-1}` as trajectory features; adjacent deltas are
+  permitted only for the standardized compact QK or hidden-plus-QK vectors.
 - Preserve document-disjoint splits, exact cached top-4 page identities,
   question-equal weighting, the frozen VLM/deletion semantics, and the sealed
   32-mask schedule.
+
+## Frozen metrics and escalation gates
+
+Use question-equal gold budget-local mask-response R² on balanced validation as
+the primary snapshot-selection metric. Differences within `0.005` are ties;
+break them by baseline-wrong gold budget-local R², then safe-deletion AUPRC,
+then earlier read block, then simpler family. Freeze this rule before
+primary-test access.
+
+Permit full-prefix low-rank aggregation only when the local trajectory improves
+gold budget-local R² by at least `0.02` over the best overall snapshot, its
+support-component-bootstrap 95% lower bound is above zero, baseline-wrong R²
+degradation is no more than `0.02`, and it beats both shuffled-history and
+shuffled-order controls. Permit rank-4 bilinear probing only when Gate 0 passes
+but the best QK/combined linear model fails either positive baseline-wrong gold
+budget-local R² or Spearman `>= 0.30`.
+
+For the descriptive balance diagnostic, at ε=`0.05` nat/token report separate
+predicted gold/self deletion deltas, their signed difference, and the fraction
+with absolute difference at least ε at each layer, separately on baseline-wrong
+and oracle-rescuable slices. This cannot establish causality or select a model.
 
 ## Phase 1 — receive and generate teacher data
 

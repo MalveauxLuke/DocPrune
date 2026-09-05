@@ -62,21 +62,48 @@ copy its working tree. Stop on uncommitted overlap instead of overwriting it.
   remain B13 deletion responses. Do not use each question's dynamic DocPrune
   layer as the teacher boundary.
 - Initial representation work trains matched independent probes at every
-  zero-based decoder read block `0..13`. Required feature families are
-  metadata plus native DocPrune, pooled region hidden state, compact
-  final-prompt-query-to-region QK summaries, and hidden plus QK. All features
-  precede every accepted or generated answer token.
+  zero-based decoder read block `0..13`. Required isolated controls are
+  geometry/region metadata only, native DocPrune only, and question-only, in
+  addition to pooled region hidden state, compact final-prompt-query-to-region
+  QK summaries, and hidden plus QK. Do not collapse geometry and native
+  DocPrune into one control. All features precede every accepted or generated
+  answer token.
 - Validation alone selects the best single-layer family. It is then compared
-  with a small local-trajectory linear model using the current compact feature,
-  its adjacent difference, and the mean over the latest four readable layers.
-  Required matched controls distinguish ordered trajectory information from
-  capacity or unordered multi-layer aggregation.
+  with a small local-trajectory linear model using only standardized compact QK
+  or hidden-plus-QK features: the current feature, its adjacent difference, and
+  the mean over the latest four readable layers. If neither feature family has
+  positive validation gold budget-local R², skip trajectory comparison. Required
+  matched controls distinguish ordered trajectory information from capacity or
+  unordered multi-layer aggregation. If an isolated control wins, retain it as
+  the selected baseline and do not escalate on that basis.
 - Full-prefix low-rank layer aggregation is conditional on a frozen local-
   trajectory validation gate. Rank-4 question-region bilinear probing remains
   a conditional within-layer diagnostic. Do not begin with an RNN, transformer
   over layers, or raw cross-layer hidden-state differencing.
 - Keep the frozen VLM, answer targets, deletion operator, positional identity,
   layer/budget definitions, and question-equal loss semantics explicit.
+
+## Frozen metrics and escalation gates
+
+Use question-equal gold budget-local mask-response R² on balanced validation as
+the primary snapshot-selection metric. Differences within `0.005` are ties;
+break them by baseline-wrong gold budget-local R², then safe-deletion AUPRC,
+then earlier read block, then simpler family. Freeze this rule before
+primary-test access.
+
+The full-prefix trigger requires all four conditions: the local trajectory
+improves gold budget-local R² by at least `0.02` over the best overall snapshot;
+its support-component-bootstrap 95% lower bound is above zero; baseline-wrong
+R² degradation is no more than `0.02`; and it beats both shuffled-history and
+shuffled-order controls. Rank-4 bilinear probing is permitted only when Gate 0
+passes but the best QK/combined linear model fails either positive
+baseline-wrong gold budget-local R² or Spearman `>= 0.30`.
+
+For the descriptive balance diagnostic, use ε=`0.05` nat/token and report
+separate predicted gold/self deletion deltas, their signed difference, and the
+fraction with absolute difference at least ε at each layer, separately on
+baseline-wrong and oracle-rescuable slices. This cannot establish causality or
+select a model. The later deletion-boundary sweep remains unapproved.
 
 ## Fast two-push execution
 
@@ -111,10 +138,12 @@ change materially.
    budget-local response prediction, and interaction summaries. Freeze the
    numerical Gate 0 decision before new-cohort outcomes are inspected.
 2. Implement the matched independent read-block `0..13` feature/probe sweep for
-   metadata/DocPrune, region hidden, compact pre-answer QK, and combined
-   features without materializing a full quadratic attention matrix. Train
-   direct centered gold/self mask-outcome heads with question-equal weighting,
-   document-disjoint loading, checkpointing, and resumable evaluation.
+   isolated geometry/region-metadata-only, native-DocPrune-only, and
+   question-only controls, plus region hidden, compact pre-answer QK, and
+   hidden+QK features without materializing a full quadratic attention matrix.
+   Train direct centered gold/self mask-outcome heads with question-equal
+   weighting, document-disjoint loading, checkpointing, and resumable
+   evaluation.
 3. Freeze validation-only best-snapshot selection, then implement the small
    local-trajectory model and current/mean/delta/parameter/order/history
    controls. Full-prefix aggregation remains conditional on the frozen local-

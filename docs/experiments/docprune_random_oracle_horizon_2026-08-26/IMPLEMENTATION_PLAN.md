@@ -614,9 +614,10 @@ verify all 1,014 transferred files before relocation or preprocessing.
   planning commit does not implement or execute the experiment.
 - [x] Amend the initial representation study before cohort sealing or new
   outcomes: matched independent probes at read blocks `0..13`, required
-  metadata/DocPrune, region-state, QK, and combined controls, followed by a
-  controlled local-trajectory comparison. Full-prefix aggregation and a later
-  causal-boundary diagnostic remain conditional.
+  isolated geometry/region-metadata-only, native-DocPrune-only, and
+  question-only controls, plus region-state, QK, and hidden+QK families,
+  followed by a controlled local-trajectory comparison. Full-prefix aggregation
+  and a later causal-boundary diagnostic remain conditional.
 - [ ] On SOL, synchronize the H200-updated branch and quickly seal a new
   600-question document-disjoint cohort using authenticated cached top-4 pages
   and features. Exclude both the 48-question development pilot and locked
@@ -636,14 +637,37 @@ verify all 1,014 transferred files before relocation or preprocessing.
   target-structure analysis and freeze the numerical decision before reading
   new-cohort outcomes.
 - [ ] Implement matched independent linear probes at every read block `0..13`
-  for metadata/DocPrune, pooled region hidden state, compact pre-answer QK, and
-  hidden-plus-QK features. Train separate gold/self heads directly on centered
-  mask outcomes with question-equal weighting and document-disjoint loading.
+  for isolated geometry/region-metadata-only, native-DocPrune-only, and
+  question-only controls, plus pooled region hidden state, compact pre-answer
+  QK, and hidden-plus-QK features. Train separate gold/self heads directly on
+  centered mask outcomes with question-equal weighting and document-disjoint
+  loading; do not collapse geometry and native DocPrune into one control.
 - [ ] Freeze validation-only selection of the best single-layer family, then
   compare it with the prespecified local-trajectory model and its current,
   mean, delta, parameter-matched, within-question earlier-state-shuffle, and
   layer-order controls. Call a gain trajectory information only when the order
   and history controls support that interpretation.
+- [ ] Use question-equal gold budget-local mask-response R² on balanced
+  validation as the primary snapshot metric. Differences within `0.005` are
+  ties; break them by baseline-wrong gold budget-local R², safe-deletion AUPRC,
+  earlier read block, then simpler family. Freeze this rule before primary-test
+  access.
+- [ ] Restrict trajectory features to standardized compact QK or hidden+QK
+  vectors, using current, adjacent-delta, and latest-four-layer-mean features
+  at endpoint `r` in `3..13`; if neither family has positive validation gold
+  budget-local R², skip trajectory comparison. If an isolated control wins,
+  retain it as the selected baseline and do not escalate on that basis.
+- [ ] Permit full-prefix low-rank aggregation only when the local trajectory
+  improves gold budget-local R² by at least `0.02` over the best overall
+  snapshot, its support-component-bootstrap 95% lower bound is above zero,
+  baseline-wrong R² degradation is at most `0.02`, and it beats shuffled-history
+  and shuffled-order controls. Permit rank-4 bilinear probing only when Gate 0
+  passes but the best QK/combined linear model fails either positive
+  baseline-wrong gold budget-local R² or Spearman `>= 0.30`.
+- [ ] Make the balance report descriptive: at ε=`0.05` nat/token, record
+  separate predicted gold/self deletion deltas and their signed/absolute
+  divergence per layer on baseline-wrong and oracle-rescuable slices. It cannot
+  establish causality or select a model.
 - [ ] Implement held-out response and routed-QA evaluation without test
   leakage. Implement full-prefix low-rank aggregation only if the local
   trajectory passes its frozen validation gate. Keep rank-4 question-region

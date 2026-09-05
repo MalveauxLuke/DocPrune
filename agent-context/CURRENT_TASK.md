@@ -195,10 +195,18 @@ Continue two isolated Task 9 tracks.
    implementation, CPU analysis, testing, and packaging. Shared-probe teacher
    labels use one fixed physical-deletion boundary, `B13`; independent
    pre-answer probes at decoder blocks `0..13` predict that same B13 target.
-   Metadata/DocPrune, region-state, QK, and combined feature families are
-   required controls. A small local-trajectory model follows the layer sweep;
-   full-prefix aggregation is conditional on validation evidence that local
-   dynamics add value beyond the best snapshot.
+   Isolated geometry/region-metadata-only, native DocPrune-only, question-only,
+   region-state, QK, and combined feature families are required controls. A
+   small local-trajectory model follows the layer sweep;
+   full-prefix aggregation is conditional on the frozen gate: at least `0.02`
+   gold budget-local R² improvement over the best snapshot, positive
+   support-component-bootstrap 95% lower bound, baseline-wrong R² degradation
+   no greater than `0.02`, and wins over shuffled-history/order controls. Across
+   this track, snapshot selection is question-equal gold budget-local R² on
+   balanced validation, with `0.005` ties broken by baseline-wrong gold R²,
+   safe-deletion AUPRC, earlier block, then simpler family. Trajectory features
+   are only compact QK or hidden+QK; isolated geometry-only, native DocPrune-
+   only, and question-only controls remain required.
 
 Never mix the 48-question development pilot, locked 100-question confirmation,
 or new 600-question cohort. No retrieval or global-index access is permitted.

@@ -880,13 +880,15 @@ outcomes directly rather than per-question LASSO coefficients.
 The initial representation experiment is amended by
 [`TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md`](TASK9_SHARED_PROBE_LAYER_TRAJECTORY_AMENDMENT_2026-09-03.md).
 It trains matched independent probes at every zero-based read block `0..13`
-for metadata/DocPrune, pooled-region-state, pre-answer QK, and combined feature
-families. Validation selects the best single-layer snapshot before a small
-controlled local-trajectory linear model is compared with it. Full-prefix
-low-rank layer aggregation is conditional on the local trajectory passing its
-frozen validation gate. Rank-4 question-region bilinear probing remains a
-conditional within-layer expressivity diagnostic rather than the automatic
-first escalation.
+for isolated geometry/region-metadata-only, native-DocPrune-only, and
+question-only controls, plus pooled-region-state, pre-answer QK, and combined
+hidden+QK feature families. Geometry and native DocPrune are not collapsed into
+one shortcut control. Validation selects the best single-layer snapshot before
+a small controlled local-trajectory linear model is compared with it.
+Full-prefix low-rank layer aggregation is conditional on the local trajectory
+passing its frozen validation gate. Rank-4 question-region bilinear probing
+remains a conditional within-layer expressivity diagnostic rather than the
+automatic first escalation.
 
 The intervention target is fixed across the entire new cohort: semantic-region
 positions are physically deleted at the already validated decoder boundary
@@ -903,8 +905,33 @@ teacher deletion target at B13. A later multi-boundary causal diagnostic is not
 authorized without its own outcome-blind cohort, exact boundaries, compute
 envelope, and execution handoff. Multi-layer predictive success alone cannot
 be interpreted as evidence that distractors progressively balance correct and
-incorrect beliefs; that mechanism requires explicit layerwise gold/self
-divergence and later causal-boundary evidence.
+incorrect beliefs. For the descriptive balance diagnostic, at ε=`0.05`
+nat/token, report separate predicted gold/self deletion deltas, their signed
+difference, and the fraction with absolute difference at least ε at each layer,
+separately on baseline-wrong and oracle-rescuable slices. This diagnostic cannot
+establish causality or select a model; later causal-boundary evidence would be
+required for that claim.
+
+The frozen primary snapshot-selection metric is question-equal gold budget-local
+mask-response R² on balanced validation. Differences within `0.005` are
+tie-breaks, resolved by baseline-wrong gold budget-local R², then safe-deletion
+AUPRC, then earlier read block, then simpler feature family. The local
+trajectory may use only standardized compact QK or hidden+QK features: at each
+eligible endpoint `r` in `3..13`, use the current feature, its adjacent delta,
+and the mean over the latest four readable layers. If neither feature family
+has positive validation gold budget-local R², skip trajectory comparison. If
+ordering controls do not degrade performance, report multi-layer aggregation,
+not trajectory information; if an isolated control wins, retain it as the
+selected baseline and do not escalate on that basis.
+
+The full-prefix trigger is fixed at all of: local trajectory improvement in gold
+budget-local R² of at least `0.02` over the best overall snapshot,
+support-component-bootstrap 95% lower bound above zero, baseline-wrong R²
+degradation no greater than `0.02`, and improvement over both shuffled-history
+and shuffled-order controls. The rank-4 bilinear trigger is Gate 0 passing while
+the best QK/combined linear model fails either positive baseline-wrong gold
+budget-local R² or Spearman `>= 0.30`. These thresholds and tie-breaks are
+frozen before primary-test access.
 
 SOL owns cohort sealing, implementation, CPU Gate 0 analysis, focused tests,
 and authenticated packaging. CoRAL H200 owns every new model/GPU job. To
