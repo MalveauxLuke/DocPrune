@@ -8,6 +8,7 @@
 | [`AGENTS.md`](../AGENTS.md) | Minimal repository instructions |
 | [`agent-context/INDEX.md`](../agent-context/INDEX.md) | Short context routing |
 | [`agent-context/CURRENT_TASK.md`](../agent-context/CURRENT_TASK.md) | Current state and next action |
+| [`agent-context/chat-summaries/docprune_ctp_fidelity_random_controls_2026-08-27.md`](../agent-context/chat-summaries/docprune_ctp_fidelity_random_controls_2026-08-27.md) | Historical chat summary for DocPrune CTP fidelity, random controls, and Task 6 state |
 | [`sol/CURRENT_SOL_TASK.md`](../sol/CURRENT_SOL_TASK.md) | SOL execution stop/go authority |
 
 ## Research and provenance
@@ -23,6 +24,8 @@
 | [`docs/superpowers/plans/2026-08-17-docprune-sol-recovery.md`](superpowers/plans/2026-08-17-docprune-sol-recovery.md) | SOL recovery implementation plan |
 | [`docs/reproduction/DOCPRUNE.md`](reproduction/DOCPRUNE.md) | Implementation, commands, trace schema, and validation state |
 | [`docs/reproduction/RECONSTRUCTION_GAPS.md`](reproduction/RECONSTRUCTION_GAPS.md) | Paper omissions and explicit reconstruction choices |
+| [`agent-context/chat-summaries/DOCPRUNE_CTP_AUDIT_AND_FAIR_BASELINE_2026-09-05.md`](../agent-context/chat-summaries/DOCPRUNE_CTP_AUDIT_AND_FAIR_BASELINE_2026-09-05.md) | Historical CTP audit, fair-baseline admission, random/oracle program, and 1,213-question holdout chat summary |
+| [`agent-context/chat-summaries/DOCPRUNE_RANDOM_CONTROLS_RETENTION_AND_EXPERIMENT_PROGRAM_2026-09-05.md`](../agent-context/chat-summaries/DOCPRUNE_RANDOM_CONTROLS_RETENTION_AND_EXPERIMENT_PROGRAM_2026-09-05.md) | Historical matched-random, retention, throughput, experiment-program, and cluster chat summary |
 | [`archive/source-repo-governance/`](../archive/source-repo-governance/) | Exact original governance and context |
 
 ## SOL and reusable examples
