@@ -22,4 +22,13 @@ This repository concerns token compression for document QA.
   retrieval. Verify this before submission; any accidental fresh-retrieval run
   is non-canonical and must not be scored or merged with fixed-retrieval controls.
 - Keep navigation files current when adding durable research material.
+- Customarily record meaningful findings, insights, decisions, and experimental
+  results in `agent-context/findings/YYYY-MM-DD-<topic>.md`, one file per chat.
+  Update it intermittently at useful checkpoints, at the agent's discretion—not
+  after every insight or experiment. Link evidence and distinguish measurements
+  from hypotheses; this complements any required experiment logs.
 - Never add secrets, model weights, datasets, caches, or generated outputs.
+- Owner-authorized exception: the curated presentation packet in
+  `docs/presentation-evidence/2026-09-06/` may include selected evidence images,
+  measurement extracts and source snapshots for Git-based transfer. This does not
+  authorize adding raw experiment directories or other generated outputs.

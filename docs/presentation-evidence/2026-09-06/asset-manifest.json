@@ -1,0 +1,138 @@
+[
+  {
+    "case": 26,
+    "relative_path": "assets/Q26/input-0.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/26-3369d59ffc3d22c62e0bfa048a9cea21/input-0.png",
+    "sha256": "37b95db6d1bcb0fedbcf89bc46578e808d2e92083dc5960f0f228553bb024977",
+    "bytes": 1050624,
+    "caption": "Scored tie hides semantic deterioration: original Mustache is visually right; support answer beard is wrong. Input rank0 is a processor-size raster reconstruction. Overlay illustrates token deletion, not an edited image passed to the decoder."
+  },
+  {
+    "case": 26,
+    "relative_path": "assets/Q26/contextcite_gold_support-0.jpg",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/26-3369d59ffc3d22c62e0bfa048a9cea21/contextcite_gold_support-0.jpg",
+    "sha256": "3d20944dbf97fdcf6bd0fc0259f73ed20a44e34aec2af89d4c8d9e28ad98d13f",
+    "bytes": 537974,
+    "caption": "Scored tie hides semantic deterioration: original Mustache is visually right; support answer beard is wrong. Input rank0 is a processor-size raster reconstruction. Overlay illustrates token deletion, not an edited image passed to the decoder."
+  },
+  {
+    "case": 26,
+    "relative_path": "assets/Q26/detail-native.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/26-3369d59ffc3d22c62e0bfa048a9cea21/detail-native.png",
+    "sha256": "14a90849e15d7504e79b0678d7ddab1eda6bea6bab92c5f0ccb8ae261a5c54e2",
+    "bytes": 98948,
+    "caption": "Scored tie hides semantic deterioration: original Mustache is visually right; support answer beard is wrong. Input rank0 is a processor-size raster reconstruction. Overlay illustrates token deletion, not an edited image passed to the decoder."
+  },
+  {
+    "case": 26,
+    "relative_path": "assets/Q26/footprint-detail.jpg",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/26-3369d59ffc3d22c62e0bfa048a9cea21/footprint-detail.jpg",
+    "sha256": "abfe56bffafd87f86cbe5da182928cb1dbbdac09b9bea4322c801c3d6fa193db",
+    "bytes": 146266,
+    "caption": "Scored tie hides semantic deterioration: original Mustache is visually right; support answer beard is wrong. Input rank0 is a processor-size raster reconstruction. Overlay illustrates token deletion, not an edited image passed to the decoder."
+  },
+  {
+    "case": 26,
+    "relative_path": "assets/Q26/case.json",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/26-3369d59ffc3d22c62e0bfa048a9cea21/case.json",
+    "sha256": "7ef6c631f6d956e197f2a029a3fd6a3d10982aebbb83ae79358047c6468cc5fd",
+    "bytes": 840563,
+    "caption": "Scored tie hides semantic deterioration: original Mustache is visually right; support answer beard is wrong. Input rank0 is a processor-size raster reconstruction. Overlay illustrates token deletion, not an edited image passed to the decoder."
+  },
+  {
+    "case": 29,
+    "relative_path": "assets/Q29/input-1.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/29-d82d381af11d76d8a70601251ecb8ca5/input-1.png",
+    "sha256": "dcb1422d562ad3a33ccee89e94b156390407ea80b87ad55faff720b07b33254e",
+    "bytes": 448519,
+    "caption": "Document-supported AP Warrior table correction. Use source row constraints and token footprints together; successful joint deletion does not prove every removed region harmful."
+  },
+  {
+    "case": 29,
+    "relative_path": "assets/Q29/contextcite_gold_support-1.jpg",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/29-d82d381af11d76d8a70601251ecb8ca5/contextcite_gold_support-1.jpg",
+    "sha256": "a1a58bdd6d24175783bea9abb23da8bfd42e2382b66f0b3990b3ff63aafcc7be",
+    "bytes": 313342,
+    "caption": "Document-supported AP Warrior table correction. Use source row constraints and token footprints together; successful joint deletion does not prove every removed region harmful."
+  },
+  {
+    "case": 29,
+    "relative_path": "assets/Q29/native_docprune-1.jpg",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/29-d82d381af11d76d8a70601251ecb8ca5/native_docprune-1.jpg",
+    "sha256": "bf7d03082daa30fe8009e07a430906535261b7b0b28e222bcf09474b8b1ffcdb",
+    "bytes": 321185,
+    "caption": "Document-supported AP Warrior table correction. Use source row constraints and token footprints together; successful joint deletion does not prove every removed region harmful."
+  },
+  {
+    "case": 29,
+    "relative_path": "assets/Q29/detail-native.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/29-d82d381af11d76d8a70601251ecb8ca5/detail-native.png",
+    "sha256": "fa0a8ea0f55a6638f38461aee017964166d6e2251f4b99dcd532aad02dc412ff",
+    "bytes": 140963,
+    "caption": "Document-supported AP Warrior table correction. Use source row constraints and token footprints together; successful joint deletion does not prove every removed region harmful."
+  },
+  {
+    "case": 29,
+    "relative_path": "assets/Q29/case.json",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/29-d82d381af11d76d8a70601251ecb8ca5/case.json",
+    "sha256": "ae44975a3d4c6e2b818a877f0c167fb09b2c7e6e5aecba46d80c02549b6c3d95",
+    "bytes": 910868,
+    "caption": "Document-supported AP Warrior table correction. Use source row constraints and token footprints together; successful joint deletion does not prove every removed region harmful."
+  },
+  {
+    "case": 37,
+    "relative_path": "assets/Q37/blind-overview.jpg",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/37-1db882f16ee4721cc4c3fe9cf55e07e0/blind-overview.jpg",
+    "sha256": "64eaf946cb609779070ebe93055394ade1499f477a8925764319c984b2e21f42",
+    "bytes": 1060162,
+    "caption": "Four supplied pages lack the requested Black Hawk Down poster. The separately located gold source page shows a gun, but was NOT an answerer input. Never place it under a label claiming retrieved evidence."
+  },
+  {
+    "case": 37,
+    "relative_path": "assets/Q37/gold-source-page-0.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/37-1db882f16ee4721cc4c3fe9cf55e07e0/gold-source-page-0.png",
+    "sha256": "22d88ab8ed24e49b7074ef7cb06111f3a9efdffec5756493aa5ad9219ba50e49",
+    "bytes": 304944,
+    "caption": "Four supplied pages lack the requested Black Hawk Down poster. The separately located gold source page shows a gun, but was NOT an answerer input. Never place it under a label claiming retrieved evidence."
+  },
+  {
+    "case": 37,
+    "relative_path": "assets/Q37/case.json",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/37-1db882f16ee4721cc4c3fe9cf55e07e0/case.json",
+    "sha256": "f04b38c9a683252c9e3e4236e470de6cbe2d6de620301f5c9f07842d21c17c7a",
+    "bytes": 908449,
+    "caption": "Four supplied pages lack the requested Black Hawk Down poster. The separately located gold source page shows a gun, but was NOT an answerer input. Never place it under a label claiming retrieved evidence."
+  },
+  {
+    "case": 41,
+    "relative_path": "assets/Q41/detail-native.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/41-26ca9466876a6e17844791762c62ec0a/detail-native.png",
+    "sha256": "c5ba9ace753abffeeebded737f7c2770dc1c58cd59d22351c6647ba887f09a57",
+    "bytes": 254429,
+    "caption": "Complete-set evaluation defect: unpruned Zhang Ling, Tommy names both 2015 roles; dropping Tommy raises benchmark F1 from 0.4 to 0.5. Do not call it genuine correction."
+  },
+  {
+    "case": 41,
+    "relative_path": "assets/Q41/case.json",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/41-26ca9466876a6e17844791762c62ec0a/case.json",
+    "sha256": "1251a7f793fb18edc08d792d7c629919b6267ab77e297a4f8f159295db3f7a2d",
+    "bytes": 1043278,
+    "caption": "Complete-set evaluation defect: unpruned Zhang Ling, Tommy names both 2015 roles; dropping Tommy raises benchmark F1 from 0.4 to 0.5. Do not call it genuine correction."
+  },
+  {
+    "case": 43,
+    "relative_path": "assets/Q43/detail-native.png",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/43-77240911edd7c3cc1d48a0623e54d32d/detail-native.png",
+    "sha256": "c952484e00c676eba1a41950923fe2244ad7afd79c357ffb3191dbc3b648163a",
+    "bytes": 262334,
+    "caption": "Stale gold: the supplied document says 2024 for the latest Dodgers–Yankees World Series, whereas benchmark gold 1981 is outdated. Original historical scores remain unchanged."
+  },
+  {
+    "case": 43,
+    "relative_path": "assets/Q43/case.json",
+    "source_path": "/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/43-77240911edd7c3cc1d48a0623e54d32d/case.json",
+    "sha256": "318315a8ed77f88e47cf4ee8f3f9413f5821d53c35cef4be09d60a3fecf8cc85",
+    "bytes": 1092646,
+    "caption": "Stale gold: the supplied document says 2024 for the latest Dodgers–Yankees World Series, whereas benchmark gold 1981 is outdated. Original historical scores remain unchanged."
+  }
+]

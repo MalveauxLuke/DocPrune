@@ -1,0 +1,4713 @@
+{
+  "analysis_sha256": "985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8c5",
+  "interpretation": {
+    "claim_limit": "development-pilot evidence only; not a held-out estimate and not vanilla token-level ContextCite",
+    "design": "48-question stratified random development pilot: 24 unpruned-correct and 24 unpruned-wrong; all pruning arms use each question's native dynamic DocPrune retained-token count",
+    "gold_margin_scope": "available only for the 24 baseline-wrong questions",
+    "primary_comparison": "gold-support regional ContextCite minus native dynamic DocPrune",
+    "random_control": "region-size-aware random selection at the same whole-region budget"
+  },
+  "outcomes": {
+    "balanced": {
+      "bootstrap_intervals": {
+        "native_docprune": {
+          "em_delta_interval_95": [
+            0.020833333333333332,
+            0.16666666666666666
+          ],
+          "f1_delta_interval_95": [
+            0.05104166666666667,
+            0.203125
+          ]
+        },
+        "random_region_size_aware": {
+          "em_delta_interval_95": [
+            0.041666666666666664,
+            0.22916666666666666
+          ],
+          "f1_delta_interval_95": [
+            0.06664062500000002,
+            0.25627604166666634
+          ]
+        }
+      },
+      "contextcite_vs_native": {
+        "exact_match_delta": 0.08333333333333333,
+        "f1_delta": 0.121875,
+        "gold_loglikelihood_delta": 0.33838752476731315,
+        "gold_vs_alternative_margin_delta": 0.6329290185579641
+      },
+      "contextcite_vs_regional_random": {
+        "exact_match_delta": 0.125,
+        "f1_delta": 0.15520833333333334,
+        "gold_loglikelihood_delta": 0.46659427643074497,
+        "gold_vs_alternative_margin_delta": 0.47115044459739386
+      },
+      "stratum_weights": {
+        "baseline_correct": 0.5,
+        "baseline_wrong": 0.5
+      }
+    },
+    "bootstrap": {
+      "confidence_level": 0.95,
+      "draw_count": 10000,
+      "draws_sha256": "98df8c7deccedacc3e5f190e1edffa3bae96597f076cca04bd077b45d43c0877",
+      "method": "within-stratum-question-nonparametric-percentile",
+      "seed": 20260901
+    },
+    "method": "paired-question-stratified-task9-preliminary-pilot",
+    "natural_reweighted": {
+      "bootstrap_intervals": {
+        "native_docprune": {
+          "em_delta_interval_95": [
+            0.026360544217687076,
+            0.2108843537414966
+          ],
+          "f1_delta_interval_95": [
+            0.06458333333333334,
+            0.257015306122449
+          ]
+        },
+        "random_region_size_aware": {
+          "em_delta_interval_95": [
+            0.04166666666666667,
+            0.24574829931972791
+          ],
+          "f1_delta_interval_95": [
+            0.07542517006802722,
+            0.28528911564625853
+          ]
+        }
+      },
+      "contextcite_vs_native": {
+        "exact_match_delta": 0.1054421768707483,
+        "f1_delta": 0.1542091836734694,
+        "gold_loglikelihood_delta": 0.40742930755823803,
+        "gold_vs_alternative_margin_delta": 0.7919026756667862
+      },
+      "contextcite_vs_regional_random": {
+        "exact_match_delta": 0.1360544217687075,
+        "f1_delta": 0.17427721088435374,
+        "gold_loglikelihood_delta": 0.53943055741953,
+        "gold_vs_alternative_margin_delta": 0.5885119792366984
+      },
+      "stratum_weights": {
+        "baseline_correct": 0.3673469387755102,
+        "baseline_wrong": 0.6326530612244898
+      }
+    },
+    "question_count": 48,
+    "strata": {
+      "baseline_correct": {
+        "arms": {
+          "contextcite_gold_support": {
+            "exact_match_rate": 1.0,
+            "mean_f1": 1.0,
+            "mean_gold_loglikelihood": -0.38131642718993436,
+            "mean_gold_vs_alternative_margin": -0.18218464954406954,
+            "n": 24
+          },
+          "native_docprune": {
+            "exact_match_rate": 1.0,
+            "mean_f1": 1.0,
+            "mean_gold_loglikelihood": -0.4594695398991462,
+            "mean_gold_vs_alternative_margin": -0.21590526823032027,
+            "n": 24
+          },
+          "random_region_size_aware": {
+            "exact_match_rate": 0.9166666666666666,
+            "mean_f1": 0.9166666666666666,
+            "mean_gold_loglikelihood": -0.5733739522014124,
+            "mean_gold_vs_alternative_margin": -0.21097238665485443,
+            "n": 24
+          },
+          "unpruned": {
+            "exact_match_rate": 1.0,
+            "mean_f1": 1.0,
+            "mean_gold_loglikelihood": -0.44682667098823003,
+            "mean_gold_vs_alternative_margin": -0.21244638650872125,
+            "n": 24
+          }
+        },
+        "contextcite_vs_native": {
+          "exact_match_delta": 0.0,
+          "f1_delta": 0.0,
+          "gold_loglikelihood_delta": 0.07815311270921181,
+          "gold_vs_alternative_margin_delta": 0.033720618686250724,
+          "harms": 0,
+          "losses": 0,
+          "n": 24,
+          "rescues": 0,
+          "ties": 24,
+          "wins": 0
+        },
+        "contextcite_vs_regional_random": {
+          "exact_match_delta": 0.08333333333333333,
+          "f1_delta": 0.08333333333333333,
+          "gold_loglikelihood_delta": 0.192057525011478,
+          "gold_vs_alternative_margin_delta": 0.0287877371107849,
+          "harms": 0,
+          "losses": 0,
+          "n": 24,
+          "rescues": 2,
+          "ties": 22,
+          "wins": 2
+        },
+        "n": 24
+      },
+      "baseline_wrong": {
+        "arms": {
+          "contextcite_gold_margin": {
+            "exact_match_rate": 0.20833333333333334,
+            "mean_f1": 0.36874999999999997,
+            "mean_gold_loglikelihood": -1.5312888223367433,
+            "mean_gold_vs_alternative_margin": 0.32513524250437814,
+            "n": 24
+          },
+          "contextcite_gold_support": {
+            "exact_match_rate": 0.16666666666666666,
+            "mean_f1": 0.38125000000000003,
+            "mean_gold_loglikelihood": -1.4350289556508262,
+            "mean_gold_vs_alternative_margin": -0.3462804259421925,
+            "n": 24
+          },
+          "native_docprune": {
+            "exact_match_rate": 0.0,
+            "mean_f1": 0.1375,
+            "mean_gold_loglikelihood": -2.0336508924762406,
+            "mean_gold_vs_alternative_margin": -1.5784178443718702,
+            "n": 24
+          },
+          "random_region_size_aware": {
+            "exact_match_rate": 0.0,
+            "mean_f1": 0.15416666666666667,
+            "mean_gold_loglikelihood": -2.1761599835008383,
+            "mean_gold_vs_alternative_margin": -1.2597935780261953,
+            "n": 24
+          },
+          "unpruned": {
+            "exact_match_rate": 0.0,
+            "mean_f1": 0.16583333333333333,
+            "mean_gold_loglikelihood": -1.9315266255289316,
+            "mean_gold_vs_alternative_margin": -1.511699051130563,
+            "n": 24
+          }
+        },
+        "contextcite_vs_native": {
+          "exact_match_delta": 0.16666666666666666,
+          "f1_delta": 0.24375,
+          "gold_loglikelihood_delta": 0.5986219368254145,
+          "gold_vs_alternative_margin_delta": 1.2321374184296776,
+          "harms": 0,
+          "losses": 0,
+          "n": 24,
+          "rescues": 4,
+          "ties": 15,
+          "wins": 9
+        },
+        "contextcite_vs_regional_random": {
+          "exact_match_delta": 0.16666666666666666,
+          "f1_delta": 0.22708333333333333,
+          "gold_loglikelihood_delta": 0.741131027850012,
+          "gold_vs_alternative_margin_delta": 0.9135131520840029,
+          "harms": 0,
+          "losses": 0,
+          "n": 24,
+          "rescues": 4,
+          "ties": 16,
+          "wins": 8
+        },
+        "n": 24
+      }
+    }
+  },
+  "provenance": {
+    "cohort_file_sha256": "123607a6a1226b4e3436f43cb82d45e64e8a3008e9ab6deefd7526efeabd0273",
+    "cohort_internal_sha256": "465fcf6e8e0adee6e79845db8cb1d6f1fbc97e01d02b7cf5c1e28c7c33c3c5f9",
+    "cohort_path": "/scratch/lmalveau/docprune/task9-preliminary-random48-v1/cohort.json",
+    "input_roots": [
+      "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1",
+      "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1"
+    ],
+    "question_count": 48,
+    "runtime_commit": "90f27d7ed8b99ad10f1a5fe405c131127456ae5d"
+  },
+  "questions": [
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.22766004502773285,
+          "answer": "Breeder's Cup Mile.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.6267961263656616,
+          "margin": -0.39913608133792877,
+          "peak_allocated_gpu_bytes": 17944461312,
+          "result_sha256": "48c4e0faf52ba153f61adccacb446882eabbd98062f0852b16ab4590c286a94f"
+        },
+        "native_docprune": {
+          "alternative": -0.20242029428482056,
+          "answer": "Breeder's Cup Mile.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.6694383025169373,
+          "margin": -0.4670180082321167,
+          "peak_allocated_gpu_bytes": 17944461312,
+          "result_sha256": "cf0c6e23c7a112319c7c8bc2dac0841f82ebed37ef652eba17f69dbfe6bbc4f7"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.23192575573921204,
+          "answer": "Breeder's Cup Mile.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.6215706467628479,
+          "margin": -0.38964489102363586,
+          "peak_allocated_gpu_bytes": 17944461312,
+          "result_sha256": "7a616a49eb9eeed460694a130c1a493c7b20bcae81fb7c1bf1d648dd1b0e4b55"
+        },
+        "unpruned": {
+          "alternative": -0.2142181396484375,
+          "answer": "Breeder's Cup Mile.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.6490858793258667,
+          "margin": -0.4348677396774292,
+          "peak_allocated_gpu_bytes": 18095126016,
+          "result_sha256": "7a195ef206c4f8b99cea58a56c29a02aecf9a9bef3f96dc7b7762464ec899a8f"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.5109855433698495,
+          "heldout_rmse": 0.4119429612658503,
+          "lds_spearman": 0.534824046920821,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.8458532597015482,
+          "minimum_defined": 0.8085106382978723,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.7992443492840129,
+          "heldout_rmse": 0.5075030739364473,
+          "lds_spearman": 0.6132697947214075,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 0,
+      "question_id": "5fb253761e72a6048b8b759f04c3b784",
+      "retention": {
+        "native_achieved_token_count": 4175,
+        "regional_achieved_token_count": 4175,
+        "regional_requested_token_count": 4175,
+        "regional_retained_fraction": 0.7523878176247972,
+        "visual_population": 5549
+      },
+      "source": {
+        "analysis_file_sha256": "7e45b85a34f24a6b440a2fdf65c694090eb864a69af3df149ed74000a47401ee",
+        "analysis_internal_sha256": "cc4e6eb15af2829b986290a08dbf055ed14155edf4d5b0b31da80cf8d13e0053",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/00-5fb253761e72a6048b8b759f04c3b784/analysis.json",
+        "completion_sha256": "b0b814008bdaa9f999f3c75504d1c6c37e4882a1931a32853da51dcd619f9e5a",
+        "selected_arms_file_sha256": "b34b22f19b46638eadeb4946b2c6d7c064401f4de762ba30948c3a6edd884eec",
+        "selected_arms_internal_sha256": "c8aeea310cf3b3a8bb92230a78c0fcb87216fbf0b56312916605efc2f6baa5cc",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/00-5fb253761e72a6048b8b759f04c3b784/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.040294237434864044,
+          "answer": "Casino Royale",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.040294237434864044,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17992467968,
+          "result_sha256": "8a1beb4883d94c87980e1e1d23552cc39e629597f864d6cfc92b480c45fe6ed6"
+        },
+        "native_docprune": {
+          "alternative": -0.36961090564727783,
+          "answer": "Casino Royale",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.36961090564727783,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17991825920,
+          "result_sha256": "6124ab4b914fb3cb1ec7bb80d6d786f6ad6d0faaf350340b9d40a2d6c1fa97e9"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.041452858597040176,
+          "answer": "Casino Royale",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.041452858597040176,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17992467968,
+          "result_sha256": "fab0856234e651295eb4e3803454e15d63b320e8634081b639f2c5d436aae9ea"
+        },
+        "unpruned": {
+          "alternative": -0.37728118896484375,
+          "answer": "Casino Royale",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.37728118896484375,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18121069056,
+          "result_sha256": "76e328a8ec5815a34e1c8cf9624923fcd2a2544800d828abeb76a83194b9d8e7"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.1855198802581037,
+          "heldout_rmse": 0.07726796928862979,
+          "lds_spearman": 0.9128460869745861,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7015658386801326,
+          "minimum_defined": 0.6046511627906976,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.3132813854796673,
+          "heldout_rmse": 0.10281425377359522,
+          "lds_spearman": 0.971858135566489,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 1,
+      "question_id": "9b17c72e6c59db83dcaeeba6be8417e2",
+      "retention": {
+        "native_achieved_token_count": 4635,
+        "regional_achieved_token_count": 4635,
+        "regional_requested_token_count": 4635,
+        "regional_retained_fraction": 0.8168840324286217,
+        "visual_population": 5674
+      },
+      "source": {
+        "analysis_file_sha256": "e921664157e6c404dc0154a01d45f4970d46ad282ee26274d78cbc0e4c9957c0",
+        "analysis_internal_sha256": "1ebec0b65b51d910d5a345d9db1911c7c46c32ad794461f720f0e5b0ce5777af",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/01-9b17c72e6c59db83dcaeeba6be8417e2/analysis.json",
+        "completion_sha256": "ec129b9d4a7c6d2990bad61a19efb342115b3700ab50cf0d4782a6766e7fd488",
+        "selected_arms_file_sha256": "3d65be01c96f3ea0822083358c7c16b4eb4cd6c3de0ccf88cf6b9ffca25e355c",
+        "selected_arms_internal_sha256": "95466d55396ff286badf327678fe85bcfe9e40bb749621c48128dc28a200ee79",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/01-9b17c72e6c59db83dcaeeba6be8417e2/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.2992452085018158,
+          "answer": "Checkered.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.6635955572128296,
+          "margin": -1.3643503487110138,
+          "peak_allocated_gpu_bytes": 17904567808,
+          "result_sha256": "18c4a4004d344bc97a6022e62048a9bccbd3e05e9f47e4bf309762db6e104f42"
+        },
+        "native_docprune": {
+          "alternative": -0.27211353182792664,
+          "answer": "Checkered.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.7825510501861572,
+          "margin": -1.5104375183582306,
+          "peak_allocated_gpu_bytes": 17904567808,
+          "result_sha256": "53c5d26a3c779cdf9d4568fad8ae9041fdaf3cd975405223b684ef6d060254b5"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.25405317544937134,
+          "answer": "Checkered.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.87799072265625,
+          "margin": -1.6239375472068787,
+          "peak_allocated_gpu_bytes": 17904567808,
+          "result_sha256": "7466e6d59f9235a9d8c3bf6c8df225fe59972116e639893d2738ce9a67ddc4d5"
+        },
+        "unpruned": {
+          "alternative": -0.27145320177078247,
+          "answer": "Checkered.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.7525206804275513,
+          "margin": -1.4810674786567688,
+          "peak_allocated_gpu_bytes": 18023200256,
+          "result_sha256": "2bd3fcd44b1439efd8be9e7db0a336de1604eeb234475c9236e58ca6cc881450"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.3682440515523329,
+          "heldout_rmse": 0.17850586060395782,
+          "lds_spearman": 0.7712609970674486,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7083885219658266,
+          "minimum_defined": 0.6206896551724138,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.37538528596133947,
+          "heldout_rmse": 0.16781239898819328,
+          "lds_spearman": 0.9219208211143693,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 2,
+      "question_id": "ac88e905caf79065a86ea107d4f0e5d0",
+      "retention": {
+        "native_achieved_token_count": 4175,
+        "regional_achieved_token_count": 4175,
+        "regional_requested_token_count": 4175,
+        "regional_retained_fraction": 0.8008824093612124,
+        "visual_population": 5213
+      },
+      "source": {
+        "analysis_file_sha256": "3bb6a7cacaca5e8fcae146489381ab52928b665a6d032502147867e6837e5a0c",
+        "analysis_internal_sha256": "a765394b1820491fdc6c115050e68a4bb8482bc2f2b21cc53e55345b76daccc5",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/02-ac88e905caf79065a86ea107d4f0e5d0/analysis.json",
+        "completion_sha256": "8a21d6c4845a463f925944b218f9ee527ef50e4804d5c3bf84ac59bdfe14846e",
+        "selected_arms_file_sha256": "5c5b69191c2daacfcd61c0908404f5cae1de30d09b73553d3c3c966ad382bff2",
+        "selected_arms_internal_sha256": "b6613a23c117497c80e74507a292fe2b757d8b40d831030eec8aa57321896de6",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/02-ac88e905caf79065a86ea107d4f0e5d0/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.10246892273426056,
+          "answer": "Tammy and the Doctor.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0675562396645546,
+          "margin": 0.03491268306970596,
+          "peak_allocated_gpu_bytes": 17789658112,
+          "result_sha256": "77c326bd9a00af193294b71c866d2d7f3f3d859cb025a38db8c3dbdd4d9220de"
+        },
+        "native_docprune": {
+          "alternative": -0.12699846923351288,
+          "answer": "Tammy and the Doctor.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.08620017021894455,
+          "margin": 0.04079829901456833,
+          "peak_allocated_gpu_bytes": 17789658112,
+          "result_sha256": "595bb4bd68f2d292a3b62094e01b9fc1b9366a7477a53d0cab720f3fdafbe23e"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.13374698162078857,
+          "answer": "Tammy and the Doctor.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.08047446608543396,
+          "margin": 0.053272515535354614,
+          "peak_allocated_gpu_bytes": 17789658112,
+          "result_sha256": "7d2cb19aa0e5adbb0f421b0a59b8a85f29f1c723782558962ec5aad2deeeb2f9"
+        },
+        "unpruned": {
+          "alternative": -0.13086307048797607,
+          "answer": "Tammy and the Doctor.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.08483556658029556,
+          "margin": 0.04602750390768051,
+          "peak_allocated_gpu_bytes": 17916468224,
+          "result_sha256": "60b642325fa2ff5c2cc024301f4cb929dab9135187c2f091257c83f921170fc9"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.17556083245091428,
+          "heldout_rmse": 0.28492377861313406,
+          "lds_spearman": 0.46920821114369493,
+          "rmse_beats_constant": false
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.624235057173897,
+          "minimum_defined": 0.5283018867924528,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 1.170941395467748,
+          "heldout_rmse": 0.9074156313407201,
+          "lds_spearman": 0.6162023460410556,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 3,
+      "question_id": "2d72990e471477b01f909752e70127ab",
+      "retention": {
+        "native_achieved_token_count": 3591,
+        "regional_achieved_token_count": 3591,
+        "regional_requested_token_count": 3591,
+        "regional_retained_fraction": 0.7633928571428571,
+        "visual_population": 4704
+      },
+      "source": {
+        "analysis_file_sha256": "c821bf3b76a3c96a6c63e0d25f70e9864272c367d8224d9552020cef004cebca",
+        "analysis_internal_sha256": "294c15179756be93f09eec21d0621400b24c54d8a17895cdb216e83a4a98e0fb",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/03-2d72990e471477b01f909752e70127ab/analysis.json",
+        "completion_sha256": "c71c330a5cf275d61cad3e40a703d5235594975281741f2f4b2a4a0af962e9dd",
+        "selected_arms_file_sha256": "7c8c27c75dcbdf8b84781bbc9c30608b6bba03126ce49eb6fed1e77e2776a256",
+        "selected_arms_internal_sha256": "a51a9c05269e64a8b1c1a5b60501265fe64f60bd5d71c1812c25ad10eee266b6",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-0/03-2d72990e471477b01f909752e70127ab/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.05883185192942619,
+          "answer": "Stag's Leap Wine Cellars.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.06485573202371597,
+          "margin": -0.00602388009428978,
+          "peak_allocated_gpu_bytes": 17800946688,
+          "result_sha256": "ec248ac9f3222a11f418cafdc7a276073126f99a17b97ecac326cc3c28be3eff"
+        },
+        "native_docprune": {
+          "alternative": -0.05927562713623047,
+          "answer": "Stag's Leap Wine Cellars.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.06465499848127365,
+          "margin": -0.005379371345043182,
+          "peak_allocated_gpu_bytes": 17800946688,
+          "result_sha256": "0c417f5efab2dab5b0d38167259f596a723dca34e765760fd9fd86d4a0de19af"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.033222492784261703,
+          "answer": "Stag's Leap Wine Cellars.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.035635046660900116,
+          "margin": -0.0024125538766384125,
+          "peak_allocated_gpu_bytes": 17800946688,
+          "result_sha256": "93df0887e23434dfc80eb83ded3227e1007108531f0ceeac1dc78e5e517e52f9"
+        },
+        "unpruned": {
+          "alternative": -0.06016530096530914,
+          "answer": "Stag's Leap Wine Cellars.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.06570900231599808,
+          "margin": -0.005543701350688934,
+          "peak_allocated_gpu_bytes": 17930106880,
+          "result_sha256": "0674354575a05c8fc0a7410a56b6b59a79864d6203d801bab396b92923d949b9"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.026535951771652133,
+          "heldout_rmse": 0.038457318756999426,
+          "lds_spearman": 0.1290322580645161,
+          "rmse_beats_constant": false
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.4792869914249224,
+          "minimum_defined": 0.3448275862068966,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.45677822441348026,
+          "heldout_rmse": 0.4371341901930624,
+          "lds_spearman": 0.3086510263929618,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 4,
+      "question_id": "7f3e9cd662a95a07a0512e2b0f074193",
+      "retention": {
+        "native_achieved_token_count": 3536,
+        "regional_achieved_token_count": 3536,
+        "regional_requested_token_count": 3536,
+        "regional_retained_fraction": 0.744577805853864,
+        "visual_population": 4749
+      },
+      "source": {
+        "analysis_file_sha256": "dc6b51f7ab2c8e627b7f51c456b16f79e64175aaa730f3c1bf65e06e6711ffb6",
+        "analysis_internal_sha256": "171475dd82780d9e2cdb85aa20989ddb15f99f53257787d03ded2fba73065b42",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/04-7f3e9cd662a95a07a0512e2b0f074193/analysis.json",
+        "completion_sha256": "6462285108942d5147ba58c98479db22b5327e0af5f254e756a7f6807975d6e7",
+        "selected_arms_file_sha256": "fa8da0d471723f13cbb19d4151c23aadd56993dd30bd73d841c5e6d6fcd2bfda",
+        "selected_arms_internal_sha256": "83a07ea649c04727108c0d9d3d5d8f0b75d1e74380e734abae07aa93deb46d31",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/04-7f3e9cd662a95a07a0512e2b0f074193/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.010180396027863026,
+          "answer": "Wendy",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.010180396027863026,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17536596992,
+          "result_sha256": "c34c04380222f1dd2d90110c674a9ba46422059ad6a2300b7dd23a50c7c9f049"
+        },
+        "native_docprune": {
+          "alternative": -0.010458437725901604,
+          "answer": "Wendy",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.010458437725901604,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17536596992,
+          "result_sha256": "eda1ded055bcae94619dcb87a5799e26abf7dcfe7f2cd63e3859ccda215c0288"
+        },
+        "random_region_size_aware": {
+          "alternative": -2.341871976852417,
+          "answer": "The Woman of the Wolf",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.341871976852417,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17536596992,
+          "result_sha256": "8ea9aba0e3825543fa86453f6f1470e2a5385bc96fb461b48f658d425b5b8031"
+        },
+        "unpruned": {
+          "alternative": -0.010033829137682915,
+          "answer": "Wendy",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.010033829137682915,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17626711040,
+          "result_sha256": "56d0c3721f0220d9b9f5d3d1b539764f822dcce18137dbde9c1a426296b8b3a4"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 1.311355383095095,
+          "heldout_rmse": 0.1728816666212633,
+          "lds_spearman": 0.2793255131964809,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7225089115720529,
+          "minimum_defined": 0.6504854368932039,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 1.3190190314813248,
+          "heldout_rmse": 0.17598562714571012,
+          "lds_spearman": 0.7976539589442814,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 5,
+      "question_id": "a45810b7edf38dbba9df690ced7289fe",
+      "retention": {
+        "native_achieved_token_count": 2560,
+        "regional_achieved_token_count": 2560,
+        "regional_requested_token_count": 2560,
+        "regional_retained_fraction": 0.7710843373493976,
+        "visual_population": 3320
+      },
+      "source": {
+        "analysis_file_sha256": "d5c13f4d97a038adf77df8f4cd4101c75103aac211a8086f506d3c13fbc833b5",
+        "analysis_internal_sha256": "b3a07a1852f470c342abb4730e810b98613b06df3443ebab8c3f04c0563794c7",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/05-a45810b7edf38dbba9df690ced7289fe/analysis.json",
+        "completion_sha256": "dafa613f055c470e7380258b8ad614aa1a547d3de7caa5772c8dda14afabe683",
+        "selected_arms_file_sha256": "410bff713c6ae4e85e15f2805336c1dc94a368ae8e59b76172e0a422806d6cfa",
+        "selected_arms_internal_sha256": "946be0f8c0c91e81fc1202c99e4bcbd985652c2271111638edf291113cb335b1",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/05-a45810b7edf38dbba9df690ced7289fe/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.10036762803792953,
+          "answer": "Tiger",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.10036762803792953,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17806036480,
+          "result_sha256": "9377e30027740ebfa749a57be481737e5cbe080178960b26970026a8e59391f3"
+        },
+        "native_docprune": {
+          "alternative": -0.11547642201185226,
+          "answer": "Tiger",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.11547642201185226,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17806036480,
+          "result_sha256": "8e70a521562717c9998fd606c0e979f4bb6f4ad9ac4ac12565b6cb08fce7ae27"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.15470914542675018,
+          "answer": "Tiger",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.15470914542675018,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17806036480,
+          "result_sha256": "940cff56c3e450e8b1af4761b9e3053b3e383a2c629ced2df2ba4ee3f88305ae"
+        },
+        "unpruned": {
+          "alternative": -0.10224728286266327,
+          "answer": "Tiger",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.10224728286266327,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17935829504,
+          "result_sha256": "7ca72c88d7369253910d7f2be597e34a8b1b630ce0d79a6ceeab8b13f776426a"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 2.9807656211251325,
+          "heldout_rmse": 1.8203137831941993,
+          "lds_spearman": 0.8288123167155423,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.4886638392232177,
+          "minimum_defined": 0.41509433962264153,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 2.629917777262256,
+          "heldout_rmse": 1.6864147427069853,
+          "lds_spearman": 0.6356304985337242,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 6,
+      "question_id": "7c6bc8290d4d5c801a9534648ef8eb45",
+      "retention": {
+        "native_achieved_token_count": 2808,
+        "regional_achieved_token_count": 2808,
+        "regional_requested_token_count": 2808,
+        "regional_retained_fraction": 0.5847563515201999,
+        "visual_population": 4802
+      },
+      "source": {
+        "analysis_file_sha256": "fb584849afc446f93d21c63e0f7034d2aab27406e037fc71171a316edee81deb",
+        "analysis_internal_sha256": "f2c56310d26e8100bff0824d434682891cfe77e196e9a4029115d4c3f59faa09",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/06-7c6bc8290d4d5c801a9534648ef8eb45/analysis.json",
+        "completion_sha256": "946d0f889c05aae75bb0d3919109874f0fe99e8b9f8190680597b34844fbbf5c",
+        "selected_arms_file_sha256": "7b93058fe572afddcaa071c8d1ebd4ed5b88cd59348ec2f4958aa9f8da03e2f6",
+        "selected_arms_internal_sha256": "ec4a0ce3ab0b5bc288ed2b435ddb3aef17dc63eb32db87716f098c5ee834b0c7",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/06-7c6bc8290d4d5c801a9534648ef8eb45/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.07583534717559814,
+          "answer": "Laura San Giacomo.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.00363905169069767,
+          "margin": 0.07219629548490047,
+          "peak_allocated_gpu_bytes": 17754386944,
+          "result_sha256": "d9d8d9e9d13775f296c43739cd728cf272dc55d9298bba33e9f53f27014890bc"
+        },
+        "native_docprune": {
+          "alternative": -0.08251066505908966,
+          "answer": "Laura San Giacomo.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.002505502663552761,
+          "margin": 0.0800051623955369,
+          "peak_allocated_gpu_bytes": 17754386944,
+          "result_sha256": "e3a328811224475c3759ef5ed5f34771f082ac1aaaa2c982c30f7db6aaf17bcf"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.16466882824897766,
+          "answer": "Laura San Giacomo",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0025590744335204363,
+          "margin": 0.16210975381545722,
+          "peak_allocated_gpu_bytes": 17754386944,
+          "result_sha256": "b0a0c04e5728144b2b448325a0cc8e241fbcdd6415278231abe4bf051a6bbd54"
+        },
+        "unpruned": {
+          "alternative": -0.08245718479156494,
+          "answer": "Laura San Giacomo.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0024013842921704054,
+          "margin": 0.08005580049939454,
+          "peak_allocated_gpu_bytes": 17877448704,
+          "result_sha256": "0f71fd1e8c43e5f0a5e07a272e5a9491a9005043bfaebf6bca8fd086dc1df2a2"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.8533416063277787,
+          "heldout_rmse": 0.741566927788552,
+          "lds_spearman": 0.19538123167155422,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5226392622332556,
+          "minimum_defined": 0.42424242424242425,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.9894872712303616,
+          "heldout_rmse": 0.8014189113800648,
+          "lds_spearman": 0.6554252199413488,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 7,
+      "question_id": "86afde24eb28160c50cb8239d40e9305",
+      "retention": {
+        "native_achieved_token_count": 3080,
+        "regional_achieved_token_count": 3080,
+        "regional_requested_token_count": 3080,
+        "regional_retained_fraction": 0.6827754378186655,
+        "visual_population": 4511
+      },
+      "source": {
+        "analysis_file_sha256": "1bdefd579dbb66506c81d9d618766b8d01918900f3506fd0513119597e462e51",
+        "analysis_internal_sha256": "d68292602310472c9408d0e0c2c9774a76133b24ad9097eafe03e52e6f7c2a50",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/07-86afde24eb28160c50cb8239d40e9305/analysis.json",
+        "completion_sha256": "0213195042be6c079db0d1c386d6513acfcab7f3c18430deca53603d423c0499",
+        "selected_arms_file_sha256": "ff45f48c690649a92dfe6b4f7ad21e0f6cf582e39560af7da4e2b3becf57fcaf",
+        "selected_arms_internal_sha256": "4780d4bfcf944bba371d9df21ca184b8a3c9dfc96edf0a15962f3515a58818fa",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-1/07-86afde24eb28160c50cb8239d40e9305/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.0245914738625288,
+          "answer": "Fontana Dam",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0245914738625288,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17951880704,
+          "result_sha256": "90e13afdd9d7f6eddec3a6e0080fdc662d1efe9359a8c555805398a9ecd74d15"
+        },
+        "native_docprune": {
+          "alternative": -0.018514811992645264,
+          "answer": "Fontana Dam",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.018514811992645264,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17951880704,
+          "result_sha256": "a6dfeb2b7d341cb2ce3a08ba06858350981560b9b0a6f9a7abef7cf23bdddb4c"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.024839084595441818,
+          "answer": "Fontana Dam",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.024839084595441818,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17951880704,
+          "result_sha256": "380d447c6fb9e694e7445cbc2984890aab2f8c0e640f30e68a2a0a0d04c23ad4"
+        },
+        "unpruned": {
+          "alternative": -0.019100546836853027,
+          "answer": "Fontana Dam",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.019100546836853027,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18076235264,
+          "result_sha256": "d7f128c157e80c8fd5c7b53dc840c852f13fb302090950010f5d5b3b37b0c9d4"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.021417053740689872,
+          "heldout_rmse": 0.02132622356559679,
+          "lds_spearman": 0.5120703943615112,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.8898685083789614,
+          "minimum_defined": 0.7755102040816326,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.033831947904513514,
+          "heldout_rmse": 0.03377778386277909,
+          "lds_spearman": 0.38889055132939426,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 8,
+      "question_id": "14f49a6306b7b12ca89db44d501f340d",
+      "retention": {
+        "native_achieved_token_count": 3557,
+        "regional_achieved_token_count": 3557,
+        "regional_requested_token_count": 3557,
+        "regional_retained_fraction": 0.653860294117647,
+        "visual_population": 5440
+      },
+      "source": {
+        "analysis_file_sha256": "05b63218b4fb0f1f8702958c58ad896fe2679aab0a544c6f69a2aa7034d6fcf0",
+        "analysis_internal_sha256": "48dd7ec5b9c077eeacbeec84cbc8ee1dd397cfc94d2a074d0b0e3c34e7df8d7b",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/08-14f49a6306b7b12ca89db44d501f340d/analysis.json",
+        "completion_sha256": "b770b40ec6dad81105de8056a06429d68a855d64996f88ff8a92ec296e67c8d6",
+        "selected_arms_file_sha256": "ee0737c6c8fbf25624a4da6a743cdbfd29c4ebd1a269932783495aeae2caab51",
+        "selected_arms_internal_sha256": "3f3b8a3c6170c523ffbff7aa2538342935d8bfcdeabf92eec0884c42bc313481",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/08-14f49a6306b7b12ca89db44d501f340d/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.2108471691608429,
+          "answer": "Paul Townend.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0486946702003479,
+          "margin": 0.162152498960495,
+          "peak_allocated_gpu_bytes": 17726272000,
+          "result_sha256": "9b6ab2cbc9624ae089a4cdbbf99bdaf5db2606a024d155fbbaf47308eabba36b"
+        },
+        "native_docprune": {
+          "alternative": -0.21003133058547974,
+          "answer": "Paul Townend.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.04769238084554672,
+          "margin": 0.16233894973993301,
+          "peak_allocated_gpu_bytes": 17726272000,
+          "result_sha256": "b294cdf8addd38d7cbb344110085c84d028cd06f305ec2f35aaf72f9749e27d5"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.13827741146087646,
+          "answer": "Paul Townend.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.053736358880996704,
+          "margin": 0.08454105257987976,
+          "peak_allocated_gpu_bytes": 17726272000,
+          "result_sha256": "4d27f2926c09f1b74c35ca42813b4ab428abfbda120ef8872b3eea7243e58b42"
+        },
+        "unpruned": {
+          "alternative": -0.1912977397441864,
+          "answer": "Paul Townend.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.04301781579852104,
+          "margin": 0.14827992394566536,
+          "peak_allocated_gpu_bytes": 17843448320,
+          "result_sha256": "8fec3bddd76336181a9b7c428cbca64069dd8078ed92a550cdc4e4bd9e0868c1"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.02099964847244928,
+          "heldout_rmse": 0.008294276699438784,
+          "lds_spearman": 0.490119278570187,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.864516129032258,
+          "minimum_defined": 0.7741935483870968,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.03959007430603952,
+          "heldout_rmse": 0.03023458478004153,
+          "lds_spearman": 0.7966065614469163,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 9,
+      "question_id": "6557e5999ca79abbeae9335bb38eecf9",
+      "retention": {
+        "native_achieved_token_count": 3157,
+        "regional_achieved_token_count": 3157,
+        "regional_requested_token_count": 3157,
+        "regional_retained_fraction": 0.7259140032191308,
+        "visual_population": 4349
+      },
+      "source": {
+        "analysis_file_sha256": "035ecb8cc20371efdbbbaa3f9f62da3aaf6d811086afdace821d628f7e6cc1c2",
+        "analysis_internal_sha256": "37f684dcf161fa7a2a0076914e1ee96ccacc22ccfaa9b5292b9060a7d3f3ea71",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/09-6557e5999ca79abbeae9335bb38eecf9/analysis.json",
+        "completion_sha256": "c111fcdc516a5b71ab4a4721d5c86e4c0ea8f40bba061759ba13d3978f97bd16",
+        "selected_arms_file_sha256": "e75dcb970ed1e5011ccf9a5e80cc06de20d15e21821686dfff644a28f1e6ab48",
+        "selected_arms_internal_sha256": "cecf488dcdeccccd22042f3f9b71b94f78f33b028e2380036150dda1cc0791dd",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/09-6557e5999ca79abbeae9335bb38eecf9/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.7265862822532654,
+          "answer": "no",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.7265862822532654,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17727885312,
+          "result_sha256": "e120f5a80cdbe3dcf4cae7f607ea3ea8f1f6ed2988d26d272ccb270f1b340cd6"
+        },
+        "native_docprune": {
+          "alternative": -0.5623875260353088,
+          "answer": "No",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.9373875260353088,
+          "margin": -0.375,
+          "peak_allocated_gpu_bytes": 17727885312,
+          "result_sha256": "c60932652934155ea928cf04f07ee4f2873965c7bc98cdd8e06cfb691482eb4e"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.6731371879577637,
+          "answer": "No",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.7981371879577637,
+          "margin": -0.125,
+          "peak_allocated_gpu_bytes": 17727885312,
+          "result_sha256": "4796e71c0504573e396dc56260a5f885682e5751ca3e2c9e6d921b683bfd87e0"
+        },
+        "unpruned": {
+          "alternative": -0.5662760138511658,
+          "answer": "No",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.9412760138511658,
+          "margin": -0.375,
+          "peak_allocated_gpu_bytes": 17845991424,
+          "result_sha256": "bd516d02eb7fcc0bd7a6c87c543f5c79ddd85598e957c293d33881abe5bd033b"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.13492944935610918,
+          "heldout_rmse": 0.055360842822994374,
+          "lds_spearman": 0.9175068898437746,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6649057388376274,
+          "minimum_defined": 0.5945945945945946,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.14705501164634238,
+          "heldout_rmse": 0.06113757127792218,
+          "lds_spearman": 0.9380498533724339,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 10,
+      "question_id": "56f93603f05aefbbea86638e5d9f3982",
+      "retention": {
+        "native_achieved_token_count": 2593,
+        "regional_achieved_token_count": 2593,
+        "regional_requested_token_count": 2593,
+        "regional_retained_fraction": 0.5929567802423965,
+        "visual_population": 4373
+      },
+      "source": {
+        "analysis_file_sha256": "7342333b0fe92af965cb151450f3dc4da8c76c4dae576e0195c86a04a3b818a8",
+        "analysis_internal_sha256": "b78e26c20a6bbc51f9412eefdfaeb5d908c50a9433ae1f83f4a65323a03d9623",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/10-56f93603f05aefbbea86638e5d9f3982/analysis.json",
+        "completion_sha256": "159b1b4ad09abe1d12f8ff428585ca89551c27d6237b7a1317b1f1e82a56647d",
+        "selected_arms_file_sha256": "c7ec9cadc7089157df12c001c39db0fc12e68c95cd51e6b986e494cca82d88bd",
+        "selected_arms_internal_sha256": "bdb25d074b1fd9740e196437674ad7693e396dab6c85ef4ab9c503c53652cd9b",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/10-56f93603f05aefbbea86638e5d9f3982/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.04388926550745964,
+          "answer": "2007.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.039122097194194794,
+          "margin": 0.004767168313264847,
+          "peak_allocated_gpu_bytes": 17593815040,
+          "result_sha256": "c502c285662d11ad20c654a4410e565da3641da7945f6ab250e1ec813c3807d9"
+        },
+        "native_docprune": {
+          "alternative": -0.04984532669186592,
+          "answer": "2007.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.046494755893945694,
+          "margin": 0.003350570797920227,
+          "peak_allocated_gpu_bytes": 17593815040,
+          "result_sha256": "78f8a4887d0263e9dd5c08dc045f15d0099d726c2b13574f1bd1b6ea569e1535"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.8281742930412292,
+          "answer": "2002.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.983890175819397,
+          "margin": -0.15571588277816772,
+          "peak_allocated_gpu_bytes": 17593815040,
+          "result_sha256": "ba7e672e0ffe7e2daee48af71bf3243ca4118a63579bac740e85a260cf1a4a69"
+        },
+        "unpruned": {
+          "alternative": -0.060065556317567825,
+          "answer": "2007.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.061041489243507385,
+          "margin": -0.0009759329259395599,
+          "peak_allocated_gpu_bytes": 17691827712,
+          "result_sha256": "2b2632a299f70e8ef36b78f941a3bc7209d5bda697550d918d2b68ece29fa1c3"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.4545216976243864,
+          "heldout_rmse": 0.04871484157954289,
+          "lds_spearman": -0.03163528604852449,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6056793398172708,
+          "minimum_defined": 0.3448275862068966,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.5338159319797333,
+          "heldout_rmse": 0.10012886332436055,
+          "lds_spearman": 0.677058602371483,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 11,
+      "question_id": "5bbd01ffe812cda90446bcafa7f073b8",
+      "retention": {
+        "native_achieved_token_count": 2038,
+        "regional_achieved_token_count": 2038,
+        "regional_requested_token_count": 2038,
+        "regional_retained_fraction": 0.5643865965106619,
+        "visual_population": 3611
+      },
+      "source": {
+        "analysis_file_sha256": "63b40570c480b9746b92eabe73d39514cce5a21556d73c019e8f3c8d3d405884",
+        "analysis_internal_sha256": "c1f74dbfdeb3f83eee563f7e23beb80253389cb0f408a928535753a7bbafe0e6",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/11-5bbd01ffe812cda90446bcafa7f073b8/analysis.json",
+        "completion_sha256": "8712ed6211f7368e8062c9e2afcc1446ba1b58bc9557f7b8798d2aefe74952de",
+        "selected_arms_file_sha256": "efa8f7fd03b2bfc1a6762878157391b12d37bffe5d111a37bf0b589f6ff8635e",
+        "selected_arms_internal_sha256": "c5ebd5a8e84ac38b8c9a493b5c076586662044b8a9761206198c9cb3d8a17f44",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-2/11-5bbd01ffe812cda90446bcafa7f073b8/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.5440697073936462,
+          "answer": "Alaska",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.5440697073936462,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17587937792,
+          "result_sha256": "7222e7e7a3ea7b33298ebd1a5e5cf3e523d515af2ba7d0231db39e24e418f2c1"
+        },
+        "native_docprune": {
+          "alternative": -0.5402678847312927,
+          "answer": "Alaska",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.5402678847312927,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17571118592,
+          "result_sha256": "c898f03f58c292ec9c866b3d40f9e5b3f4c2fcf56b60611f10bd71aa8a6fc2be"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.5679384469985962,
+          "answer": "Alaska",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.5679384469985962,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17587937792,
+          "result_sha256": "8f29c890e2aca5316cfffab4f5e9ebe8ac70bfc0a3b1d7920956aeb1cd93a531"
+        },
+        "unpruned": {
+          "alternative": -0.5324728488922119,
+          "answer": "Alaska",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.5324728488922119,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17667509760,
+          "result_sha256": "c126b0d0bef54c3b2347c95d4f24b25d6d1c20c94698d6a11551c4054ab3ed43"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.040601733216034046,
+          "heldout_rmse": 0.022191746645379973,
+          "lds_spearman": 0.2789318589030201,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7570593518869381,
+          "minimum_defined": 0.6428571428571429,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.06665609372479556,
+          "heldout_rmse": 0.036299109077366803,
+          "lds_spearman": 0.8692816868167917,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_14",
+      "ordinal": 12,
+      "question_id": "e9fe583ce94693ec158210d74d8c9add",
+      "retention": {
+        "native_achieved_token_count": 2890,
+        "regional_achieved_token_count": 2890,
+        "regional_requested_token_count": 2890,
+        "regional_retained_fraction": 0.8240661534074708,
+        "visual_population": 3507
+      },
+      "source": {
+        "analysis_file_sha256": "c71679f347431cae85713a16df8cb5119f974d8f10feb140e8c91bf0e2bc8711",
+        "analysis_internal_sha256": "f5a1148618e899eba62d548ab72bd854561c720db5db0553401e1f388a07c4a2",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/12-e9fe583ce94693ec158210d74d8c9add/analysis.json",
+        "completion_sha256": "dd0cdfaaecbf1ba7eecdd1081a466077a1d8708b2f3004c9c5a194474f8a2ffa",
+        "selected_arms_file_sha256": "ac389fd90e21cb29a2ab10560bc92b671d7c42ae5aa14fd46d63c13fa73b396c",
+        "selected_arms_internal_sha256": "e78bbfcb518782a7e5a0962b10b045f0aa6bfd02372f8327784ca622dd6079dc",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/12-e9fe583ce94693ec158210d74d8c9add/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.004113927483558655,
+          "answer": "Koba Zakadze.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.004713463131338358,
+          "margin": -0.0005995356477797031,
+          "peak_allocated_gpu_bytes": 17692686336,
+          "result_sha256": "c5557eed41f733f44d6195a12eecfdd396769ee95a41b4ec1765491a51bdb701"
+        },
+        "native_docprune": {
+          "alternative": -0.003397803520783782,
+          "answer": "Koba Zakadze.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0037889189552515745,
+          "margin": -0.0003911154344677925,
+          "peak_allocated_gpu_bytes": 17692686336,
+          "result_sha256": "840e7c6e3d456407135cbc30872351247c4f28e5e781be7d61be5ac3df8271d6"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.0034400501754134893,
+          "answer": "Koba Zakadze.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.003897999180480838,
+          "margin": -0.0004579490050673485,
+          "peak_allocated_gpu_bytes": 17692686336,
+          "result_sha256": "0e10c789fd21a50faee9e65d01d3e849cfa4ff2e1d0aad15b2755091f8a1cb25"
+        },
+        "unpruned": {
+          "alternative": -0.0036155092529952526,
+          "answer": "Koba Zakadze.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.004075165372341871,
+          "margin": -0.00045965611934661865,
+          "peak_allocated_gpu_bytes": 17805955584,
+          "result_sha256": "babc32bb35eed90f914497e82b57357eb3356fe5055e914533317b18bf0714c0"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.02439582217739601,
+          "heldout_rmse": 0.023969899426544018,
+          "lds_spearman": 0.5685364037761362,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 1.0,
+          "minimum_defined": 1.0,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.03337519835688802,
+          "heldout_rmse": 0.03277944047464834,
+          "lds_spearman": 0.6341534022887589,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_14",
+      "ordinal": 13,
+      "question_id": "3fda3203bc60ec6179fe03e55f3d0698",
+      "retention": {
+        "native_achieved_token_count": 2741,
+        "regional_achieved_token_count": 2741,
+        "regional_requested_token_count": 2741,
+        "regional_retained_fraction": 0.6604819277108434,
+        "visual_population": 4150
+      },
+      "source": {
+        "analysis_file_sha256": "cf4569e7a2779d5d420263df7b1e5109f0104ac17d9981a74ce983440616c2ff",
+        "analysis_internal_sha256": "ee1b2a75a40e0110a39e0bb6021d39b879933485d36d21fe6ccd7918a938303a",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/13-3fda3203bc60ec6179fe03e55f3d0698/analysis.json",
+        "completion_sha256": "aa0f45c9d6cf4715055dbc2fc3d1ad6457a64feec7176736f57426e279f34076",
+        "selected_arms_file_sha256": "32302cbdcf491129c1aa14d18b309dd3eff96cb136085e08e605d57246de4637",
+        "selected_arms_internal_sha256": "3a41b49ccaaa11575970bf77d2bce3524ff893820214e34e2653fe341e0b5dcc",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/13-3fda3203bc60ec6179fe03e55f3d0698/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.06134403869509697,
+          "answer": "Trip hop.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.07795179635286331,
+          "margin": -0.016607757657766342,
+          "peak_allocated_gpu_bytes": 17886863360,
+          "result_sha256": "704bd6c2b28844d494290f6038b17abe672d18bb71fd4312d2d1d1b7a3e81c1d"
+        },
+        "native_docprune": {
+          "alternative": -0.12492813915014267,
+          "answer": "Trip hop.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.16717907786369324,
+          "margin": -0.04225093871355057,
+          "peak_allocated_gpu_bytes": 17886863360,
+          "result_sha256": "80dccd4c7a6a80296a174d38e6010ee3237f3029dc9efbba6cdea8ef8587d5ca"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.1575184315443039,
+          "answer": "Trip hop.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.20187808573246002,
+          "margin": -0.04435965418815613,
+          "peak_allocated_gpu_bytes": 17886863360,
+          "result_sha256": "985309a06ee2b6f27bf36ceeb7ec1d2160e60e2f4281bded413f4682ab4a1159"
+        },
+        "unpruned": {
+          "alternative": -0.13856714963912964,
+          "answer": "Trip hop.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.18770194053649902,
+          "margin": -0.049134790897369385,
+          "peak_allocated_gpu_bytes": 18003468288,
+          "result_sha256": "7e80d03c73a36240ec2a44572f73b06d9215a0df70d9b3ec2874874c5f829caa"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.26731368264677235,
+          "heldout_rmse": 0.22936218192991872,
+          "lds_spearman": 0.4655425219941348,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6339367857174766,
+          "minimum_defined": 0.5081967213114754,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.4073625356668504,
+          "heldout_rmse": 0.29759213826691133,
+          "lds_spearman": 0.504765395894428,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_16",
+      "ordinal": 14,
+      "question_id": "a8fa12306d849d5276dbf335d9baa235",
+      "retention": {
+        "native_achieved_token_count": 2536,
+        "regional_achieved_token_count": 2536,
+        "regional_requested_token_count": 2536,
+        "regional_retained_fraction": 0.4964761158966327,
+        "visual_population": 5108
+      },
+      "source": {
+        "analysis_file_sha256": "1f9366076247d2c4c0ec95cfebc04719442c622cf34858f86bdeb56e68ca8ce9",
+        "analysis_internal_sha256": "8ec233e63ce30f9bb2b1c3a200450ee7dc3e0e01975bb7b7fb19f73df19edcee",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/14-a8fa12306d849d5276dbf335d9baa235/analysis.json",
+        "completion_sha256": "da497bf42d1acb0e10bb4ef2185f2da366859fdefa39feafa31de1d02aec30c3",
+        "selected_arms_file_sha256": "da25c2c97e59edb5f278847756ab42111c0708e2c6adaadb3d005a06418a80d5",
+        "selected_arms_internal_sha256": "0568a195ba32ce23e07c504de3c4a7a610032467d9f51366ecc4d2d16c29cf96",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/14-a8fa12306d849d5276dbf335d9baa235/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.0975220799446106,
+          "answer": "Elena",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0975220799446106,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18018104832,
+          "result_sha256": "459aaadb02359978f8a01e5dc4fb1dfde891f72b3f7cd1218718b8c0ca34046b"
+        },
+        "native_docprune": {
+          "alternative": -0.2654152810573578,
+          "answer": "Elena",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.2654152810573578,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18018104832,
+          "result_sha256": "0cbc2f155406119d7523759b877f957806c6e36d3aea052617c010f947de7789"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.2800751328468323,
+          "answer": "Elena",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.2800751328468323,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18018104832,
+          "result_sha256": "2c0c35dd271818d501ce2e5e713fb354ca09f661215521e8ad691134f358be63"
+        },
+        "unpruned": {
+          "alternative": -0.24470244348049164,
+          "answer": "Elena",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.24470244348049164,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18178688512,
+          "result_sha256": "5985ba5b25c4f1e91e717fc35230e595d1cbf7023143f7bc5603070fb2e94971"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.2892146071793289,
+          "heldout_rmse": 0.16780336333171408,
+          "lds_spearman": 0.6565249266862169,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5460880788422448,
+          "minimum_defined": 0.4576271186440678,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.2714668608859724,
+          "heldout_rmse": 0.1658363178471861,
+          "lds_spearman": 0.8038856304985336,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_14",
+      "ordinal": 15,
+      "question_id": "8b97eae2bb949152ee88a536e83967b6",
+      "retention": {
+        "native_achieved_token_count": 3460,
+        "regional_achieved_token_count": 3460,
+        "regional_requested_token_count": 3460,
+        "regional_retained_fraction": 0.5812195531664707,
+        "visual_population": 5953
+      },
+      "source": {
+        "analysis_file_sha256": "41bc5412c27d218b69545b5c5f505bf1e5c66bceb6658678701e2c8d2911fa87",
+        "analysis_internal_sha256": "51e35380d9d05171d1116d0e034680dd165885b0595d36858949796f07d5b6e5",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/15-8b97eae2bb949152ee88a536e83967b6/analysis.json",
+        "completion_sha256": "427cbc93b5daa31d68b640909d579312da6dc0d9fb2c184272a5a909087b7744",
+        "selected_arms_file_sha256": "b7a99f3c967f0a83b5e35fbdb49136ef6241313a57d6c3d21037ada68063ddad",
+        "selected_arms_internal_sha256": "fe61e579a497316484b2bbf6abd8e6352b66681af4b6bd5e4042357ae8d45358",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-3/15-8b97eae2bb949152ee88a536e83967b6/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.38763412833213806,
+          "answer": "Sarah",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.38763412833213806,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17955370496,
+          "result_sha256": "51a6da2aec458d772f9759a87bb4a7dc4c6896cdc06916fb3f1102667abf4c19"
+        },
+        "native_docprune": {
+          "alternative": -0.5659157037734985,
+          "answer": "Sarah",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.5659157037734985,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17955370496,
+          "result_sha256": "0d59ce0aa1465b99edd6dca106dad8f5396558964b489530aea6a8f681ae00ce"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.4243992865085602,
+          "answer": "Sarah",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.4243992865085602,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17955370496,
+          "result_sha256": "b0f7f5ec9957df31ac17a592569ca79af1dcb2d8189f81ebf0dd5129df472f67"
+        },
+        "unpruned": {
+          "alternative": -0.42803576588630676,
+          "answer": "Sarah",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.42803576588630676,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18104905728,
+          "result_sha256": "698609e42605fc06d9049100e4a8ee39e1194fd4fa2d8d33edf50c1f43abcc5a"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.14739624514843638,
+          "heldout_rmse": 0.05841747431979274,
+          "lds_spearman": 0.7130418873316257,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7141705151180957,
+          "minimum_defined": 0.59375,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.16997043571302525,
+          "heldout_rmse": 0.0905224998406402,
+          "lds_spearman": 0.8258797653958942,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_14",
+      "ordinal": 16,
+      "question_id": "113b374349b9e086687eaff26cc425e0",
+      "retention": {
+        "native_achieved_token_count": 3585,
+        "regional_achieved_token_count": 3585,
+        "regional_requested_token_count": 3585,
+        "regional_retained_fraction": 0.6399500178507675,
+        "visual_population": 5602
+      },
+      "source": {
+        "analysis_file_sha256": "f906f86e4e3497d813d2cd092f215cff3b4eae08e69209568f7f4bb31c6066ae",
+        "analysis_internal_sha256": "df32eccf07ccc368b090be18739dac5651b8d838b7dddd8cadfbfa721fa8fbbb",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/16-113b374349b9e086687eaff26cc425e0/analysis.json",
+        "completion_sha256": "ca8178cc27d53b027b8419d2a454a0e4e56f0320601e17a8463af21f1afe2c60",
+        "selected_arms_file_sha256": "048d16efd081b9420e59e6503db76d65f06dfe284d53d65c0bedb681ff42f2e1",
+        "selected_arms_internal_sha256": "b46a4c60029ab6b790bfdf001b67f433b58c176550c0fec2afcd04dbd10e0d12",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/16-113b374349b9e086687eaff26cc425e0/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.04465916380286217,
+          "answer": "SC Neuenheim.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.05422405153512955,
+          "margin": -0.00956488773226738,
+          "peak_allocated_gpu_bytes": 17756714496,
+          "result_sha256": "24719354f8425ecf3f5764f2d60823ce29ff461e5778e7d35c41f88503b5f2e5"
+        },
+        "native_docprune": {
+          "alternative": -0.06845130771398544,
+          "answer": "SC Neuenheim.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.08429098129272461,
+          "margin": -0.015839673578739166,
+          "peak_allocated_gpu_bytes": 17756714496,
+          "result_sha256": "6b1ddd09fa5bda5c369a234ba49bdf62324fc89280c58bbe681a8d48f924f42a"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.034549422562122345,
+          "answer": "SC Neuenheim.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0422259196639061,
+          "margin": -0.0076764971017837524,
+          "peak_allocated_gpu_bytes": 17756714496,
+          "result_sha256": "61590d24905c8734fc7260078ae19b2402dc78efaeecb10625622ba3786a9a64"
+        },
+        "unpruned": {
+          "alternative": -0.049489568918943405,
+          "answer": "SC Neuenheim.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.06062557175755501,
+          "margin": -0.011136002838611603,
+          "peak_allocated_gpu_bytes": 17857073664,
+          "result_sha256": "2e8fcac709beeb0e1424e5ee2467035222050797c55a8ae92bf8a8d8475cc173"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.01955633893689204,
+          "heldout_rmse": 0.014630657679163939,
+          "lds_spearman": 0.7410594513663752,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 1.0,
+          "minimum_defined": 1.0,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.03613113237907253,
+          "heldout_rmse": 0.03154840804423681,
+          "lds_spearman": 0.6431836747708163,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_16",
+      "ordinal": 17,
+      "question_id": "92960b03398d2440a997a243f4e66378",
+      "retention": {
+        "native_achieved_token_count": 2950,
+        "regional_achieved_token_count": 2950,
+        "regional_requested_token_count": 2950,
+        "regional_retained_fraction": 0.6701499318491595,
+        "visual_population": 4402
+      },
+      "source": {
+        "analysis_file_sha256": "8e423ab3ef2a6afbffbed3450c6ccf06a6c464c4c413601315337d812bb44527",
+        "analysis_internal_sha256": "674ab8edbef52a4f8239db68bf7e869226abad7b47f5aedc94ff71df40fba681",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/17-92960b03398d2440a997a243f4e66378/analysis.json",
+        "completion_sha256": "8cf45bbcaec039cb691bca00f2a96ecab75f775d290f483dd9067575079a241a",
+        "selected_arms_file_sha256": "780d84ebf02acc4f4725cacea8babfc2cdd9baefb0dbffbc2ea26b5d17c21ff0",
+        "selected_arms_internal_sha256": "5cfccd69585df7718903a1e710bcdb2d666c7e3fa40595905fb14c5b1ebd5ceb",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/17-92960b03398d2440a997a243f4e66378/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.0663529559969902,
+          "answer": "Rugby",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.9082545638084412,
+          "margin": -0.841901607811451,
+          "peak_allocated_gpu_bytes": 17619437056,
+          "result_sha256": "472eb03c99c9c9b643f2cff0c9b0aed76361430421c54f795840d8819b4b9ec6"
+        },
+        "native_docprune": {
+          "alternative": -0.04859326034784317,
+          "answer": "Rugby",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.0697661638259888,
+          "margin": -1.0211729034781456,
+          "peak_allocated_gpu_bytes": 17619437056,
+          "result_sha256": "223d7478d985af10112cd9426cbfd8cca7a9cc1decfaf44c11066aee0ab5be42"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.04871548339724541,
+          "answer": "Rugby",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.0699586868286133,
+          "margin": -1.0212432034313679,
+          "peak_allocated_gpu_bytes": 17619437056,
+          "result_sha256": "9868771d9dfab67629a93c02d86479db0854db65314a17d601f378df99e180a7"
+        },
+        "unpruned": {
+          "alternative": -0.05404379218816757,
+          "answer": "Rugby",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.0156034231185913,
+          "margin": -0.9615596309304237,
+          "peak_allocated_gpu_bytes": 17720223744,
+          "result_sha256": "883a39e5fb7cdb4b359210a099af8699298857e7b21d04cfba0665fbe2ed8429"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.09969759764323631,
+          "heldout_rmse": 0.10623439488399063,
+          "lds_spearman": 0.45637829912023453,
+          "rmse_beats_constant": false
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.611013671146911,
+          "minimum_defined": 0.5098039215686274,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.8380961030315434,
+          "heldout_rmse": 0.816971014503158,
+          "lds_spearman": 0.4970674486803518,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_14",
+      "ordinal": 18,
+      "question_id": "2e7fa01a2e1cc5b43f3adf8e44d82d76",
+      "retention": {
+        "native_achieved_token_count": 2897,
+        "regional_achieved_token_count": 2897,
+        "regional_requested_token_count": 2897,
+        "regional_retained_fraction": 0.7696599362380446,
+        "visual_population": 3764
+      },
+      "source": {
+        "analysis_file_sha256": "5144981057c3467c71e35299e261b9856ae7ec2f2fb0b645c958b4722125b903",
+        "analysis_internal_sha256": "8b6559d2f912a3fb5ac1679c61e63fdead68c62eb78fccbb762e5fcf291777fa",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/18-2e7fa01a2e1cc5b43f3adf8e44d82d76/analysis.json",
+        "completion_sha256": "02051f1d25edbb8fd247ddbe35af82c2c598bcce6a5e6ed4d1cba2a6874ca969",
+        "selected_arms_file_sha256": "3a7bcceca371c725448f7fce92565fc3c262a236b74909f7026eb8dc3f85857a",
+        "selected_arms_internal_sha256": "c27c5cef4d30bb7974d4e8506573cdd8e16f0e2177d9f7f43ca0bcf57e8c27ac",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/18-2e7fa01a2e1cc5b43f3adf8e44d82d76/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.29579904675483704,
+          "answer": "Gloves",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.804560124874115,
+          "margin": -0.508761078119278,
+          "peak_allocated_gpu_bytes": 17526955520,
+          "result_sha256": "2d135b732815918ca16097d7c46e962da90009d1f1cdbd9be650e8db051e913b"
+        },
+        "native_docprune": {
+          "alternative": -0.30190712213516235,
+          "answer": "Gloves",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.8955876231193542,
+          "margin": -0.5936805009841919,
+          "peak_allocated_gpu_bytes": 17514586624,
+          "result_sha256": "4ae29a2bc069ee5559f2601303b78fb1a86509676d2c30cda8def09dec5a803c"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.29215091466903687,
+          "answer": "Gloves",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.9102938175201416,
+          "margin": -0.6181429028511047,
+          "peak_allocated_gpu_bytes": 17526955520,
+          "result_sha256": "e335650d1d9a4788bda33cdeab7fb18dd3d3c71fe301fe0fc9ea050dfcdf584d"
+        },
+        "unpruned": {
+          "alternative": -0.28850507736206055,
+          "answer": "Gloves",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.9047021865844727,
+          "margin": -0.6161971092224121,
+          "peak_allocated_gpu_bytes": 17594429952,
+          "result_sha256": "115bd89b0afec25e8eae8519ce0cf8a57747f26bd75dcc1c4e8972a5d77ee9c0"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.03213437349514172,
+          "heldout_rmse": 0.024455831058664165,
+          "lds_spearman": 0.606773081058391,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.9027043800916752,
+          "minimum_defined": 0.859375,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.06192363188071262,
+          "heldout_rmse": 0.04814395233810146,
+          "lds_spearman": 0.623567299491401,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A100-SXM4-40GB",
+      "forced_boundary": "B_15",
+      "ordinal": 19,
+      "question_id": "d088c84d89e29777cfa9dc280a2b4049",
+      "retention": {
+        "native_achieved_token_count": 2622,
+        "regional_achieved_token_count": 2622,
+        "regional_requested_token_count": 2622,
+        "regional_retained_fraction": 0.828436018957346,
+        "visual_population": 3165
+      },
+      "source": {
+        "analysis_file_sha256": "d5b2e8d135a12f5a085b95c4f293c30904be3d011f70000fd39ff62178c8fd86",
+        "analysis_internal_sha256": "30225a9c58cf4bdc36711cbcb9a238c685fabdca3c4a29aa0c242b9d863f5a87",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/19-d088c84d89e29777cfa9dc280a2b4049/analysis.json",
+        "completion_sha256": "7a04ab8118b17e5006495ea112b20f59d663d97915571c7a2f78e918f20fbff3",
+        "selected_arms_file_sha256": "b46a8de4cada582526b7f23075e2960f82210b8702390e2ef7881eb5ced701a7",
+        "selected_arms_internal_sha256": "6767f58acd682c06edc34112f4add0530c3a04267e10454f3cda75c442bc2c6f",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-4/19-d088c84d89e29777cfa9dc280a2b4049/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.002936516422778368,
+          "answer": "September 11, 1985.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.002451693406328559,
+          "margin": 0.0004848230164498091,
+          "peak_allocated_gpu_bytes": 17785433088,
+          "result_sha256": "9f814d90dbe75c88323ebbaec45035b69d17ee17dfaf0bffe24190265973b437"
+        },
+        "native_docprune": {
+          "alternative": -0.003382120281457901,
+          "answer": "September 11, 1985.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0029313904233276844,
+          "margin": 0.0004507298581302166,
+          "peak_allocated_gpu_bytes": 17785433088,
+          "result_sha256": "aa4aed72b3cab98c9323b07c293c516e668d822fd35724450076b3545f7c74c3"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.002983593847602606,
+          "answer": "September 11, 1985.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.002653233241289854,
+          "margin": 0.00033036060631275177,
+          "peak_allocated_gpu_bytes": 17785433088,
+          "result_sha256": "31e89e597eed932a433e90045c55685d94255c04e797debc6a7bfed910ea8aaf"
+        },
+        "unpruned": {
+          "alternative": -0.0033725169487297535,
+          "answer": "September 11, 1985.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.0030068596825003624,
+          "margin": 0.0003656572662293911,
+          "peak_allocated_gpu_bytes": 17911258112,
+          "result_sha256": "e950148734cee256ac71ffd7f33016d546077e92946f2b3e30f08d4233e28cba"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.49841616579915055,
+          "heldout_rmse": 0.37588592900715895,
+          "lds_spearman": 0.6378299120234603,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6430511443972858,
+          "minimum_defined": 0.5945945945945946,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.5646853860607477,
+          "heldout_rmse": 0.36960724868298706,
+          "lds_spearman": 0.8416422287390027,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 20,
+      "question_id": "686431dbd950693cd0aa0b9d01f4c074",
+      "retention": {
+        "native_achieved_token_count": 3023,
+        "regional_achieved_token_count": 3023,
+        "regional_requested_token_count": 3023,
+        "regional_retained_fraction": 0.6499677488712104,
+        "visual_population": 4651
+      },
+      "source": {
+        "analysis_file_sha256": "8312b8bc8bb15459f54f2306f182848ce5754bfb300c0e4eb290e440797ce9ce",
+        "analysis_internal_sha256": "b7f095b4d5616513cce30ee886123294f6a2410a79a29a50abc9968d015a881d",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-5/20-686431dbd950693cd0aa0b9d01f4c074/analysis.json",
+        "completion_sha256": "f1e5e106199ff54663065faf9341a1db3fd8f9bc96841b89095d4fcf5e9d8454",
+        "selected_arms_file_sha256": "ccd6b59a344779f66d12fc1c245c041c80935bac74b20307fd3b377627cf8021",
+        "selected_arms_internal_sha256": "1356592fe67dc7b2d08ab2c6f9da6bfc3db2fb0737986b84e458514c9f9a45ea",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-5/20-686431dbd950693cd0aa0b9d01f4c074/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.1700647920370102,
+          "answer": "Chicago",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.1700647920370102,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17666537472,
+          "result_sha256": "c3cafa204c4a418bd6dcbf2828ed22e90bd2411426861a1002d2698882832553"
+        },
+        "native_docprune": {
+          "alternative": -0.23819662630558014,
+          "answer": "Chicago",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.23819662630558014,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17666537472,
+          "result_sha256": "f1f27269af589f4d78da9dbba277293a6f296a6414282d2882630b3475fbbe07"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.25901535153388977,
+          "answer": "Chicago",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.25901535153388977,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17666537472,
+          "result_sha256": "6be0b64bf41ab96f05fc0c06567bde159a9bb431be13f1e3520f0fa2e8fbbff0"
+        },
+        "unpruned": {
+          "alternative": -0.21420691907405853,
+          "answer": "Chicago",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.21420691907405853,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17775337472,
+          "result_sha256": "12b1754a07b73e0fe9486ef7828c05e75ee53b87f526026ab232d082057c5989"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 4.861664475378312,
+          "heldout_rmse": 0.5377515286420506,
+          "lds_spearman": 0.8826979472140761,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.47920420192833985,
+          "minimum_defined": 0.41379310344827586,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 5.017499728262356,
+          "heldout_rmse": 0.8443039095437889,
+          "lds_spearman": 0.9248533724340174,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 21,
+      "question_id": "47a31887994e63786bfef6ffb8c14fe9",
+      "retention": {
+        "native_achieved_token_count": 2708,
+        "regional_achieved_token_count": 2708,
+        "regional_requested_token_count": 2708,
+        "regional_retained_fraction": 0.675143355771628,
+        "visual_population": 4011
+      },
+      "source": {
+        "analysis_file_sha256": "435e727d9bc928d57bac081b521e96d9aa42b90d3cd971656c979ed5c8885381",
+        "analysis_internal_sha256": "36a633df13b7f545b7663a2a028a042f9ed92e3ea9b8a7f25a30ce75996cd56d",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-5/21-47a31887994e63786bfef6ffb8c14fe9/analysis.json",
+        "completion_sha256": "89cb7bd4d134fd353cf19259c67d78f77c5d9d7215c8d3944efa7e27d58b60b2",
+        "selected_arms_file_sha256": "27ff8651ebe36fd9047d7419a2b8649d089833dd02bfa0279b68cb01a5a59b85",
+        "selected_arms_internal_sha256": "10a83263b59a050066557368cdaa2f5192e1c5843c2db16284520b8e8e3bb08d",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-5/21-47a31887994e63786bfef6ffb8c14fe9/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -1.1651808023452759,
+          "answer": "Black",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -2.6651806831359863,
+          "margin": -1.4999998807907104,
+          "peak_allocated_gpu_bytes": 17563159040,
+          "result_sha256": "547be6afc44d23275fa830f1736d8fb1d6f728471292ddbcac583e116777c7ee"
+        },
+        "native_docprune": {
+          "alternative": -1.5899642705917358,
+          "answer": "Black",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -3.0274643898010254,
+          "margin": -1.4375001192092896,
+          "peak_allocated_gpu_bytes": 17543204864,
+          "result_sha256": "b62fde2aeb4a22024ad9bf8d9b97a616f752002016d647358116b692a353c0a9"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.5916482210159302,
+          "answer": "Black",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -2.9666481018066406,
+          "margin": -1.3749998807907104,
+          "peak_allocated_gpu_bytes": 17563159040,
+          "result_sha256": "ce23ff46081a13e9ee4fb619b9fa1e3f4246cade62a8cfc94a3e1a15ec267698"
+        },
+        "unpruned": {
+          "alternative": -1.5688012838363647,
+          "answer": "Black",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -3.0063014030456543,
+          "margin": -1.4375001192092896,
+          "peak_allocated_gpu_bytes": 17631736832,
+          "result_sha256": "ff3c29265f452bca18ff30ea92307a45f4c427a2691bf0890dce42c8c5dbc15f"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.17129833809342462,
+          "heldout_rmse": 0.07063678064965528,
+          "lds_spearman": 0.6260997067448679,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.8927794354383914,
+          "minimum_defined": 0.7796610169491526,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.18781766511808554,
+          "heldout_rmse": 0.0948288669917041,
+          "lds_spearman": 0.8218475073313781,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 22,
+      "question_id": "3116ad06bfe68bb544de4ce3f77d911f",
+      "retention": {
+        "native_achieved_token_count": 2781,
+        "regional_achieved_token_count": 2781,
+        "regional_requested_token_count": 2781,
+        "regional_retained_fraction": 0.8303971334726784,
+        "visual_population": 3349
+      },
+      "source": {
+        "analysis_file_sha256": "19027132f97ac0feddf431aedd5bdb2affcd520b2f4293b00d354d09ff03be56",
+        "analysis_internal_sha256": "1b44ff10a4fad4e0c0cb2ee9d9171f4849b07ec1455fda02d8c798169dfa7f38",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/22-3116ad06bfe68bb544de4ce3f77d911f/analysis.json",
+        "completion_sha256": "4a7e2de0594eea33defe072e6749a7615733f61ff7504e2cdc0d3cb68e13df08",
+        "selected_arms_file_sha256": "7f895878b00f1dc00c47c674abeaf037d8065d760428193b3121112420087a85",
+        "selected_arms_internal_sha256": "777d65a3843da9082267a2b70306c400bcf4334d8c51cf3a2ae51bbd95cb78ac",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/22-3116ad06bfe68bb544de4ce3f77d911f/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_support": {
+          "alternative": -0.018687676638364792,
+          "answer": "James Brown",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.018687676638364792,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17906338816,
+          "result_sha256": "767a43072e9f8350b0c03283c2a37f3fc2f0e6dace2db6e15942f16fc0b0bf00"
+        },
+        "native_docprune": {
+          "alternative": -0.01547965221107006,
+          "answer": "James Brown",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.01547965221107006,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17906338816,
+          "result_sha256": "b03b514fc857be5b24f4a09658398ec54a14472660366c39c6d4f8330110e42d"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.015124046243727207,
+          "answer": "James Brown",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.015124046243727207,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 17906338816,
+          "result_sha256": "8fc56a9156f1f3f127bcb87b40e450af70e450aa2cc9d0846158997f25317165"
+        },
+        "unpruned": {
+          "alternative": -0.013854896649718285,
+          "answer": "James Brown",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.013854896649718285,
+          "margin": 0.0,
+          "peak_allocated_gpu_bytes": 18051516416,
+          "result_sha256": "c297c608dad2f01b3033a83d818dd5bf179b3f3be7e125476aa95e915cbe9df5"
+        }
+      },
+      "baseline_correct": true,
+      "baseline_stratum": "baseline_correct",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.061154700716954176,
+          "heldout_rmse": 0.060624411229922744,
+          "lds_spearman": 0.6752199413489735,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6540297752626946,
+          "minimum_defined": 0.5892857142857143,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.16921538477906678,
+          "heldout_rmse": 0.13593751572688675,
+          "lds_spearman": 0.4651759530791788,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 23,
+      "question_id": "539ed6e80ce2a3722b3533e4fd1e7a85",
+      "retention": {
+        "native_achieved_token_count": 3728,
+        "regional_achieved_token_count": 3728,
+        "regional_requested_token_count": 3728,
+        "regional_retained_fraction": 0.6976047904191617,
+        "visual_population": 5344
+      },
+      "source": {
+        "analysis_file_sha256": "f66fceae85c8aef58bcad447fe61275d921de1a82caee70a82cebaa68687db6a",
+        "analysis_internal_sha256": "4c0069a240ddccb50fb07aa1bc27a4a3bd573ded3974166f77c26f0ac2b344ce",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/23-539ed6e80ce2a3722b3533e4fd1e7a85/analysis.json",
+        "completion_sha256": "abde27cf9719d93b690c17bb956cd580e9e962d2150b55c17df1bc0ae24d4646",
+        "selected_arms_file_sha256": "f1c820e959b899e54e8ce4edddb75be9fb6c9acabd704df5885635934f2c8ec4",
+        "selected_arms_internal_sha256": "fff5dd46e88032e211a70b74260ceba3afa8fd80d3bfdbd7213f954e6a2cc894",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/23-539ed6e80ce2a3722b3533e4fd1e7a85/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.8214253783226013,
+          "answer": "Kallang Stadium",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.6858050227165222,
+          "margin": 0.1356203556060791,
+          "peak_allocated_gpu_bytes": 17525755904,
+          "result_sha256": "a1da68bdc6699a2d79cf8c33bbcb104b5932dac64e6f82d4b70a8a20508d3ff5"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.7850309610366821,
+          "answer": "Kallang Stadium",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.6606237292289734,
+          "margin": 0.12440723180770874,
+          "peak_allocated_gpu_bytes": 17525755904,
+          "result_sha256": "0f520e8801b5ef53011f1b55d4be75db31aed0c7d23c1e34e723b20640a5587c"
+        },
+        "native_docprune": {
+          "alternative": -0.3465029299259186,
+          "answer": "Kallang Stadium",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.9508604407310486,
+          "margin": -0.60435751080513,
+          "peak_allocated_gpu_bytes": 17510379520,
+          "result_sha256": "15c741ddc48ebeba85af423dc3b5964a441e42dc4083bc9ca0e55871519eb328"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.36933910846710205,
+          "answer": "Kallang Stadium",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.9325407147407532,
+          "margin": -0.5632016062736511,
+          "peak_allocated_gpu_bytes": 17525755904,
+          "result_sha256": "7f5bcaef7bacd77bd5dc5eb0cbe1e577c3d25ac2b13ac2462d5bb7d8a351f46f"
+        },
+        "unpruned": {
+          "alternative": -0.344311386346817,
+          "answer": "Kallang Stadium",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.9621960520744324,
+          "margin": -0.6178846657276154,
+          "peak_allocated_gpu_bytes": 17596809728,
+          "result_sha256": "c6852f901d6c1ef634b0cbce34ebf9525f4ca9d56356fa6af897a6a0054da93c"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.10118545187574188,
+          "heldout_rmse": 0.06789636648908307,
+          "lds_spearman": 0.7096774193548386,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.8337886570231454,
+          "minimum_defined": 0.7840909090909091,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.13643004630958017,
+          "heldout_rmse": 0.08210285373795324,
+          "lds_spearman": 0.8753665689149559,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 24,
+      "question_id": "c6952949da6dae986391015dee092555",
+      "retention": {
+        "native_achieved_token_count": 2606,
+        "regional_achieved_token_count": 2606,
+        "regional_requested_token_count": 2606,
+        "regional_retained_fraction": 0.8236409608091024,
+        "visual_population": 3164
+      },
+      "source": {
+        "analysis_file_sha256": "9741ae2f207fb1ac4bcf15c23603d0fdda0e724a804eb0e152a21a42eac3ae7d",
+        "analysis_internal_sha256": "f4ba45ad5bc809078ba2826c0e8a25f894f7408dcfaf4ebf49a35c49b94d1f74",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-6/24-c6952949da6dae986391015dee092555/analysis.json",
+        "completion_sha256": "aea453135e22b50fd857de5205bf727631e858265c364bf8dda2209fdf270f3b",
+        "selected_arms_file_sha256": "7212d110b6523950bda4a4484d5f0f38c327749cdd16b2302dafa72c46fdcac3",
+        "selected_arms_internal_sha256": "d883fe780801ac83e316f136081a4b3f92dd2c38158203bcd951887c5fc1eb16",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-6/24-c6952949da6dae986391015dee092555/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -2.5886969566345215,
+          "answer": "Lillehammer",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.4058202505111694,
+          "margin": 1.182876706123352,
+          "peak_allocated_gpu_bytes": 17752164864,
+          "result_sha256": "e48a47b5ba2fe6d22646a74dad5995cf190fcb51a0856651b9b37eb7c15b3a4e"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.5666041374206543,
+          "answer": "Lillehammer",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.0971217155456543,
+          "margin": 1.469482421875,
+          "peak_allocated_gpu_bytes": 17752164864,
+          "result_sha256": "d06e50c54b27c88ce0a4542d03bd1c3d6b8d465389b60bf04256c3005c7108f4"
+        },
+        "native_docprune": {
+          "alternative": -0.24151411652565002,
+          "answer": "Calgary",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.8567988872528076,
+          "margin": -1.6152847707271576,
+          "peak_allocated_gpu_bytes": 17752164864,
+          "result_sha256": "d885964714578381c37b12a11d85ff28cd51a10e2e7bd69f629afb0e54e32476"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.176712766289711,
+          "answer": "Calgary",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.17290997505188,
+          "margin": -1.9961972087621689,
+          "peak_allocated_gpu_bytes": 17752164864,
+          "result_sha256": "d839139a1b2ccdebdce09cf59b2b966928eabbe2a1c88ca0a28d3d785e47f232"
+        },
+        "unpruned": {
+          "alternative": -0.23631945252418518,
+          "answer": "Calgary",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.7763200998306274,
+          "margin": -1.5400006473064423,
+          "peak_allocated_gpu_bytes": 17872669184,
+          "result_sha256": "17ab8bee03646129c62461e91b657b3d59701349aa0f5d4c5eeb2133a48e5e07"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.3238728306298369,
+          "heldout_rmse": 0.10435906261113795,
+          "lds_spearman": 0.9552785923753664,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5229594653467176,
+          "minimum_defined": 0.4358974358974359,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.29823131466603386,
+          "heldout_rmse": 0.1301848081473538,
+          "lds_spearman": 0.9226539589442814,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 25,
+      "question_id": "bf78b88d5a21f31e0851b07066c76442",
+      "retention": {
+        "native_achieved_token_count": 2785,
+        "regional_achieved_token_count": 2785,
+        "regional_requested_token_count": 2785,
+        "regional_retained_fraction": 0.617653581725438,
+        "visual_population": 4509
+      },
+      "source": {
+        "analysis_file_sha256": "d6f371a74d1656bd87b5779754c0a3c5ff3d21e0636a6b2cc04f154c4f43b3b2",
+        "analysis_internal_sha256": "018a847149de713482a1cee7763872f53910d7e038eb1a53d35d2f846814aa7b",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-6/25-bf78b88d5a21f31e0851b07066c76442/analysis.json",
+        "completion_sha256": "48b2399f5bbf53da5fd66ac62a1ddc894c02ddd0681f1cd329138a5c9f9c4781",
+        "selected_arms_file_sha256": "f3f3e667d99fd900aa1bd686fa4ceedf0b88e13a2a46fa23833b8df6e94f9370",
+        "selected_arms_internal_sha256": "c6580cc5dd03aca039981eadf008134e37353081f32067529324f4199ca21b68",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-6/25-bf78b88d5a21f31e0851b07066c76442/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -1.5949031114578247,
+          "answer": "beard",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.0545673370361328,
+          "margin": 0.5403357744216919,
+          "peak_allocated_gpu_bytes": 17653308928,
+          "result_sha256": "8de7a5982be0ae6bc79c133eecbc75c2b68fea404b222c2fe03657fef73365b8"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.118127465248108,
+          "answer": "beard",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.7977287769317627,
+          "margin": 0.3203986883163452,
+          "peak_allocated_gpu_bytes": 17653308928,
+          "result_sha256": "2312fbf4ba95b73c941c1bd0e7f229b91700fab4c13e60b193079b20b0826005"
+        },
+        "native_docprune": {
+          "alternative": -0.9477576017379761,
+          "answer": "Mustache",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.9283461570739746,
+          "margin": 0.019411444664001465,
+          "peak_allocated_gpu_bytes": 17653308928,
+          "result_sha256": "b31f38a1d4b5efbb081645532d0b2636326ac31ba29da2ff20e89e3a8ebfe4a0"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.8718748688697815,
+          "answer": "Mustache",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.976531445980072,
+          "margin": -0.10465657711029053,
+          "peak_allocated_gpu_bytes": 17653308928,
+          "result_sha256": "479582b8a0d702bdd959a926636b77d4dddb7be82e3b604013c52d95edd76278"
+        },
+        "unpruned": {
+          "alternative": -0.9085862040519714,
+          "answer": "Mustache",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.920454204082489,
+          "margin": -0.011868000030517578,
+          "peak_allocated_gpu_bytes": 17759288832,
+          "result_sha256": "ca1582c1f78652bd6a32f60974d1d7d0265fe6bfe89a1d7439cf2948d7197500"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.12234641710448822,
+          "heldout_rmse": 0.07250314832247327,
+          "lds_spearman": 0.754032258064516,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6799849170437405,
+          "minimum_defined": 0.6,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.1160522908534903,
+          "heldout_rmse": 0.05711303330711475,
+          "lds_spearman": 0.9277859237536655,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 26,
+      "question_id": "3369d59ffc3d22c62e0bfa048a9cea21",
+      "retention": {
+        "native_achieved_token_count": 2504,
+        "regional_achieved_token_count": 2504,
+        "regional_requested_token_count": 2504,
+        "regional_retained_fraction": 0.6348884381338742,
+        "visual_population": 3944
+      },
+      "source": {
+        "analysis_file_sha256": "e33eff45ef90d81a3bc1ed0beb1a2974de1a0b19a3d81e6099597a7ff90c30d4",
+        "analysis_internal_sha256": "5862ba5d1d5aecd84a072bb2c5ad39a43bc8d2495b449aa8d1d55220ca6ae484",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/26-3369d59ffc3d22c62e0bfa048a9cea21/analysis.json",
+        "completion_sha256": "37c2cb8e001248ab1f984aab6f8ab6a8f32459f29e902dba8a69d93138d8c7ac",
+        "selected_arms_file_sha256": "07cd1bf71e7283de300c8fbb7c202c36d506ea72beb9cf207db1c9f75c14c073",
+        "selected_arms_internal_sha256": "dbf561d0b404b1fbd627ce2a5d1b6a3d956684c41a5698200b35269d72353410",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/26-3369d59ffc3d22c62e0bfa048a9cea21/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -1.4009371995925903,
+          "answer": "smile",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -1.1574461460113525,
+          "margin": 0.2434910535812378,
+          "peak_allocated_gpu_bytes": 17773874176,
+          "result_sha256": "8eadda438b5eb29e16007e2f0c9ae71ef2e7cb5d310e678b3036206de0467c9b"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.1222158670425415,
+          "answer": "Smiling",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.2444080114364624,
+          "margin": -0.1221921443939209,
+          "peak_allocated_gpu_bytes": 17773874176,
+          "result_sha256": "2b5a49f916387eec306be834f63a0d9c399006e109248509a0fe32d2a5b0221b"
+        },
+        "native_docprune": {
+          "alternative": -1.2893867492675781,
+          "answer": "Smiling",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.552596092224121,
+          "margin": -0.26320934295654297,
+          "peak_allocated_gpu_bytes": 17773874176,
+          "result_sha256": "cee0ec67e10c333b0d8234f9be0f6f5a5847431a24ff1679e120d5468b84f57c"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.2406069040298462,
+          "answer": "Smiling",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.440260410308838,
+          "margin": -0.1996535062789917,
+          "peak_allocated_gpu_bytes": 17773874176,
+          "result_sha256": "188db5b98ea3ea014e219a01ea7e7e494e428bbb2175ac6d7e82a66a9578caee"
+        },
+        "unpruned": {
+          "alternative": -1.2580500841140747,
+          "answer": "Smiling",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.5775907039642334,
+          "margin": -0.3195406198501587,
+          "peak_allocated_gpu_bytes": 17899920384,
+          "result_sha256": "424b7693fec792f00537c6c147477d1e8793155f8b4608ceda26a67d7a625c05"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.19467938654475883,
+          "heldout_rmse": 0.09289544394729501,
+          "lds_spearman": 0.7067448680351905,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5903209109730849,
+          "minimum_defined": 0.34782608695652173,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.2113597736583685,
+          "heldout_rmse": 0.09976600656851685,
+          "lds_spearman": 0.8845307917888562,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 27,
+      "question_id": "b6a62e8b1c1cb1587d75b0af4e1ae981",
+      "retention": {
+        "native_achieved_token_count": 3331,
+        "regional_achieved_token_count": 3331,
+        "regional_requested_token_count": 3331,
+        "regional_retained_fraction": 0.7206836867157075,
+        "visual_population": 4622
+      },
+      "source": {
+        "analysis_file_sha256": "865b891ad33d68b4d0e48680e9f69c64d4ae74ad97eb7021b936f1c2f022b572",
+        "analysis_internal_sha256": "a87b665c97c3007aeea7a734e9452d3d8ed5e22f04af61fa070a08ecac86c901",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/27-b6a62e8b1c1cb1587d75b0af4e1ae981/analysis.json",
+        "completion_sha256": "bd3efaa769c497cd62337b8c9765b1d42a41fa1517427325efd9baf958aebd74",
+        "selected_arms_file_sha256": "5178b3c5f2371662a1a7d9c5fbfb591e7d2244faf86f1907ddf8a0abf63089fc",
+        "selected_arms_internal_sha256": "70598514127b68beaca4403fbc5a3fd208e6985a39e8b43c40a11c1425ef93dd",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/27-b6a62e8b1c1cb1587d75b0af4e1ae981/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -1.6668550968170166,
+          "answer": "2",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.1668550968170166,
+          "margin": -0.5,
+          "peak_allocated_gpu_bytes": 17600015360,
+          "result_sha256": "d050ff6536d69ae85e212865d2f92b36482a4f924d5ab135dec8f6a39f3206f5"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.5840063095092773,
+          "answer": "2",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.2715063095092773,
+          "margin": -0.6875,
+          "peak_allocated_gpu_bytes": 17600015360,
+          "result_sha256": "6b37e33288cf51c42da57a35116e72695e9ec8703d2f08f75752639e3f752688"
+        },
+        "native_docprune": {
+          "alternative": -1.4980065822601318,
+          "answer": "2",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.373006582260132,
+          "margin": -0.875,
+          "peak_allocated_gpu_bytes": 17578652672,
+          "result_sha256": "c7b3e639e1e721ca68dea2a4a160a05d13fe9cded1941c6b1f99b75624221d6a"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.324958086013794,
+          "answer": "2",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.324958086013794,
+          "margin": -1.0,
+          "peak_allocated_gpu_bytes": 17600015360,
+          "result_sha256": "8f1473221a43019368891c2771f64db5a4cb3798833a4362a01b7f16583afe6d"
+        },
+        "unpruned": {
+          "alternative": -1.5016335248947144,
+          "answer": "2",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.376633644104004,
+          "margin": -0.8750001192092896,
+          "peak_allocated_gpu_bytes": 17655553536,
+          "result_sha256": "301340635bbba2e4fa3cc55c9d0e6724b31c3d0884a04aebea0137102c429f0e"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.4371499839132512,
+          "heldout_rmse": 0.08660162280468055,
+          "lds_spearman": 0.3174486803519061,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7571114780222941,
+          "minimum_defined": 0.6764705882352942,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.49807490582969455,
+          "heldout_rmse": 0.11151684931564226,
+          "lds_spearman": 0.8057184750733136,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 28,
+      "question_id": "0f72c820c39f6fe6f6724b3338a4e134",
+      "retention": {
+        "native_achieved_token_count": 2974,
+        "regional_achieved_token_count": 2974,
+        "regional_requested_token_count": 2974,
+        "regional_retained_fraction": 0.8585450346420324,
+        "visual_population": 3464
+      },
+      "source": {
+        "analysis_file_sha256": "f846d4dbabf763ad52666de9b5f42fecefdf21349a9d7edf8cc68861078a5f2f",
+        "analysis_internal_sha256": "6f5a2179ccf58ed16f9b84cb61981616026878df50abef3f44f9951617842c52",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-7/28-0f72c820c39f6fe6f6724b3338a4e134/analysis.json",
+        "completion_sha256": "7e0837e1c17b2f35752f5f9a233fc9716e9a07612e87f2d25b4aa36e97d14e34",
+        "selected_arms_file_sha256": "d923d67c6c8548fb364d0b42b1fec6659ff37f72fb205b96daefac00cd8df69b",
+        "selected_arms_internal_sha256": "bfafe63b4c385006060a1ec9bbe250de5dfedff2b58ef0c465a0538728b04491",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-7/28-0f72c820c39f6fe6f6724b3338a4e134/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.4651791453361511,
+          "answer": "Seven Furlongs",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.060845326632261276,
+          "margin": 0.40433381870388985,
+          "peak_allocated_gpu_bytes": 17757484544,
+          "result_sha256": "48587a36981f3135710241e51ef3637980d5cb998603e96af3111cf94b4b65af"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.41965147852897644,
+          "answer": "Seven Furlongs",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.07281766086816788,
+          "margin": 0.34683381766080856,
+          "peak_allocated_gpu_bytes": 17757484544,
+          "result_sha256": "a714c90a910bf2993eac57b9bd0c0da15bcd7402d34c117d9a8444872dfdfe92"
+        },
+        "native_docprune": {
+          "alternative": -0.07246126979589462,
+          "answer": "One and One-Sixteenth Miles",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.2564078569412231,
+          "margin": -1.1839465871453285,
+          "peak_allocated_gpu_bytes": 17757484544,
+          "result_sha256": "35a9800131837a789851031f71e170795d3f9f2bfca5f4f99edfe5f0dea83cd2"
+        },
+        "random_region_size_aware": {
+          "alternative": -4.027005195617676,
+          "answer": "13: 4-2-3",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -3.032386302947998,
+          "margin": 0.9946188926696777,
+          "peak_allocated_gpu_bytes": 17757484544,
+          "result_sha256": "19e1a8c4d439669a8df4949aa76b39bc947c3f7ef8b159e36219527b4e046440"
+        },
+        "unpruned": {
+          "alternative": -0.1280321329832077,
+          "answer": "One and One-Sixteenth Miles",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.40037739276885986,
+          "margin": -0.27234525978565216,
+          "peak_allocated_gpu_bytes": 17879995904,
+          "result_sha256": "86fd8f2070b9d25d62ae3c374431e20f859ba0ffea935f1b09e7290a3871416d"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 1.4749500897957388,
+          "heldout_rmse": 0.0893483749848962,
+          "lds_spearman": 0.8295454545454544,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6369856191991217,
+          "minimum_defined": 0.5681818181818182,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 1.4840290039379858,
+          "heldout_rmse": 0.20039645464712283,
+          "lds_spearman": 0.8266129032258063,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 29,
+      "question_id": "d82d381af11d76d8a70601251ecb8ca5",
+      "retention": {
+        "native_achieved_token_count": 2861,
+        "regional_achieved_token_count": 2861,
+        "regional_requested_token_count": 2861,
+        "regional_retained_fraction": 0.6314279408519091,
+        "visual_population": 4531
+      },
+      "source": {
+        "analysis_file_sha256": "74afd0390b086e676e1231b7cfede8ade9a893ae57ccb8292d89bff6d40f8d51",
+        "analysis_internal_sha256": "2b3e2d4581b2a4f53d22a0f18381f4350ace620a65902e01333715c4ec2b7842",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-7/29-d82d381af11d76d8a70601251ecb8ca5/analysis.json",
+        "completion_sha256": "eecb21ca887e6c478802329bf6e08e78ea606f9dfb8889bd9ae0341052f96aac",
+        "selected_arms_file_sha256": "60ba6c9f02b1172bc8fa7447eb9799af13f019f7aea0fb2d739969c8501a5e3e",
+        "selected_arms_internal_sha256": "b98183d6c86d01404a5162a33a094615be61efe92b1510f97ae181a3ef269281",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-7/29-d82d381af11d76d8a70601251ecb8ca5/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.17094658315181732,
+          "answer": "Gmina \u0141abunie.",
+          "em": 0,
+          "f1": 0.08,
+          "gold": -0.14121487736701965,
+          "margin": 0.02973170578479767,
+          "peak_allocated_gpu_bytes": 17456882688,
+          "result_sha256": "4c0568e0c2c39d94e4e2686ce8c5de92ee85fe354fa23b468a0ccce0c74c00b0"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.13719624280929565,
+          "answer": "Gmina \u0141abunie.",
+          "em": 0,
+          "f1": 0.08,
+          "gold": -0.10769379138946533,
+          "margin": 0.029502451419830322,
+          "peak_allocated_gpu_bytes": 17456882688,
+          "result_sha256": "3dd29a58ad12e1b66f8e55b090a6af24d9324a7ba7d2ce8a6bc2c521a68e6341"
+        },
+        "native_docprune": {
+          "alternative": -0.1833411008119583,
+          "answer": "Gmina \u0141abunie.",
+          "em": 0,
+          "f1": 0.08,
+          "gold": -0.14924845099449158,
+          "margin": 0.034092649817466736,
+          "peak_allocated_gpu_bytes": 17456882688,
+          "result_sha256": "e7e20b843f6b7a9f3fa22a64c595ae9d6bb328131ef93e9fc53d7449ba49621f"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.15125946700572968,
+          "answer": "Gmina \u0141abunie.",
+          "em": 0,
+          "f1": 0.08,
+          "gold": -0.11824460327625275,
+          "margin": 0.03301486372947693,
+          "peak_allocated_gpu_bytes": 17456882688,
+          "result_sha256": "88aec17c8158640fd8676cfd1186f23120b6461d4181454cb7b0ce7475fd6aa7"
+        },
+        "unpruned": {
+          "alternative": -0.14875821769237518,
+          "answer": "Gmina \u0141abunie.",
+          "em": 0,
+          "f1": 0.08,
+          "gold": -0.11532916128635406,
+          "margin": 0.03342905640602112,
+          "peak_allocated_gpu_bytes": 17534970880,
+          "result_sha256": "4519eee834f3c820ed89c79e98ce983041ef13c1c2b3d2ef1ce5162167b4e0e1"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.5971147960626572,
+          "heldout_rmse": 0.11237724182594433,
+          "lds_spearman": -0.10300586510263927,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7071880073652675,
+          "minimum_defined": 0.6323529411764706,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.5896737482046112,
+          "heldout_rmse": 0.16193063340736336,
+          "lds_spearman": 0.8310117302052784,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 30,
+      "question_id": "774a3681d03347efd977caaf730ca97a",
+      "retention": {
+        "native_achieved_token_count": 2144,
+        "regional_achieved_token_count": 2144,
+        "regional_requested_token_count": 2144,
+        "regional_retained_fraction": 0.7483420593368237,
+        "visual_population": 2865
+      },
+      "source": {
+        "analysis_file_sha256": "76ec41b8692369bcf4d394967718ab344b85f536605b0f0ccb3f60fe5c2136b8",
+        "analysis_internal_sha256": "f5b29cf4726833d0eaf117ee776e7bca280cef08596d02a7f614593c58e2bd6a",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/30-774a3681d03347efd977caaf730ca97a/analysis.json",
+        "completion_sha256": "6c451bd2aaefa87afa1c48bf766f2515a18a1cb8857e1d517fba878ab199a2f8",
+        "selected_arms_file_sha256": "4c225df505d658cf11b876016ce4297451217a68839d94254889ca5cbee31565",
+        "selected_arms_internal_sha256": "1270fafce3292fd4901839b3d8b85740f8b3f0a7db004baad4c99d95a0521942",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/30-774a3681d03347efd977caaf730ca97a/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.8388843536376953,
+          "answer": "March 3, 2026",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.8513810038566589,
+          "margin": -0.012496650218963623,
+          "peak_allocated_gpu_bytes": 18056944128,
+          "result_sha256": "e0eb14a7e9b63b91d9ffc1432ee5b27b3f9e1798cc71507c0330226e6ff4aba6"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.0637817531824112,
+          "answer": "October 28, 2010.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.6124328374862671,
+          "margin": -0.5486510843038559,
+          "peak_allocated_gpu_bytes": 18056944128,
+          "result_sha256": "563b3e895134b1950f1a95a4e12ce8e2321c4a8b8432295a0bd29013a1f11026"
+        },
+        "native_docprune": {
+          "alternative": -0.38660725951194763,
+          "answer": "March 3, 2026",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.8075270652770996,
+          "margin": -0.420919805765152,
+          "peak_allocated_gpu_bytes": 18056944128,
+          "result_sha256": "eb180d88e4d4aab64e5d87e97d48b0c185dd0deeea4e6cae34272918ce87cba2"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.4940739572048187,
+          "answer": "March 3, 2026",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.8755699396133423,
+          "margin": -0.38149598240852356,
+          "peak_allocated_gpu_bytes": 18056944128,
+          "result_sha256": "7896618305aa0ae033b890e70d4e425b79a4e7dc26cfc0e6b56ae6a3ff3c5122"
+        },
+        "unpruned": {
+          "alternative": -0.09497851878404617,
+          "answer": "October 28, 2010.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.610138475894928,
+          "margin": -0.5151599571108818,
+          "peak_allocated_gpu_bytes": 18223569408,
+          "result_sha256": "4befc717418cf84240c53d3d141726ad60ab0351acb30713080e944c01edaa3c"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.249301934006175,
+          "heldout_rmse": 0.16618997471241595,
+          "lds_spearman": 0.6081378299120234,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.48933065123282515,
+          "minimum_defined": 0.375,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.2935947458983031,
+          "heldout_rmse": 0.20401381738835192,
+          "lds_spearman": 0.6477272727272726,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 31,
+      "question_id": "303da73f74cb98c1e853073417b9bdc9",
+      "retention": {
+        "native_achieved_token_count": 3039,
+        "regional_achieved_token_count": 3039,
+        "regional_requested_token_count": 3039,
+        "regional_retained_fraction": 0.4919067659436711,
+        "visual_population": 6178
+      },
+      "source": {
+        "analysis_file_sha256": "7a79e92a1e19023108322b017386486274e7dfe9eea26083655e925200ff15f5",
+        "analysis_internal_sha256": "ea87284d5f9196496d74a76ce62938e187849673cb1de9fd419b71f3d6584af7",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/31-303da73f74cb98c1e853073417b9bdc9/analysis.json",
+        "completion_sha256": "79ed64098949cdb6b1708287c517d3782444ebaf3b30df110a9065404ec21d9b",
+        "selected_arms_file_sha256": "047680c56020ecb7d88e3d51c524d57d983809b7b6f7e1e6bdbdd664176b3055",
+        "selected_arms_internal_sha256": "3685dc544508bf413b400bc4d1d460c1551864206d2153225c654e6ce6a99638",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-retry-v1/31-303da73f74cb98c1e853073417b9bdc9/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -2.7795979976654053,
+          "answer": "Maidment, Paul.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.8653266429901123,
+          "margin": -0.08572864532470703,
+          "peak_allocated_gpu_bytes": 17738759680,
+          "result_sha256": "005deb8902e63e2fc35832ef43e63c4813e782d347c4c10a3487a1811ff7d952"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.3927289247512817,
+          "answer": "Lucian Goian.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.7376325130462646,
+          "margin": -1.344903588294983,
+          "peak_allocated_gpu_bytes": 17738759680,
+          "result_sha256": "30791a4b79fc71b1a6e7dbe5d1beb898da1ec739b0fe50577302aed17b9a44df"
+        },
+        "native_docprune": {
+          "alternative": -1.2805277109146118,
+          "answer": "Lalate.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.8524317741394043,
+          "margin": -1.5719040632247925,
+          "peak_allocated_gpu_bytes": 17738759680,
+          "result_sha256": "bd21ab458f0fe0ee373bf4ca840d2e86dd1a092851671b1ff85ec04dcdacaf67"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.266960620880127,
+          "answer": "Lalit Bhandari.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.9861416816711426,
+          "margin": -1.7191810607910156,
+          "peak_allocated_gpu_bytes": 17738759680,
+          "result_sha256": "93ff759d3044d0f5297eb1ac2709ecc2fccf19edf94e7289200180cbd1f22c4a"
+        },
+        "unpruned": {
+          "alternative": -1.3308862447738647,
+          "answer": "Lalit Bhandari.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.848048448562622,
+          "margin": -1.5171622037887573,
+          "peak_allocated_gpu_bytes": 17833838080,
+          "result_sha256": "6d80f74be70929d6f505e32cd75dfd640ae36813d1688425cb42c7b3e22534e3"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.31681039929375615,
+          "heldout_rmse": 0.08625224492199965,
+          "lds_spearman": 0.9607771260997066,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5417940316477468,
+          "minimum_defined": 0.3684210526315789,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.28009057466502013,
+          "heldout_rmse": 0.10750481378906872,
+          "lds_spearman": 0.9464809384164221,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_16",
+      "ordinal": 32,
+      "question_id": "ee3d5e6aaa766f4a7f1611950f12bac8",
+      "retention": {
+        "native_achieved_token_count": 2811,
+        "regional_achieved_token_count": 2811,
+        "regional_requested_token_count": 2811,
+        "regional_retained_fraction": 0.6728099569171853,
+        "visual_population": 4178
+      },
+      "source": {
+        "analysis_file_sha256": "a3bfd6fe89deb86f2f542119da476bac2e273073a19e1521e6f01511429f96af",
+        "analysis_internal_sha256": "7d084916241397e41109a1fc2cfdeb6edde0531ac814e180e113d2e22e869743",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/32-ee3d5e6aaa766f4a7f1611950f12bac8/analysis.json",
+        "completion_sha256": "9f88c6dec6fa3b3484900a6c0e0aec178281acc773a9cc08750dde255e57d70e",
+        "selected_arms_file_sha256": "c2ee7bf1236df9ebf24cf654aafe4fb9dfeae7c78abfe82e4cc26ab32cb236b3",
+        "selected_arms_internal_sha256": "64ff97d170c4bf8d580cd30aa89ca8a44977cb36ab0e7f94dc3bdb8f11b28534",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/32-ee3d5e6aaa766f4a7f1611950f12bac8/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.40334394574165344,
+          "answer": "1851",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.653296947479248,
+          "margin": -0.2499530017375946,
+          "peak_allocated_gpu_bytes": 17995357184,
+          "result_sha256": "d4db4aac182f2aa24e760933f314151c0acc2ffe437cb0ff522274e5e534e646"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.1776549518108368,
+          "answer": "1851",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.5443788170814514,
+          "margin": -0.3667238652706146,
+          "peak_allocated_gpu_bytes": 17995357184,
+          "result_sha256": "7c7d87a63b6e137dc72a677c2c4257647d1992335d25a884359c53c6c2ac25a7"
+        },
+        "native_docprune": {
+          "alternative": -0.24515843391418457,
+          "answer": "1851",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.6501843333244324,
+          "margin": -0.4050258994102478,
+          "peak_allocated_gpu_bytes": 17995357184,
+          "result_sha256": "eff8eb34ce7bd8d304189f81437093acb0d0cee58360aae252b1d2336f216558"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.490456759929657,
+          "answer": "1851",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.6949107646942139,
+          "margin": -0.20445400476455688,
+          "peak_allocated_gpu_bytes": 17995357184,
+          "result_sha256": "74cf1ff10b7019c29a21a7b6487c93aa2e1c4df7d5203895de5a1f2ff1aefcb1"
+        },
+        "unpruned": {
+          "alternative": -0.200785294175148,
+          "answer": "1851",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.6241927742958069,
+          "margin": -0.4234074801206589,
+          "peak_allocated_gpu_bytes": 18147297792,
+          "result_sha256": "ae6c40cb049e330fb09fd434c04cb65e638b2da5e8b8a581d3bff6be41f92b3d"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.10620084186103518,
+          "heldout_rmse": 0.0498355093150924,
+          "lds_spearman": 0.8815982404692081,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7452220515378409,
+          "minimum_defined": 0.6486486486486487,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.15594241031214717,
+          "heldout_rmse": 0.09549603369920799,
+          "lds_spearman": 0.9021260997067447,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_14",
+      "ordinal": 33,
+      "question_id": "5217a8617917f1ca031e915f17f9f326",
+      "retention": {
+        "native_achieved_token_count": 3477,
+        "regional_achieved_token_count": 3477,
+        "regional_requested_token_count": 3477,
+        "regional_retained_fraction": 0.6095722300140253,
+        "visual_population": 5704
+      },
+      "source": {
+        "analysis_file_sha256": "f41ce859a6a6362e5f552ad3622fe6335d12a3e23830597aa127ef5321106819",
+        "analysis_internal_sha256": "594b652e175d97a11bef287597518bb4c81f294cc7e51c7df57a7c6260e95c07",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/33-5217a8617917f1ca031e915f17f9f326/analysis.json",
+        "completion_sha256": "190259ae6f5ceaadac4d7e5667d4d60dafd44060e23f1f9129820be4138ef722",
+        "selected_arms_file_sha256": "15fa8e69fbcdb3a53e341279a291678d8622a60802a338e66800996989dab8bc",
+        "selected_arms_internal_sha256": "f84924e323f73cbd034aad8892e7e9fe5c95b6f2fdaaf46ae8b89b5a263f0659",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/33-5217a8617917f1ca031e915f17f9f326/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -3.228745698928833,
+          "answer": "2 GB, 3 GB.",
+          "em": 0,
+          "f1": 0.27,
+          "gold": -1.0327118635177612,
+          "margin": 2.1960338354110718,
+          "peak_allocated_gpu_bytes": 17767073280,
+          "result_sha256": "b6a8c2354b5e4595d7b5eaab9d9bcd12e1223119b600679ade686f8cd202a088"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.29066091775894165,
+          "answer": "4 GB, 8 GB.",
+          "em": 0,
+          "f1": 0.27,
+          "gold": -0.6775921583175659,
+          "margin": -0.38693124055862427,
+          "peak_allocated_gpu_bytes": 17767073280,
+          "result_sha256": "4ee1d304da33b5cba4f2b3f50b77f6ee0d3df511ee98eaeb0b317c489577c350"
+        },
+        "native_docprune": {
+          "alternative": -0.39231041073799133,
+          "answer": "512 MB, 4 GB.",
+          "em": 0,
+          "f1": 0.22,
+          "gold": -0.8135107159614563,
+          "margin": -0.42120030522346497,
+          "peak_allocated_gpu_bytes": 17767073280,
+          "result_sha256": "a333bc95b5ca4fc04fdae7862923f442c3581d73608bfe0c9534fa83b2866943"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.300585001707077,
+          "answer": "512 MB, 4 GB.",
+          "em": 0,
+          "f1": 0.22,
+          "gold": -0.7971054315567017,
+          "margin": -0.49652042984962463,
+          "peak_allocated_gpu_bytes": 17767073280,
+          "result_sha256": "7b9a00a6ec0f3d17f447f5f4db57ff657b33734dbefb174cf1520759b5ddb36b"
+        },
+        "unpruned": {
+          "alternative": -0.35775959491729736,
+          "answer": "5 MP, f/2.2.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.730216383934021,
+          "margin": -0.37245678901672363,
+          "peak_allocated_gpu_bytes": 17887210496,
+          "result_sha256": "6c0d6030636248f17b89351a1fb50e5ca68c4b1a48561e6048ae36cee563c5ae"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.16635379859816116,
+          "heldout_rmse": 0.12499025249398196,
+          "lds_spearman": 0.5692815249266862,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5038432581570222,
+          "minimum_defined": 0.34285714285714286,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.16057785357707874,
+          "heldout_rmse": 0.12051012790798055,
+          "lds_spearman": 0.5542521994134897,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_14",
+      "ordinal": 34,
+      "question_id": "2f34ec15d30206535baa99d709903307",
+      "retention": {
+        "native_achieved_token_count": 2959,
+        "regional_achieved_token_count": 2959,
+        "regional_requested_token_count": 2959,
+        "regional_retained_fraction": 0.6679458239277652,
+        "visual_population": 4430
+      },
+      "source": {
+        "analysis_file_sha256": "d07ec0395027de6c0f6b8d7c8bfb9af54241d53d5d26eb6dc609e3f47615c032",
+        "analysis_internal_sha256": "3be4add3acc50bb9d4eca1cced6fab15353fa3f4352a98b42501321c9079b51a",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/34-2f34ec15d30206535baa99d709903307/analysis.json",
+        "completion_sha256": "d35d3d7ea2a43fa9690ea34352db6f79490643fdef6f5d4ab97459d10840fb1d",
+        "selected_arms_file_sha256": "d3a78cd29fbb777e23fba5c42524c6378f403e62137c5dd99384c81e2f53d290",
+        "selected_arms_internal_sha256": "9db3cb5f3f4291f10343a1bff56bee48e16f05b6c6b259478fac453e437a0f05",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/34-2f34ec15d30206535baa99d709903307/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -3.4324047565460205,
+          "answer": "Matt Damon.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -6.1666693687438965,
+          "margin": -2.734264612197876,
+          "peak_allocated_gpu_bytes": 17955246592,
+          "result_sha256": "5cc311f98cd649bc12af59f93da275654dc6004e2fbcdc1def6c98569af1b28e"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.488171339035034,
+          "answer": "Michael Jordon.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -5.799345970153809,
+          "margin": -3.3111746311187744,
+          "peak_allocated_gpu_bytes": 17955246592,
+          "result_sha256": "8652111bd1ffa47607baf32161985a288b47ddc33c0008a762fbc00b55d2f339"
+        },
+        "native_docprune": {
+          "alternative": -0.1526392698287964,
+          "answer": "Taylor Kitsch.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -6.640556335449219,
+          "margin": -6.487917065620422,
+          "peak_allocated_gpu_bytes": 17955246592,
+          "result_sha256": "91ad1d9f4bd32d9fc8a8f7b72047ae679e492a23c193a3b047243224021da74c"
+        },
+        "random_region_size_aware": {
+          "alternative": -2.0469720363616943,
+          "answer": "Rihanna.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -6.433523654937744,
+          "margin": -4.38655161857605,
+          "peak_allocated_gpu_bytes": 17955246592,
+          "result_sha256": "1b7e730e15b4e8a38dd0ef6b610b5a364a343f73472680a5616af7a3307adf9e"
+        },
+        "unpruned": {
+          "alternative": -0.13399574160575867,
+          "answer": "Taylor Kitsch.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -6.629184722900391,
+          "margin": -6.495188981294632,
+          "peak_allocated_gpu_bytes": 18078349824,
+          "result_sha256": "fe422616a8fb2aa5327658a34f6a504643e7c83748f15a577b16bb1a41d3fd7c"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.25587297897742173,
+          "heldout_rmse": 0.11042326336944266,
+          "lds_spearman": 0.8896627565982403,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7296090064628544,
+          "minimum_defined": 0.6666666666666666,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.2592719701085884,
+          "heldout_rmse": 0.1154666192999827,
+          "lds_spearman": 0.8482404692082111,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_16",
+      "ordinal": 35,
+      "question_id": "23dec6930edc341ae25864a97cd28a89",
+      "retention": {
+        "native_achieved_token_count": 3925,
+        "regional_achieved_token_count": 3925,
+        "regional_requested_token_count": 3925,
+        "regional_retained_fraction": 0.7362596135809416,
+        "visual_population": 5331
+      },
+      "source": {
+        "analysis_file_sha256": "dfa3952762341788f17b55ced43dfb2d562b29da13fc71f7b8b7e01b0c819a9f",
+        "analysis_internal_sha256": "545a2dd63338d0f00f2349f19755fd1b3724037eba9d98f9ad8dbe411fbb5f31",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/35-23dec6930edc341ae25864a97cd28a89/analysis.json",
+        "completion_sha256": "76a36340adc44339b03ac94b3683d274b0158090fff8938bd3cbd364ba91800e",
+        "selected_arms_file_sha256": "3545573bc074a4a547cec57447465cedbd752a15556d9822cf3bb1de440f2388",
+        "selected_arms_internal_sha256": "767a7fd791c75aa0df70ec709fcc3bf486424f601545a19a1d4c38a23ce39bf6",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-8/35-23dec6930edc341ae25864a97cd28a89/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.6340264081954956,
+          "answer": "2010.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.43301618099212646,
+          "margin": 0.20101022720336914,
+          "peak_allocated_gpu_bytes": 17497852928,
+          "result_sha256": "bc7518f45937df86270fb93033c4a2ee4430cc407736e95c8f326f1c2b15096d"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.6430833339691162,
+          "answer": "2010.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.43828123807907104,
+          "margin": 0.20480209589004517,
+          "peak_allocated_gpu_bytes": 17497852928,
+          "result_sha256": "cedba9c38bc73920d0bb3b1bc4c0d527fcf9029d14e646d2d995d6e704968971"
+        },
+        "native_docprune": {
+          "alternative": -0.2816842496395111,
+          "answer": "2015.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.6562238335609436,
+          "margin": -0.3745395839214325,
+          "peak_allocated_gpu_bytes": 17497852928,
+          "result_sha256": "ba73f8df504300b92848fb2bd77932fe4673206b76618956f9e3980e5ddc4e1f"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.3361494839191437,
+          "answer": "2015.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.6318196654319763,
+          "margin": -0.29567018151283264,
+          "peak_allocated_gpu_bytes": 17497852928,
+          "result_sha256": "1e3c6366a804f8c8f2f1d1668443c695b23aa97ee168a6ce6352b9791781bde1"
+        },
+        "unpruned": {
+          "alternative": -0.33792397379875183,
+          "answer": "2015.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.603209912776947,
+          "margin": -0.2652859389781952,
+          "peak_allocated_gpu_bytes": 17578097664,
+          "result_sha256": "207857ae2dfc68bd48bb7a612a7b4feaeb4d661232775c060c39d54796bda024"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.13330505628784584,
+          "heldout_rmse": 0.052717983156785206,
+          "lds_spearman": 0.9571991608343828,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.8535880337130685,
+          "minimum_defined": 0.8166666666666667,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.10090748975104924,
+          "heldout_rmse": 0.04291440828384063,
+          "lds_spearman": 0.8925953079178884,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_14",
+      "ordinal": 36,
+      "question_id": "e5d9ec29613dce539c3c381ff17bb77a",
+      "retention": {
+        "native_achieved_token_count": 1990,
+        "regional_achieved_token_count": 1990,
+        "regional_requested_token_count": 1990,
+        "regional_retained_fraction": 0.672524501520784,
+        "visual_population": 2959
+      },
+      "source": {
+        "analysis_file_sha256": "8b8ddbaf1b2c9d5ce7d1c2a5c3ea13482bd58917380b2a0278335df745558a69",
+        "analysis_internal_sha256": "c7f5dadcf7460ed801f2962f0ba07d667a45899e0a8af74abbf2ca01f4efebf4",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/36-e5d9ec29613dce539c3c381ff17bb77a/analysis.json",
+        "completion_sha256": "bb5c7d63a25b83f9ed7b89654ef441ef74773e2c02cfabd67b2fe20bd51348c1",
+        "selected_arms_file_sha256": "3bf4cfc4b8f863a8215752013f8969d5c7564cdea9247b73daf8d0d25b2e4457",
+        "selected_arms_internal_sha256": "4b1e177d0f28cbabb3fcb52cfd305b441caa26dd17739f953988b532fd4a2c0b",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/36-e5d9ec29613dce539c3c381ff17bb77a/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -1.4543201923370361,
+          "answer": "Gun.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -3.095454692840576,
+          "margin": -1.64113450050354,
+          "peak_allocated_gpu_bytes": 17839634944,
+          "result_sha256": "6187de1f5eeb486f748479f49ff21983249715bfe9df64a9c60497a0dbe38c5d"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.4258979558944702,
+          "answer": "Gun.",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -3.147787094116211,
+          "margin": -1.7218891382217407,
+          "peak_allocated_gpu_bytes": 17839634944,
+          "result_sha256": "d1a6ce54a7f8a5f9369505a416a80e1e3a35e63a565240fe788a31fc9b26faff"
+        },
+        "native_docprune": {
+          "alternative": -0.27114778757095337,
+          "answer": "Cigarette.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -5.914576530456543,
+          "margin": -5.64342874288559,
+          "peak_allocated_gpu_bytes": 17831516672,
+          "result_sha256": "ba82f5f588042391df8f0a62119586f5b72962b4d944ceaf8129f97139e3b2ba"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.28626176714897156,
+          "answer": "Cigarette.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -5.780359268188477,
+          "margin": -5.494097501039505,
+          "peak_allocated_gpu_bytes": 17839634944,
+          "result_sha256": "a38be5050515096838ce69e9d56373a92c914535ce316e816865b771653bbb2b"
+        },
+        "unpruned": {
+          "alternative": -0.2815571427345276,
+          "answer": "Cigarette.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -5.860044956207275,
+          "margin": -5.578487813472748,
+          "peak_allocated_gpu_bytes": 17938164224,
+          "result_sha256": "38eb75b1d3e24f0322ec6710bb81da5f71f739aef5b46827aaa3270e010e5b2c"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 1.1230719375502292,
+          "heldout_rmse": 0.13664825443198586,
+          "lds_spearman": 0.8002199413489735,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6891770312822945,
+          "minimum_defined": 0.6578947368421053,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 1.4230848300025833,
+          "heldout_rmse": 0.18646082300174058,
+          "lds_spearman": 0.9472140762463341,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_16",
+      "ordinal": 37,
+      "question_id": "1db882f16ee4721cc4c3fe9cf55e07e0",
+      "retention": {
+        "native_achieved_token_count": 3859,
+        "regional_achieved_token_count": 3859,
+        "regional_requested_token_count": 3859,
+        "regional_retained_fraction": 0.8243964964751122,
+        "visual_population": 4681
+      },
+      "source": {
+        "analysis_file_sha256": "15c6811a502e633b55a00e79e7aa9b4678ed2d6f66444ed7e14b40d8f141d753",
+        "analysis_internal_sha256": "82224075a0fbdf0dedfc344d497364773ac54973298782d72d7571ec5eac720d",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/37-1db882f16ee4721cc4c3fe9cf55e07e0/analysis.json",
+        "completion_sha256": "d538d6d1e45540782146cd1d7a08c8283691f6f9391ed4154496070847187e2a",
+        "selected_arms_file_sha256": "4d3ada81cf7b3f5cd702183f426f84e9d7365c016894f4580bfd335d8ae21e87",
+        "selected_arms_internal_sha256": "eedb90dfe1f13ab6fea42e007ffa41e9e35f56b27fa8c28aeb96a9981f9e3e76",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/37-1db882f16ee4721cc4c3fe9cf55e07e0/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.020306117832660675,
+          "answer": "K. H. McConville.",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -2.5887155532836914,
+          "margin": -2.5684094354510307,
+          "peak_allocated_gpu_bytes": 17552110080,
+          "result_sha256": "7b25fb94c18455abd2d147c4a44429b0c9c97ec02e9d9655ce211f9f5f87833c"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.02916324883699417,
+          "answer": "K. H. McConville.",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -2.6072168350219727,
+          "margin": -2.5780535861849785,
+          "peak_allocated_gpu_bytes": 17552110080,
+          "result_sha256": "13ccfcc1e4dd95f761de3976e1690be17268da4ae089b60eb6fd5ca10723ac1b"
+        },
+        "native_docprune": {
+          "alternative": -0.4889546036720276,
+          "answer": "K. H. Craig.",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -3.338721990585327,
+          "margin": -2.8497673869132996,
+          "peak_allocated_gpu_bytes": 17552110080,
+          "result_sha256": "8fcd84752dfb042e5bc742e8dbdd5e3f57003c15c5c76d22b94d9ce24734395d"
+        },
+        "random_region_size_aware": {
+          "alternative": -3.3885841369628906,
+          "answer": "Kevin Neal.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -6.699271202087402,
+          "margin": -3.3106870651245117,
+          "peak_allocated_gpu_bytes": 17552110080,
+          "result_sha256": "fac44ed9840d798f65335e0575255d09f36193f1ddad75b7df592675616ee47c"
+        },
+        "unpruned": {
+          "alternative": -0.02812311425805092,
+          "answer": "K. H. McConville.",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -2.626831531524658,
+          "margin": -2.5987084172666073,
+          "peak_allocated_gpu_bytes": 17640380928,
+          "result_sha256": "dc6d041ec8f4d0d0f92054fb93b9bae7fe4c022f9cf8f7aa141edcffefd5fd2f"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 2.3646530392528566,
+          "heldout_rmse": 0.13065675997534937,
+          "lds_spearman": 0.08284457478005863,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5311144513213478,
+          "minimum_defined": 0.4642857142857143,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 2.4782966690535417,
+          "heldout_rmse": 0.48191672149973075,
+          "lds_spearman": 0.8607038123167154,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_14",
+      "ordinal": 38,
+      "question_id": "8e205410446916c5f3a7522923db8660",
+      "retention": {
+        "native_achieved_token_count": 2398,
+        "regional_achieved_token_count": 2398,
+        "regional_requested_token_count": 2398,
+        "regional_retained_fraction": 0.7358085302239951,
+        "visual_population": 3259
+      },
+      "source": {
+        "analysis_file_sha256": "934745a472308aaa47ce77531af00cd876fd9e620d78f87b0b43de9cc9ec79fd",
+        "analysis_internal_sha256": "7cf9fdbb63936c0a4dd0d2b43c2cfaa51cd3190f858a2a442063568ada44a044",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/38-8e205410446916c5f3a7522923db8660/analysis.json",
+        "completion_sha256": "819137c48db5967833fb7d99ba6644c4c29f848df9e6135327faa269391698ba",
+        "selected_arms_file_sha256": "6b0724a18f6d9e68169a0eb4d58f9ecaddecfa475f5988bb1e1c7aa1509226b4",
+        "selected_arms_internal_sha256": "34fdf6b8ea852bfece637cdaf557033afc56ed4a4ef7b5199e58acf15c30099b",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/38-8e205410446916c5f3a7522923db8660/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.05235360190272331,
+          "answer": "Don't Call Me Mamma Anymore",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -0.2912920117378235,
+          "margin": -0.23893840983510017,
+          "peak_allocated_gpu_bytes": 17749417472,
+          "result_sha256": "f62796af16e6d5d77442ec7bd739c5720cf6a0f5262a915b813fd6a6523928f0"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.05235360190272331,
+          "answer": "Don't Call Me Mamma Anymore",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -0.2912920117378235,
+          "margin": -0.23893840983510017,
+          "peak_allocated_gpu_bytes": 17749417472,
+          "result_sha256": "b85772175acd94543d3de692bcba6e527e5722cafc5809f73e3788baf39c7427"
+        },
+        "native_docprune": {
+          "alternative": -0.04644906148314476,
+          "answer": "Don't Call Me Mamma Anymore",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -0.5899940729141235,
+          "margin": -0.5435450114309788,
+          "peak_allocated_gpu_bytes": 17749417472,
+          "result_sha256": "a29aafed3a50b27dafdf499567ceb40e5be8584185e761f9534ce667c431a9ef"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.0743926540017128,
+          "answer": "Don't Call Me Mamma Anymore",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -0.3647739291191101,
+          "margin": -0.2903812751173973,
+          "peak_allocated_gpu_bytes": 17749417472,
+          "result_sha256": "6461c2982d1600d4903011ee43e8df6a7cf5bd7e78d29eb2d6346aa74e8f8fe1"
+        },
+        "unpruned": {
+          "alternative": -0.06166321039199829,
+          "answer": "Don't Call Me Mamma Anymore",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -0.30210843682289124,
+          "margin": -0.24044522643089294,
+          "peak_allocated_gpu_bytes": 17866611200,
+          "result_sha256": "4bf43852e875ccfb4cc48689edc2ba6a7fe6601ac3c6a28fa14f19129d01b699"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.06192783997494547,
+          "heldout_rmse": 0.027100521507149335,
+          "lds_spearman": 0.5864662541668478,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6151010101010101,
+          "minimum_defined": 0.5,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.13728657658515908,
+          "heldout_rmse": 0.10023079965158435,
+          "lds_spearman": 0.9031903797585142,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA H100 80GB HBM3",
+      "forced_boundary": "B_14",
+      "ordinal": 39,
+      "question_id": "146153932281542396eea1b476040e1c",
+      "retention": {
+        "native_achieved_token_count": 2989,
+        "regional_achieved_token_count": 2989,
+        "regional_requested_token_count": 2989,
+        "regional_retained_fraction": 0.6893450184501845,
+        "visual_population": 4336
+      },
+      "source": {
+        "analysis_file_sha256": "02b71081f9c861db9e0e57743005f8a65a2f8ba383bfb065ed223b94950b33b6",
+        "analysis_internal_sha256": "ae806d3c39caa28d0c72c942d6be3b27eefb53235f72db345207f975f47ab17e",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/39-146153932281542396eea1b476040e1c/analysis.json",
+        "completion_sha256": "e33052e5165051a102ebe4c0a74e67bc8cc002c1ca56e677bf80462e4a7e8e1e",
+        "selected_arms_file_sha256": "07f4bf673c02f4f63c6ce0d435861951d05af4a50de3da42001184b828c9a78b",
+        "selected_arms_internal_sha256": "8958f7eeb333d40a17205b9b54f1f1e23697d4787988d6063cb0ad2dc044152f",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-9/39-146153932281542396eea1b476040e1c/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.5715663433074951,
+          "answer": "Kush.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -1.3401243686676025,
+          "margin": -0.7685580253601074,
+          "peak_allocated_gpu_bytes": 17654441984,
+          "result_sha256": "bd013d8f1e0e97b96c2930f1e9145262de74a619c4bc4f2d1d8e32fab11a75cd"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.4196716248989105,
+          "answer": "Kush.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -1.2345181703567505,
+          "margin": -0.81484654545784,
+          "peak_allocated_gpu_bytes": 17654441984,
+          "result_sha256": "48aa24f1383fa0f8280143658ee7c6fbec8b8c6173c7080dfdb34ba6ef9d6f35"
+        },
+        "native_docprune": {
+          "alternative": -0.449406236410141,
+          "answer": "Kush.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -1.638253927230835,
+          "margin": -1.188847690820694,
+          "peak_allocated_gpu_bytes": 17654441984,
+          "result_sha256": "4ace35c4956c77d878298fad61f7236ca5e52a09655e2f0050c63a041524d77e"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.5128867626190186,
+          "answer": "Kush.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -1.643143892288208,
+          "margin": -1.1302571296691895,
+          "peak_allocated_gpu_bytes": 17654441984,
+          "result_sha256": "9bcf614f3ea661d5d272720e14e8bde8ef68b79784afbc18655327a7d7944ae7"
+        },
+        "unpruned": {
+          "alternative": -0.425045907497406,
+          "answer": "Kush.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -1.6504693031311035,
+          "margin": -1.2254233956336975,
+          "peak_allocated_gpu_bytes": 17742354432,
+          "result_sha256": "00614e6d8bcded6494c29b16987b722d7c7cf738aad6860f0a111345c0bb0599"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.17848660003344743,
+          "heldout_rmse": 0.05198319717246595,
+          "lds_spearman": 0.9648093841642227,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.719486397152301,
+          "minimum_defined": 0.5652173913043478,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.21474890758780515,
+          "heldout_rmse": 0.09291065731642362,
+          "lds_spearman": 0.9057917888563048,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 40,
+      "question_id": "7bd23de6ac7fe9fbdc7949da55628f69",
+      "retention": {
+        "native_achieved_token_count": 2448,
+        "regional_achieved_token_count": 2448,
+        "regional_requested_token_count": 2448,
+        "regional_retained_fraction": 0.634032634032634,
+        "visual_population": 3861
+      },
+      "source": {
+        "analysis_file_sha256": "cf52f166c652e5bb3d57eaef19f2907e6eb5ff386425725109f09ee12b7c3b90",
+        "analysis_internal_sha256": "96cc40f524f69c106338701421fc9d02f5ef6869effa25ec21561975c8bb0efd",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/40-7bd23de6ac7fe9fbdc7949da55628f69/analysis.json",
+        "completion_sha256": "8ec1d59a99df45bc84281b3cf72fb5d559445a36b2cbb4b71bf4d119aac87fdd",
+        "selected_arms_file_sha256": "d592c0b3a440d1aa8d0b7ad71fcff2cf00dce16701b3c00dc8eb7e47d9bcf032",
+        "selected_arms_internal_sha256": "8daf2412c8785b97cb1183d1261b9942a9269c4ca52994ca13b6ce941cbb8c3e",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/40-7bd23de6ac7fe9fbdc7949da55628f69/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.2994977831840515,
+          "answer": "Zhang Ling.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.1350315511226654,
+          "margin": 0.1644662320613861,
+          "peak_allocated_gpu_bytes": 17914405376,
+          "result_sha256": "fa080f9858602b23675436dcc3ffe8652c3377fa658f9c2bf4c993a7ca89d5c6"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.299732506275177,
+          "answer": "Zhang Ling.",
+          "em": 0,
+          "f1": 0.5,
+          "gold": -0.14079347252845764,
+          "margin": 0.15893903374671936,
+          "peak_allocated_gpu_bytes": 17914405376,
+          "result_sha256": "5d21d3b1114d44c669c8ada6bcee8ffb06d013128a50f01d2d2f7beb097ce3fd"
+        },
+        "native_docprune": {
+          "alternative": -0.3301010727882385,
+          "answer": "Zhang Ling, Tommy.",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.32332244515419006,
+          "margin": 0.006778627634048462,
+          "peak_allocated_gpu_bytes": 17914405376,
+          "result_sha256": "630701a44d9913283bad2b8aa03915b47f2bcde6c4206501e433ae48ed177eea"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.2795516848564148,
+          "answer": "Zhang Ling, Tommy.",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.29028886556625366,
+          "margin": -0.010737180709838867,
+          "peak_allocated_gpu_bytes": 17914405376,
+          "result_sha256": "e4d0543ee7d9a06c41867270432f5662502f15f3d9f58fbeda9bc1af575e51a2"
+        },
+        "unpruned": {
+          "alternative": -0.322898268699646,
+          "answer": "Zhang Ling, Tommy.",
+          "em": 0,
+          "f1": 0.4,
+          "gold": -0.28300905227661133,
+          "margin": 0.03988921642303467,
+          "peak_allocated_gpu_bytes": 18058349056,
+          "result_sha256": "dc0242d6edd3f6f5a63809eea5cea75b1c051960df6337b664b80c66c5be4bd6"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 2.464594368447746,
+          "heldout_rmse": 0.21078787192788886,
+          "lds_spearman": 0.8046187683284456,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6269481451117033,
+          "minimum_defined": 0.5294117647058824,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 2.4717485260991476,
+          "heldout_rmse": 0.35381909499991415,
+          "lds_spearman": 0.9490469208211142,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 41,
+      "question_id": "26ca9466876a6e17844791762c62ec0a",
+      "retention": {
+        "native_achieved_token_count": 3963,
+        "regional_achieved_token_count": 3963,
+        "regional_requested_token_count": 3963,
+        "regional_retained_fraction": 0.7385389489377563,
+        "visual_population": 5366
+      },
+      "source": {
+        "analysis_file_sha256": "f8ada8cc27c6572dfeb7c7372688f5142fd1336a2cdd8f53cf12a680e1dd2ca6",
+        "analysis_internal_sha256": "be5686e060f77bda94a05281e46bd87896d6499a3a480034b52449664b043f36",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/41-26ca9466876a6e17844791762c62ec0a/analysis.json",
+        "completion_sha256": "420c38a4985d2c772e791ede84026dd651f62959df967dea88d2de9bdd3d8b82",
+        "selected_arms_file_sha256": "d1ef4c0eac2d9681f3c5f67a0b160f4ec177be13d7b519663197b10a38445710",
+        "selected_arms_internal_sha256": "9d8af3d7b225d98962936ab9020a8b181ef3068be86b77ee635d100e12c8270d",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/41-26ca9466876a6e17844791762c62ec0a/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -4.43755578994751,
+          "answer": "Ben Moore.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.7960801124572754,
+          "margin": 3.6414756774902344,
+          "peak_allocated_gpu_bytes": 17766595584,
+          "result_sha256": "65e3bb8228d47803da5d352f369b0ff2e15d5cfb6648d3d9a2d5188a384931f8"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.6825976371765137,
+          "answer": "Ben Moore.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.4187126159667969,
+          "margin": 2.263885021209717,
+          "peak_allocated_gpu_bytes": 17766595584,
+          "result_sha256": "6cb8a329e165f7f09df72a92039cf576d91b0b553a2a35a8e33fb4c765bcb0c4"
+        },
+        "native_docprune": {
+          "alternative": -0.0295762550085783,
+          "answer": "Alan Menken",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.715696096420288,
+          "margin": -2.68611984141171,
+          "peak_allocated_gpu_bytes": 17766595584,
+          "result_sha256": "602fdd16c54106f678197cab3e287074bd1262ea73639f0d388c6ca3ee33bf89"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.047018080949783325,
+          "answer": "Alan Menken",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.5242981910705566,
+          "margin": -2.4772801101207733,
+          "peak_allocated_gpu_bytes": 17766595584,
+          "result_sha256": "349c4905cecd6021e55f8fe20c332944ce2bfba26afe27804d003e31a3bee337"
+        },
+        "unpruned": {
+          "alternative": -0.025031931698322296,
+          "answer": "Alan Menken",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.7944226264953613,
+          "margin": -2.769390694797039,
+          "peak_allocated_gpu_bytes": 17868791808,
+          "result_sha256": "e0070dbe49e263b603460e6afb7e6fbb187a09f7ed62553e69baa5db55290ad1"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.7435195207992833,
+          "heldout_rmse": 0.265786795157191,
+          "lds_spearman": 0.9266862170087975,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.5576176353793953,
+          "minimum_defined": 0.4107142857142857,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.7259535011550304,
+          "heldout_rmse": 0.29073377286555624,
+          "lds_spearman": 0.8922287390029324,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 42,
+      "question_id": "cff1106bdd553b3ef2b8b74419606ce0",
+      "retention": {
+        "native_achieved_token_count": 2274,
+        "regional_achieved_token_count": 2274,
+        "regional_requested_token_count": 2274,
+        "regional_retained_fraction": 0.5117011701170117,
+        "visual_population": 4444
+      },
+      "source": {
+        "analysis_file_sha256": "f5eb8826b02a3f21904ce1b84fb254cc04030e49428930f23f6964f709d3122e",
+        "analysis_internal_sha256": "42bdeae105f13f6e41d0f4dc8c718e4af4cb552fcfa853e3d4fffa8b095b194a",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/42-cff1106bdd553b3ef2b8b74419606ce0/analysis.json",
+        "completion_sha256": "b14bf9d26aa9555d0925762d018637f0604d3bceb5089c6b945b21fcf3c48928",
+        "selected_arms_file_sha256": "e201113c2edc9160fe2f2720ac257f7b8a0826be2362151463415da507ac37c4",
+        "selected_arms_internal_sha256": "2026384c3a1e62134b2279ae2f11f282a8895c6c1b857676e53b475ed58a4954",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/42-cff1106bdd553b3ef2b8b74419606ce0/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -0.3674074113368988,
+          "answer": "1981",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.21437393128871918,
+          "margin": 0.15303348004817963,
+          "peak_allocated_gpu_bytes": 18016083968,
+          "result_sha256": "3a7230ec9074cc2a69b5c65539cdbd0a9527c3430b86e71e2e8981b998872960"
+        },
+        "contextcite_gold_support": {
+          "alternative": -0.41584017872810364,
+          "answer": "1981",
+          "em": 1,
+          "f1": 1.0,
+          "gold": -0.24295878410339355,
+          "margin": 0.17288139462471008,
+          "peak_allocated_gpu_bytes": 18016083968,
+          "result_sha256": "22d03d9d25f44e420b0f0b61f4112ecf7f174a10bf86555e09a3f07a612cd48a"
+        },
+        "native_docprune": {
+          "alternative": -0.1779840588569641,
+          "answer": "2024",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.6005620360374451,
+          "margin": -0.42257797718048096,
+          "peak_allocated_gpu_bytes": 18016083968,
+          "result_sha256": "f995e7ca335110dd1612ad227e33e1c65005d425e04d1d691ee5c9ef5c26d87f"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.1272539645433426,
+          "answer": "2024",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.6058391332626343,
+          "margin": -0.4785851687192917,
+          "peak_allocated_gpu_bytes": 18016083968,
+          "result_sha256": "39324928fec619ff64dd708ce5e65b7db9253af1246499276531593568476ab0"
+        },
+        "unpruned": {
+          "alternative": -0.17077811062335968,
+          "answer": "2024",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -0.5969244241714478,
+          "margin": -0.4261463135480881,
+          "peak_allocated_gpu_bytes": 18176624640,
+          "result_sha256": "3e4c20d0669bf1ba2c0c708ef466317e5aa8b8f27c8b6e28f4dc5e9560c20552"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.5495833657961938,
+          "heldout_rmse": 0.11097825403361986,
+          "lds_spearman": 0.9776392961876831,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6440036845609601,
+          "minimum_defined": 0.5135135135135135,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.5935676436175932,
+          "heldout_rmse": 0.21158651107285628,
+          "lds_spearman": 0.9545454545454544,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 43,
+      "question_id": "77240911edd7c3cc1d48a0623e54d32d",
+      "retention": {
+        "native_achieved_token_count": 3654,
+        "regional_achieved_token_count": 3654,
+        "regional_requested_token_count": 3654,
+        "regional_retained_fraction": 0.6147375504710633,
+        "visual_population": 5944
+      },
+      "source": {
+        "analysis_file_sha256": "344b6debbdb9f628b54351533e9be1694705b504917f6ab2adcd259f89ec1576",
+        "analysis_internal_sha256": "ddf030014de74e0f46d9532c957eb5e8105dbac99ecd4131cdf02b9525bdb91d",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/43-77240911edd7c3cc1d48a0623e54d32d/analysis.json",
+        "completion_sha256": "9298607871043c93e463500990cb5e948f0d16e38237bc5c35dde02802130886",
+        "selected_arms_file_sha256": "f74ef72d7fb8677ebc63c6783f4dd9b7fa7a18a25c61237794c6a9515f6956d3",
+        "selected_arms_internal_sha256": "eaa6335a799f955644595ac5503671f2d635a9125e98aac1c77474b2425c5d00",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-10/43-77240911edd7c3cc1d48a0623e54d32d/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -4.810418605804443,
+          "answer": "Sydney",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.099898338317871,
+          "margin": 2.7105202674865723,
+          "peak_allocated_gpu_bytes": 17849145344,
+          "result_sha256": "7a604809eb6fc7d9542b4706072d1d73f43e9f63df58fb6eb828fb679f73adb4"
+        },
+        "contextcite_gold_support": {
+          "alternative": -1.6110479831695557,
+          "answer": "New York",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -1.8297613859176636,
+          "margin": -0.2187134027481079,
+          "peak_allocated_gpu_bytes": 17849145344,
+          "result_sha256": "309fc3b898daf89a46c5e4cc2d55536e7b15dc8050cc27e7875cef3ac34d44de"
+        },
+        "native_docprune": {
+          "alternative": -0.2744569778442383,
+          "answer": "Hollywood",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.45302677154541,
+          "margin": -2.178569793701172,
+          "peak_allocated_gpu_bytes": 17844389376,
+          "result_sha256": "cda6494e33faa3cdf4f4fddf1ce12c17943f0f12aa30001439c7ea8972ae3210"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.7481597661972046,
+          "answer": "New York",
+          "em": 0,
+          "f1": 0.8,
+          "gold": -2.0041356086730957,
+          "margin": -0.2559758424758911,
+          "peak_allocated_gpu_bytes": 17849145344,
+          "result_sha256": "ca6c99653aa8a308098a771f8a4b62b602fe4333900f8263fe70f180fd059edf"
+        },
+        "unpruned": {
+          "alternative": -0.25570639967918396,
+          "answer": "Hollywood",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.439690351486206,
+          "margin": -2.183983951807022,
+          "peak_allocated_gpu_bytes": 17955497472,
+          "result_sha256": "99743b2e40c1d9b1db87e22000e6a6810c5390897c30de61c7cc079a9a25b8c4"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.5131947169476249,
+          "heldout_rmse": 0.10626397561063562,
+          "lds_spearman": 0.8552052785923753,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.7732479796203197,
+          "minimum_defined": 0.7142857142857143,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.6884078792212065,
+          "heldout_rmse": 0.20172807136691448,
+          "lds_spearman": 0.9288856304985336,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 44,
+      "question_id": "eea285074866dd36b5f5a7333b74d09a",
+      "retention": {
+        "native_achieved_token_count": 4003,
+        "regional_achieved_token_count": 4003,
+        "regional_requested_token_count": 4003,
+        "regional_retained_fraction": 0.8197829203358591,
+        "visual_population": 4883
+      },
+      "source": {
+        "analysis_file_sha256": "23e64ce4ac975d1b9961b8a43d2fb104f2be7d298da38840da662d23f8de2284",
+        "analysis_internal_sha256": "fda89c1c403193610ec1785a307e33a53b4d3f04f4372497a604b1b8f31569d9",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/44-eea285074866dd36b5f5a7333b74d09a/analysis.json",
+        "completion_sha256": "79b09f8a58eea29bc6bf107b50ceed54009a9f5c934b79e95f62215349826004",
+        "selected_arms_file_sha256": "9acafcf44b68b5db8bd4b6922876f6ce13a7cf7e4205f21320e2b7903c43f603",
+        "selected_arms_internal_sha256": "c6f87b96d9eeb8a2a484e0e92581a654728b97fe5e60f05b3781a742cb416629",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/44-eea285074866dd36b5f5a7333b74d09a/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -7.967423439025879,
+          "answer": "James Brown's hands are in his pockets.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -4.311761856079102,
+          "margin": 3.6556615829467773,
+          "peak_allocated_gpu_bytes": 17855744512,
+          "result_sha256": "ec8bba41c6ea566f19c6ec6cf3d1d2e47abda77953d814adb6d9236237204150"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.059530019760132,
+          "answer": "James Brown's hands are in his pockets.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -4.013960838317871,
+          "margin": -1.9544308185577393,
+          "peak_allocated_gpu_bytes": 17855744512,
+          "result_sha256": "4c7fafcfbba203da64b36e43f206a10db3e2a0d71508f1768226e06cd18c9b3b"
+        },
+        "native_docprune": {
+          "alternative": -1.0447438955307007,
+          "answer": "Ray Charles",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -4.4140825271606445,
+          "margin": -3.369338631629944,
+          "peak_allocated_gpu_bytes": 17855744512,
+          "result_sha256": "401c4728c298fba81615e2f3fb475bf613baf0c540079c46f62ed0d4265a360e"
+        },
+        "random_region_size_aware": {
+          "alternative": -1.7903074026107788,
+          "answer": "James Brown's hands are in his pockets.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -4.28359317779541,
+          "margin": -2.4932857751846313,
+          "peak_allocated_gpu_bytes": 17855744512,
+          "result_sha256": "3c5a502afa3c29cc59b4279e84146dc8f0cbaf8bfa4eef2dc1de42723a946e92"
+        },
+        "unpruned": {
+          "alternative": -1.029587984085083,
+          "answer": "Ray Charles",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -4.465795516967773,
+          "margin": -3.4362075328826904,
+          "peak_allocated_gpu_bytes": 17992139264,
+          "result_sha256": "1afff6cce61bc8d03d0629423b404de1c56add8bc150716c9493d3bc08925c0b"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.10588359322900394,
+          "heldout_rmse": 0.07111436559132449,
+          "lds_spearman": 0.7796920821114368,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6973368861412339,
+          "minimum_defined": 0.5769230769230769,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.19675333778971796,
+          "heldout_rmse": 0.15934449764166117,
+          "lds_spearman": 0.6359970674486802,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_14",
+      "ordinal": 45,
+      "question_id": "d0b8f1a8c94566aabb1596c2f5ce9066",
+      "retention": {
+        "native_achieved_token_count": 4011,
+        "regional_achieved_token_count": 4011,
+        "regional_requested_token_count": 4011,
+        "regional_retained_fraction": 0.7894115331627632,
+        "visual_population": 5081
+      },
+      "source": {
+        "analysis_file_sha256": "b7958f35ac6344a45e0b624ec666eb7330d04d3bbcb46414499655fe0905d2bc",
+        "analysis_internal_sha256": "69de54dc7946f191a07249dfaba6d73c76e4caf55ecb6be5a6b121dbe7cd8a97",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/45-d0b8f1a8c94566aabb1596c2f5ce9066/analysis.json",
+        "completion_sha256": "98d57b47e819c5431714d40ea67d77f3a7d6ce076d870e8fcf481d9c29b7c1eb",
+        "selected_arms_file_sha256": "8858d10feaf0802cd0168228c000152e31d3a185637d98948992ac650cf1fa36",
+        "selected_arms_internal_sha256": "4cdc2ea68845a3225ac165d0e23bfdbc9c80f087d1e0ff8e8aaa34a73c105618",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/45-d0b8f1a8c94566aabb1596c2f5ce9066/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -2.2122042179107666,
+          "answer": "\"Broken Glass\", \"A Better World\", \"Do or Die\".",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.7758378982543945,
+          "margin": 0.43636631965637207,
+          "peak_allocated_gpu_bytes": 18032625152,
+          "result_sha256": "aee8f1470f07d124553f4e0c7e167e09d8e75127cb1e8eeec55bc9d92a586760"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.1494510173797607,
+          "answer": "\"Broken Glass\", \"A Better World\", \"Do Not Cry\".",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.7756723165512085,
+          "margin": 0.37377870082855225,
+          "peak_allocated_gpu_bytes": 18032625152,
+          "result_sha256": "bad63d9ce78285d33c693660e45e00434b74c07cf186134cbe3704a3aa55639d"
+        },
+        "native_docprune": {
+          "alternative": -0.40002763271331787,
+          "answer": "\"Crystal Japan\", \"Ashes to Ashes\".",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.9806361198425293,
+          "margin": -1.5806084871292114,
+          "peak_allocated_gpu_bytes": 18032625152,
+          "result_sha256": "5c8764f90f2dbb476a57c080360ec8cb1b7f64344f69e4c842b6a46e8e37c3d8"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.34463152289390564,
+          "answer": "\"Crystal Japan\", \"Ashes to Ashes\".",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.8896737098693848,
+          "margin": -1.5450421869754791,
+          "peak_allocated_gpu_bytes": 18032625152,
+          "result_sha256": "cdda3a31fd686f1ea7708e18fab638723fc1c6c8ab758d091d99bb5f9dac2bcd"
+        },
+        "unpruned": {
+          "alternative": -0.40380170941352844,
+          "answer": "\"Crystal Japan\", \"Ashes to Ashes\".",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.8581773042678833,
+          "margin": -1.4543755948543549,
+          "peak_allocated_gpu_bytes": 18166711808,
+          "result_sha256": "34852a06b04cbf1322c408b0a52cb9fd9bb22ca9adc7c8b8d6fe467cac5636f4"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.17610290155649275,
+          "heldout_rmse": 0.05949465673779737,
+          "lds_spearman": 0.6318394307537567,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.479164673046252,
+          "minimum_defined": 0.3181818181818182,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.15800684901644507,
+          "heldout_rmse": 0.06525662588315057,
+          "lds_spearman": 0.9343841642228737,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 46,
+      "question_id": "3284364d73d82667ce3e2d6a38b05f08",
+      "retention": {
+        "native_achieved_token_count": 3947,
+        "regional_achieved_token_count": 3947,
+        "regional_requested_token_count": 3947,
+        "regional_retained_fraction": 0.6694369063772049,
+        "visual_population": 5896
+      },
+      "source": {
+        "analysis_file_sha256": "6c964da0fc8cb6ea0c8c00e519e3588b9f33fb491bb4bf9f561d3e1d28586ea1",
+        "analysis_internal_sha256": "ecc50670b1574b8e0464216b36a44eef52d112b018eaacce87e444a3dbaecbfa",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/46-3284364d73d82667ce3e2d6a38b05f08/analysis.json",
+        "completion_sha256": "efecf978e90c13098dd3760be4073ee7475f5226b46c03f745d754a1d1fb564e",
+        "selected_arms_file_sha256": "2ffbd1c6daf43bcbdad0bfdfe497be2ab2fd054c1a8ad2b63c7bf6a14cd0cd37",
+        "selected_arms_internal_sha256": "534072d8c467149b288a28680f67c70739f4dbbbeba48058120605af704809d9",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/46-3284364d73d82667ce3e2d6a38b05f08/selected-arms.json"
+      }
+    },
+    {
+      "arms": {
+        "contextcite_gold_margin": {
+          "alternative": -2.335177421569824,
+          "answer": "Aykut Kocaman.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.4274053573608398,
+          "margin": 0.9077720642089844,
+          "peak_allocated_gpu_bytes": 17721379328,
+          "result_sha256": "c56a11191fea929327b21f352a41c584bb75c25697a1ffdf557c8fd42b8fad61"
+        },
+        "contextcite_gold_support": {
+          "alternative": -2.195765256881714,
+          "answer": "Aykut Kocaman.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -1.6764578819274902,
+          "margin": 0.5193073749542236,
+          "peak_allocated_gpu_bytes": 17721379328,
+          "result_sha256": "4229fe20af249548389b4dc5161cbfaf968f96b9939ad1bb5b3a023bd3a38dff"
+        },
+        "native_docprune": {
+          "alternative": -0.09484788775444031,
+          "answer": "Dimitar Berbatov.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -3.35105037689209,
+          "margin": -3.2562024891376495,
+          "peak_allocated_gpu_bytes": 17721379328,
+          "result_sha256": "1bf3fb8e97990e2c0a4e6af90881025b567c5bfb045f05d17291c48da493171a"
+        },
+        "random_region_size_aware": {
+          "alternative": -0.2967917323112488,
+          "answer": "Carlos Tevez.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -2.725559949874878,
+          "margin": -2.428768217563629,
+          "peak_allocated_gpu_bytes": 17721379328,
+          "result_sha256": "a2b95f1b83842d1b660205f599bd26d711e0854f56289823793ab7fa4f662604"
+        },
+        "unpruned": {
+          "alternative": -0.08964763581752777,
+          "answer": "Dimitar Berbatov.",
+          "em": 0,
+          "f1": 0.0,
+          "gold": -3.3052735328674316,
+          "margin": -3.215625897049904,
+          "peak_allocated_gpu_bytes": 17818472448,
+          "result_sha256": "b2fda9df2e0ef711b92a6466e6d0b56aad7bfaa517a5f58f4a6c4c17abba9224"
+        }
+      },
+      "baseline_correct": false,
+      "baseline_stratum": "baseline_wrong",
+      "contextcite_fidelity": {
+        "budget_local": {
+          "constant_rmse": 0.5804046504090823,
+          "heldout_rmse": 0.44401365051407066,
+          "lds_spearman": 0.11107038123167154,
+          "rmse_beats_constant": true
+        },
+        "five_refit_top_selection": {
+          "all_defined": true,
+          "defined_count": 10,
+          "mean_defined": 0.6270182185777536,
+          "minimum_defined": 0.5483870967741935,
+          "pair_count": 10,
+          "undefined_count": 0
+        },
+        "global": {
+          "constant_rmse": 0.6628811761805566,
+          "heldout_rmse": 0.47615914347760735,
+          "lds_spearman": 0.6818181818181817,
+          "rmse_beats_constant": true
+        }
+      },
+      "cuda_device_name": "NVIDIA A30",
+      "forced_boundary": "B_16",
+      "ordinal": 47,
+      "question_id": "179569f6e6dba0729ddcf5e0acb23753",
+      "retention": {
+        "native_achieved_token_count": 2995,
+        "regional_achieved_token_count": 2995,
+        "regional_requested_token_count": 2995,
+        "regional_retained_fraction": 0.7092114610466493,
+        "visual_population": 4223
+      },
+      "source": {
+        "analysis_file_sha256": "a69d88e6cc9d05e2acce7984b1faed069d098d111ab97984bb95c2cbf9d322b7",
+        "analysis_internal_sha256": "5bd15dae05e3001b98f9687bbfe0f9e0185cf838dadbb8d2f2bf763113b5ab0e",
+        "analysis_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/47-179569f6e6dba0729ddcf5e0acb23753/analysis.json",
+        "completion_sha256": "d541933c1d238ccaa3f696a25ff3d014423cfebf1e4cdf9478ce135cc2dec97c",
+        "selected_arms_file_sha256": "a3f949945e1a97ba5c0d6bce0df3d9b025a8e9966dfdbdfed3680d4abdf6064c",
+        "selected_arms_internal_sha256": "25e8164c068b5eb17792bff722acfa73fbe94875d56f679591d783f9d464a935",
+        "selected_arms_path": "/scratch/lmalveau/docprune/task9-preliminary-dynamic48-90f27d7-v1/batch-11/47-179569f6e6dba0729ddcf5e0acb23753/selected-arms.json"
+      }
+    }
+  ],
+  "schema_version": "docprune-task9-preliminary-dynamic48-unified-analysis-v1",
+  "status": "completed-task9-preliminary-dynamic48-unified-analysis",
+  "surrogate_fidelity": {
+    "budget_local_lds_at_least_0_5_count": 35,
+    "budget_local_lds_mean": 0.6223928652330887,
+    "budget_local_lds_minimum": -0.10300586510263927,
+    "budget_local_rmse_beats_constant_count": 45,
+    "global_lds_at_least_0_5_count": 44,
+    "global_lds_mean": 0.7757381164589213,
+    "global_lds_minimum": 0.3086510263929618,
+    "global_rmse_beats_constant_count": 48
+  }
+}

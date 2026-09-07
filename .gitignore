@@ -49,6 +49,9 @@ external/*/
 *.tgz
 *.webp
 *.zip
+# Owner-authorized, curated presentation evidence (not runtime output directories).
+!docs/presentation-evidence/2026-09-06/assets/**/*.jpg
+!docs/presentation-evidence/2026-09-06/assets/**/*.png
 slurm-*.out
 slurm-*.err
 /task9-h200-local-data/
