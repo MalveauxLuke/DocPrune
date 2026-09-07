@@ -168,9 +168,40 @@ def resolve_asset(asset: dict, package: Path, roots: list[Path]) -> Path:
         candidates += [root / original.relative_to('/'), root / 'raw' / original.relative_to('/'),
                        root / original.name, root / asset['path']]
     for candidate in candidates:
-        if candidate.is_file() and not candidate.is_symlink() and sha256(candidate) == asset['sha256']:
-            return candidate.resolve()
+        try:
+            if candidate.is_file() and not candidate.is_symlink() and sha256(candidate) == asset['sha256']:
+                return candidate.resolve()
+        except OSError:
+            continue
     raise FileNotFoundError(f"Missing authenticated {asset['kind']} for {asset['doc_id']}: {asset['original_path']} sha256={asset['sha256']}")
+
+
+def check_assets(package: Path, roots: list[Path]) -> dict:
+    """Read-only CPU inventory; no images, models, retrieval or output assembly."""
+    for line in (package/'MANIFEST.sha256').read_text().splitlines():
+        digest, relative = line.split('  ', 1)
+        if sha256(package/relative) != digest:
+            raise ValueError('recipe checksum mismatch: ' + relative)
+    corpus = json.loads((package/'corpus.json').read_text())
+    found, missing = [], []
+    for asset in corpus['assets']:
+        try:
+            path = resolve_asset(asset, package, roots)
+            found.append({'doc_id':asset['doc_id'], 'kind':asset['kind'], 'path':str(path)})
+        except (ValueError, OSError) as error:
+            missing.append(dict(asset, reason=str(error)))
+    blocked_docs = {a['doc_id'] for a in missing}
+    available, blocked = [], []
+    for case in corpus['cases']:
+        absent = sorted({p['doc_id'] for p in case['pages']} & blocked_docs)
+        if absent:
+            blocked.append({'case_id':case['case_id'], 'missing_documents':absent})
+        else:
+            available.append(case['case_id'])
+    return {'candidate_count':len(corpus['cases']), 'available_case_count':len(available),
+            'available_case_ids':available, 'blocked_cases':blocked,
+            'found_assets':found, 'missing_assets':missing,
+            'note':'Missing means absent or unmatched in the supplied roots; no retrieval or rebuilding was attempted.'}
 
 
 def rebase_index_manifest(source: Path, artifact_root: Path, ledger_path: Path):

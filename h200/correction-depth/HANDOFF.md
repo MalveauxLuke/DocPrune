@@ -63,12 +63,21 @@ shared libraries are available, and the existing Python environment has
 
 ## Assemble and validate on CPU
 
-The input package has `corpus.json`, source-ledger provenance, PDF/feature
-assets, `missing-assets.json`, and checksums. Some SOL source files returned
-Remote I/O errors during packaging. The missing list is authoritative: do not
-regenerate features or silently change pages to bypass it. H200 lookup checks
-exact bytes against recorded hashes. An unsealed PDF needs its original source
-identity recovered before that case can be admitted.
+The small assembly recipe is committed under `h200/correction-depth/recipe/`
+and arrives through the existing sparse Git checkout. It contains all 40 case
+specifications, answer contracts, source-ledger metadata and expected hashes;
+no PDF, feature or segmentation bytes. No separate metadata/archive transfer
+is required. `CORRECTION_PACKAGE` points to this recipe directory.
+
+First run `bash h200/correction-depth/check_inputs.sh`. Pass existing transfer
+roots or exact PDF/feature directories as additional arguments when their paths
+are known. This only checks files and writes `asset-check.json` plus
+`available-case-ids.json` under the ignored correction data folder. If files
+appear missing, inspect the existing H200 fixture/manifests to locate their
+actual directories and repeat with those roots before requesting any transfer.
+The check does not recursively search all storage or run retrieval. Never rebuild
+features or change pages to bypass missing assets. An unsealed PDF identity must
+be recovered before that case can be admitted.
 
 ```bash
 "$CORRECTION_PYTHON" "$CORRECTION_CODE/examples/package_correction_depth.py" assemble \
@@ -91,11 +100,11 @@ Run `run_correction_depth.py validate` with the common arguments below. This
 validates fixed resources without loading a model. If assets are unavailable,
 finish assembly for explicitly selected available cases and log omissions;
 never count missing cases as unsuccessful oracle experiments.
-The delivery directory includes `available-case-ids.json` for the 36 candidates
-whose assets were copied successfully. Pass it with `--case-ids-file FILE` to
-assemble that explicit subset if the remaining files cannot be recovered on
-H200. `assembly-status.json` records all four excluded case IDs and missing
-assets. Use a fresh output directory for each distinct assembled membership.
+The H200 check writes `available-case-ids.json` from its actual local inventory.
+Pass it with `--case-ids-file FILE` to assemble an explicit nonempty available
+subset if some cases remain blocked. The SOL package had 36 complete cases;
+that is not a measurement of H200 availability. Use a fresh output directory
+for each distinct assembled membership.
 
 ## Execution order
 

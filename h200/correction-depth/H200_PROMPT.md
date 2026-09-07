@@ -14,17 +14,14 @@ geometry, mappings and results inside
 `DocPrune/task9-h200-local-data/correction-depth40/`. Reuse the installed Qwen,
 MinerU and pinned Poppler environments and authenticated existing assets.
 
-The SOL delivery is at
-`/home/lmalveau/DocPrune/outputs/correction-depth-delivery-2026-09-07/`.
-Obtain only `correction-depth-inputs.tar.gz`, its checksum and the small
-`assembly-status.json` / `available-case-ids.json` files through the established
-transfer route. No source archive or 600-question retransfer is needed.
-Verify the archive checksum and its extracted `MANIFEST.sha256`.
-All 40 candidate definitions are present; four cases depend on five files that
-were unreadable on SOL. Resolve them from authenticated existing H200 copies
-where possible. Otherwise assemble the explicit 36-case available subset and
-report the four blocked cases. Do not invent hashes, rebuild features, silently
-replace pages, or call missing cases experimental failures.
+The 40-case recipe is already in Git at `h200/correction-depth/recipe/`.
+No archive or separate metadata transfer is required. Run
+`bash h200/correction-depth/check_inputs.sh`, locate the existing H200 PDF and
+feature directories using its current transfer manifests, and pass those
+locations as additional arguments. Inspect `asset-check.json` before asking
+for any missing files. Its available-case-ids.json reflects H200 inventory;
+do not assume the old SOL count of 36 is the H200 count. Do not invent hashes,
+rebuild features, change pages, or call missing cases experimental failures.
 
 Proceed through the handoff, starting with one case to validate each new path:
 

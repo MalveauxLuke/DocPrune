@@ -16,7 +16,7 @@ def build(repo: Path, output: Path) -> Path:
     if output.exists():
         raise FileExistsError(output)
     files = [p for p in (repo / 'src/docprune').rglob('*.py')]
-    files += [p for p in (repo / 'h200/correction-depth').iterdir() if p.is_file()]
+    files += [p for p in (repo / 'h200/correction-depth').rglob('*') if p.is_file()]
     files += [repo / 'configs/docprune-m3docvqa.toml', repo / 'pyproject.toml', repo / 'LICENSE']
     files += [repo / 'examples' / name for name in (
         'package_correction_depth.py', 'run_correction_depth.py',

@@ -13,6 +13,12 @@ artifacts only under its ignored local-data folder. Segment the admitted corpus
 with MinerU before baselines; capture geometry and publish mappings afterward.
 Do not create another source checkout.
 
+The 40-case assembly recipe now travels in Git under
+`h200/correction-depth/recipe/`, covered by the existing correction sparse path.
+Run `bash h200/correction-depth/check_inputs.sh` on H200 to check its actual
+local assets before deciding whether any separate file transfer is needed.
+No input archive or separate metadata transfer is required to start.
+
 Packaging is complete locally. The [delivery directory](/home/lmalveau/DocPrune/outputs/correction-depth-delivery-2026-09-07/README.md)
 contains source/input archives, checksums, validation and missing-asset details.
 All 40 candidate definitions are included; 36 have complete copied assets.
