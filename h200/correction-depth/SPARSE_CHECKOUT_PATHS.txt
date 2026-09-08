@@ -1,0 +1,17 @@
+/.gitignore
+/AGENTS.md
+/LICENSE
+/pyproject.toml
+/configs/docprune-m3docvqa.toml
+/agent-context/CURRENT_TASK.md
+/docs/experiments/regional-attribution/EXPERIMENT_PLAN.md
+/h200/correction-depth/
+/src/docprune/
+/examples/package_correction_depth.py
+/examples/package_correction_depth_source.py
+/examples/prepare_correction_depth.py
+/examples/run_correction_depth.py
+/tests/test_correction_corpus.py
+/tests/test_correction_depth.py
+/tests/test_correction_preparation.py
+/tests/test_correction_scoring.py

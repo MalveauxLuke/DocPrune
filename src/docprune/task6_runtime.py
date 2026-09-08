@@ -37,7 +37,9 @@ TASK6_RENDERER_CONTRACT = (
     "pdf2image-1.17.0|poppler-pdftoppm-26.05.0|dpi-144|rgb-contiguous|"
     "pdftoppm-sha256-1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 )
-TASK6_POPPLER_BIN = Path("/home/lmalveau/mamba-envs/m3docvqa-acquisition/bin")
+TASK6_POPPLER_BIN = Path(os.environ.get(
+    "DOCPRUNE_TASK6_POPPLER_BIN", "/home/lmalveau/mamba-envs/m3docvqa-acquisition/bin"
+))
 TASK6_PDFTOPPM_SHA256 = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
 _SHA256_LENGTH = 64
 _FIXTURE_KEYS = {

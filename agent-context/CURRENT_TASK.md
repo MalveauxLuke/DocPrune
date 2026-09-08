@@ -1,5 +1,37 @@
 # Current task
 
+## Current owner request — 2026-09-07
+
+Package the 40-candidate evidence-reviewed correction corpus and a baseline-first
+input-versus-intermediate deletion-depth comparison for H200. See the scoped
+[correction-depth handoff](../h200/correction-depth/HANDOFF.md). Each depth gets
+its own 256-mask gold-support oracle; margin is secondary. Packaging and CPU
+validation are authorized here; no GPU execution is part of this task.
+
+Latest owner clarification: use the existing H200 DocPrune checkout, with new
+artifacts only under its ignored local-data folder. Segment the admitted corpus
+with MinerU before baselines; capture geometry and publish mappings afterward.
+Do not create another source checkout.
+
+The 40-case assembly recipe now travels in Git under
+`h200/correction-depth/recipe/`, covered by the existing correction sparse path.
+Run `bash h200/correction-depth/check_inputs.sh` on H200 to check its actual
+local assets before deciding whether any separate file transfer is needed.
+No input archive or separate metadata transfer is required to start.
+
+Packaging is complete locally. The [delivery directory](/home/lmalveau/DocPrune/outputs/correction-depth-delivery-2026-09-07/README.md)
+contains source/input archives, checksums, validation and missing-asset details.
+All 40 candidate definitions are included; 36 have complete copied assets.
+The residual addition reuses the same G/S mask scores for separate self fits
+and coefficient differences. Transfer/assembly and one-case H200 execution
+remain pending; no GPU results are claimed.
+
+The 600 questions are already on H200, with segmentation pending in the latest
+owner update. Their separate preparation and the 100-question confirmation
+remain untouched. Reuse authenticated transferred assets read-only where they
+exist. The older track descriptions below describe those separate activities,
+not instructions to launch them during correction-corpus work.
+
 ## Goal
 
 Complete Task 9's confirmatory and feasibility experiments without changing the frozen retrieval, model, prompt, decoding, physical-deletion, or cohort contracts.

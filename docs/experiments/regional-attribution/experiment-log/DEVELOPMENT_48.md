@@ -34,3 +34,30 @@ Artifacts:
 - `/scratch/lmalveau/docprune/task9-mask192-generation-356f118-v1`
 
 Focused analysis: [mask count and nesting](../analysis/mask-count-and-nesting-2026-09-02.md).
+
+## 2026-09-06 — CPU visual audit of development failures
+
+Completed [visual and quantitative audit](../analysis/VISUAL_AUDIT_24_2026-09-06.md)
+of all 24 baseline-wrong cases and six controls chosen before pruning outcomes.
+The gallery includes all 120 supplied page instances and 576 token-footprint
+illustrations reconstructed from existing selected-arm IDs, mappings and MinerU
+PDFs. Initial question/page observations precede case-specific outcome reads;
+native-detail and overlay review is explicitly unblinded.
+
+- Reproduced support/native mean F1 `0.38125/0.13750`, exact `4/0`, and
+  wins/ties/losses `9/15/0`; support versus unpruned is `7/17/0`.
+- Of four nominal exact rescues, Q29 is supported by the retrieved table,
+  Q36/Q37 lack required retrieved evidence, and Q43 matches stale gold
+  contradicted by its supplied pages. Historical scores were not changed.
+- Actual wrong-case boundaries are `B_14` (16) and `B_16` (8), with `B_K`
+  defined after zero-based block K. Multi-item gold-target issues and
+  retrieved-document/cohort overlaps are recorded in the report.
+- All 30 selected-arm/mapping hashes and compact-token ownership/budget checks
+  passed. No new model run, GPU job, training, or mask sweep was performed;
+  the 600 preparation was not changed and confirmation outcomes were excluded.
+
+Artifacts: `/home/lmalveau/DocPrune/outputs/regional-audit-2026-09-06/`
+(`index.html`, `cases.csv`, `cases.json`, `arm-measurements.csv`,
+`cohort-audit.json`, `validation.json`). Source runtime is
+`90f27d7ed8b99ad10f1a5fe405c131127456ae5d`; audit checkout started at
+`3c25f805863ece09f7d5bea82311baa9b1bd9742`.
