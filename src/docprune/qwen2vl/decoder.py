@@ -117,10 +117,10 @@ def _prefill_attention_mask(
     dtype: torch.dtype,
     device: torch.device,
 ) -> torch.Tensor | None:
-    """Use FlashAttention's causal varlen path for an unpadded batch-one prefill."""
+    """Use the stock implicit causal path for an unpadded batch-one prefill."""
 
     implementation = getattr(decoder_model.config, "_attn_implementation", "eager")
-    if implementation == "flash_attention_2":
+    if implementation in {"flash_attention_2", "sdpa"}:
         return None
     return _causal_mask(sequence_length, dtype=dtype, device=device)
 
@@ -131,10 +131,17 @@ def _last_query_attention_logits(
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
     causal_mask: torch.Tensor | None,
 ) -> torch.Tensor:
-    from transformers.models.qwen2_vl.modeling_qwen2_vl import (
-        apply_multimodal_rotary_pos_emb,
-        repeat_kv,
-    )
+    module_name = type(decoder_layer).__module__
+    if ".qwen2_5_vl." in module_name:
+        from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
+            apply_multimodal_rotary_pos_emb,
+            repeat_kv,
+        )
+    else:
+        from transformers.models.qwen2_vl.modeling_qwen2_vl import (
+            apply_multimodal_rotary_pos_emb,
+            repeat_kv,
+        )
 
     attention = decoder_layer.self_attn
     hidden = decoder_layer.input_layernorm(layer_input)

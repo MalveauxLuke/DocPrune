@@ -204,6 +204,14 @@ def _decode_new_tokens(processor: object, generated: torch.Tensor, prompt_length
     return str(decoded[0]).strip()
 
 
+def _response_ids_and_terminal(
+    generated: torch.Tensor, prompt_length: int, eos_token_ids: Sequence[int]
+) -> tuple[tuple[int, ...], int | None]:
+    values = tuple(int(value) for value in generated[0, prompt_length:].tolist())
+    terminal = values[-1] if values and values[-1] in set(eos_token_ids) else None
+    return (values[:-1] if terminal is not None else values), terminal
+
+
 def _resolved_eos_token_ids(model: object) -> tuple[int, ...]:
     """Resolve the EOS set used by stock ``generate`` for the pinned model."""
 
@@ -363,6 +371,40 @@ def derive_btp_qtp_geometry_without_qwen_model(
     )
 
 
+def derive_full_context_geometry_without_qwen_model(
+    processor: object,
+    images: Sequence[object],
+    question: str,
+) -> BTPQTPGeometryCapture:
+    """Derive the complete merged Qwen visual grid without BTP or QTP."""
+
+    prepared = tuple(prepare_qwen_page(processor, image) for image in images)
+    qwen_images = tuple(prepared_raster_image(page) for page in prepared)
+    batch = _prepare_batch(processor, qwen_images, question)
+    _validate_prepared_batch(prepared, batch, None, processor)
+    grid = _grid(batch)
+    count = _merged_count(grid, merge_size=prepared[0].merge_size)
+    keep = torch.ones(count, dtype=torch.bool)
+    identity = derive_post_qtp_geometry(
+        grid,
+        keep,
+        merge_size=prepared[0].merge_size,
+    )
+    mask_sha256 = _mask_sha256(keep)
+    return BTPQTPGeometryCapture(
+        identity.geometry,
+        identity.count,
+        identity.sha256,
+        tuple(tuple(int(item) for item in row) for row in grid.tolist()),
+        count,
+        count,
+        count,
+        mask_sha256,
+        mask_sha256,
+        mask_sha256,
+    )
+
+
 def _validate_placeholder_count(
     model: object, processor: object, input_ids: torch.Tensor, grid: torch.Tensor
 ) -> None:
@@ -445,8 +487,9 @@ class AllKeptQwenAnswerer:
         del retrieval_output
         started = time.perf_counter()
         measurement_device = _begin_gpu_measurement(self.model)
-        batch = _prepare_batch(self.processor, images, question)
+        prompt, batch = _prepare_batch_with_prompt(self.processor, images, question)
         input_ids = torch.as_tensor(_value(batch, "input_ids"), dtype=torch.long)
+        input_ids_shape, input_ids_sha256 = _input_ids_identity(input_ids)
         grid = _grid(batch)
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         batch = _move_batch(batch, _model_device(self.model))
@@ -485,7 +528,11 @@ class AllKeptQwenAnswerer:
             if not decoder_seconds:
                 decoder_seconds = max(generation_elapsed - encoder_seconds, 1e-12)
         peak_allocated_gpu_bytes = _end_gpu_measurement(measurement_device)
-        answer = _decode_new_tokens(self.processor, torch.as_tensor(generated), input_ids.shape[1])
+        generated_tensor = torch.as_tensor(generated)
+        answer = _decode_new_tokens(self.processor, generated_tensor, input_ids.shape[1])
+        response_ids, terminal_eos_token_id = _response_ids_and_terminal(
+            generated_tensor, input_ids.shape[1], eos
+        )
         qa_elapsed = max(time.perf_counter() - started, 1e-12)
         return AnswerOutput(
             answer,
@@ -498,6 +545,11 @@ class AllKeptQwenAnswerer:
             None,
             encoder_seconds,
             decoder_seconds,
+            assistant_prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            prefill_input_ids_shape=input_ids_shape,
+            prefill_input_ids_sha256=input_ids_sha256,
+            generated_response_token_ids=response_ids,
+            terminal_eos_token_id=terminal_eos_token_id,
         )
 
 
@@ -524,6 +576,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         policy_repetition: object | None = None,
         teacher_forced_target_token_ids: tuple[tuple[int, ...], ...] | None = None,
         frozen_post_qtp_geometry: tuple[VisualTokenGeometry, ...] | None = None,
+        full_context: bool = False,
     ) -> None:
         del colpali_model, colpali_processor
         super().__init__(model=model, processor=processor, max_new_tokens=max_new_tokens)
@@ -541,10 +594,13 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         self._policy_repetition = policy_repetition
         self.teacher_forced_target_token_ids = teacher_forced_target_token_ids
         self.frozen_post_qtp_geometry = frozen_post_qtp_geometry
+        self.full_context = bool(full_context)
         if frozen_post_qtp_geometry is not None and qa_stage != "full":
             raise ValueError("frozen post-QTP geometry requires the full QA stage")
         if self.forced_intervention is not None and self.ctp_policy is not None:
             raise ValueError("forced intervention and corrected CTP policy cannot be combined")
+        if self.full_context and self.ctp_policy is not None:
+            raise ValueError("full-context intervention mode cannot combine a CTP policy")
         if (
             self.ctp_policy is not None
             and self.ctp_policy.family in {"random-top-m", "coverage-top-m"}
@@ -622,6 +678,21 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             raise ValueError("frozen post-QTP geometry is outside the live BTP population")
         return VisionPruningMasks(background_keep=background, question_keep=frozen)
 
+    def _base_masks(
+        self,
+        images: Sequence[object],
+        prepared: Sequence[PreparedQwenPage],
+        batch: Mapping[str, object],
+        question: str,
+        retrieval_output: RetrievalOutput,
+        grid: torch.Tensor,
+    ) -> VisionPruningMasks:
+        if not self.full_context:
+            return self._masks(images, prepared, batch, question, retrieval_output)
+        count = _merged_count(grid, merge_size=prepared[0].merge_size)
+        keep = torch.ones(count, dtype=torch.bool, device=grid.device)
+        return VisionPruningMasks(background_keep=keep, question_keep=keep)
+
     def score_forced_intervention_likelihoods(
         self,
         images: Sequence[object],
@@ -632,7 +703,7 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         teacher_forced_target_token_ids: tuple[tuple[int, ...], ...],
         include_unpruned_generated_response: bool = False,
     ) -> RegionalLikelihoodOutput:
-        """Score Task 9 masks through the exact production BTP+QTP input path."""
+        """Score Task 9 masks through the selected frozen visual-context path."""
 
         if retrieval_output is None:
             raise ValueError("Task 9 regional scoring requires retrieval_output")
@@ -651,7 +722,9 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         input_ids = torch.as_tensor(_value(moved, "input_ids"), dtype=torch.long)
         input_shape, input_sha256 = _input_ids_identity(input_ids)
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
-        masks = self._masks(images, prepared, moved, question, retrieval_output)
+        masks = self._base_masks(
+            images, prepared, moved, question, retrieval_output, grid
+        )
         masks = self._frozen_masks(masks, grid, merge_size=prepared[0].merge_size)
         adapter = (
             self.model
@@ -754,7 +827,9 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
         _validate_placeholder_count(self.model, self.processor, input_ids, grid)
         attention_mask = torch.as_tensor(_value(moved, "attention_mask"), dtype=torch.long)
         pixel_values = torch.as_tensor(_value(moved, "pixel_values"))
-        masks = self._masks(images, prepared, moved, question, retrieval_output)
+        masks = self._base_masks(
+            images, prepared, moved, question, retrieval_output, grid
+        )
         if self.qa_stage == "btp-only":
             masks = VisionPruningMasks(
                 background_keep=masks.background_keep,
@@ -846,4 +921,10 @@ class DocPruneQwenAnswerer(AllKeptQwenAnswerer):
             hashlib.sha256(prompt.encode("utf-8")).hexdigest() if capture_likelihood else None,
             input_ids_shape,
             input_ids_sha256,
+            generated_response_token_ids=_response_ids_and_terminal(
+                torch.as_tensor(result.generated_ids), 0, eos
+            )[0],
+            terminal_eos_token_id=_response_ids_and_terminal(
+                torch.as_tensor(result.generated_ids), 0, eos
+            )[1],
         )

@@ -7,6 +7,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 SUPPORTED_TRANSFORMERS_VERSION = "4.46.3"
+SUPPORTED_QWEN25_TRANSFORMERS_VERSION = "4.49.0"
 
 
 class QwenCompatibilityError(RuntimeError):
@@ -36,9 +37,16 @@ def assert_supported_qwen2vl(model: object) -> QwenCompatibility:
         installed_version = version("transformers")
     except PackageNotFoundError as exc:
         raise QwenCompatibilityError("transformers is not installed") from exc
-    if installed_version != SUPPORTED_TRANSFORMERS_VERSION:
+    model_type = getattr(getattr(model, "config", None), "model_type", None)
+    expected_version = (
+        SUPPORTED_QWEN25_TRANSFORMERS_VERSION
+        if model_type == "qwen2_5_vl"
+        else SUPPORTED_TRANSFORMERS_VERSION
+    )
+    if installed_version != expected_version:
         raise QwenCompatibilityError(
-            f"transformers {SUPPORTED_TRANSFORMERS_VERSION} is required, got {installed_version}"
+            f"transformers {expected_version} is required for {model_type or 'Qwen2-VL'}, "
+            f"got {installed_version}"
         )
     _require_path(model, "config.vision_config.spatial_merge_size")
     _require_path(model, "visual.patch_embed")

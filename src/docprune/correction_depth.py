@@ -83,15 +83,19 @@ def validate_case(case):
 
 
 def baseline_stratum(case, baseline, adjudications=None):
-    """Unknown aliases abstain. Optional adjudication binds the exact generation."""
-    score = score_answer(baseline["unpruned"]["answer"], case["answer_contract"])
+    """Score the full-context baseline, with exact-generation adjudication."""
+    reference_arm = baseline.get("full_context_qwen", baseline["unpruned"])
+    score = score_answer(reference_arm["answer"], case["answer_contract"])
     review = (adjudications or {}).get(case["case_id"])
     if review is not None:
+        arm_review = review.get("arms", {}).get("full_context_qwen", {})
+        review_status = arm_review.get("status", review.get("status"))
         if (review.get("baseline_sha256") != baseline["artifact_sha256"]
-                or review.get("status") not in {"correct", "incorrect", "review"}
-                or not review.get("reviewer") or not review.get("rationale")):
-            raise ValueError("adjudication must bind baseline hash, reviewer and rationale")
-        score = dict(score, status=review["status"], adjudication=review)
+                or review_status not in {"correct", "incorrect", "review"}
+                or not review.get("reviewer") or not review.get("rationale")
+                or (arm_review and arm_review.get("generated_answer") != reference_arm["answer"])):
+            raise ValueError("adjudication must bind the full-context generation and baseline hash")
+        score = dict(score, status=review_status, adjudication=review)
     return score
 
 
@@ -145,7 +149,11 @@ def _record(output, case):
             "decoder_seconds": output.decoder_seconds,
             "peak_allocated_gpu_bytes": output.peak_allocated_gpu_bytes,
             "policy_selection": None if output.policy_selection is None else output.policy_selection.to_dict(),
-            "forced_intervention": None if output.forced_intervention is None else output.forced_intervention.to_dict()}
+            "forced_intervention": None if output.forced_intervention is None else output.forced_intervention.to_dict(),
+            "generated_response_token_ids": None if output.generated_response_token_ids is None else list(output.generated_response_token_ids),
+            "terminal_eos_token_id": output.terminal_eos_token_id,
+            "assistant_prompt_sha256": output.assistant_prompt_sha256,
+            "prefill_input_ids_sha256": output.prefill_input_ids_sha256}
 
 
 def _workload(case, resources, root, output, runtime_commit):
@@ -174,16 +182,63 @@ def _workload(case, resources, root, output, runtime_commit):
     return runner.answerer, images, retrieval
 
 
-def _configured(base, *, mapping=None, targets=None, forced=None, native=False):
+def build_baseline_session(
+    cases, resources, root, output, runtime_commit, *,
+    session_name="_baseline-session",
+):
+    """Load retrieval state and one Qwen instance for an ordered case corpus."""
+    from docprune.config import load_config
+    from docprune.ctp_policy import btp_qtp_no_ctp_policy
+    from docprune.m3docvqa_factory import build_workload
+    paths = {key: resource(resources[key], root) for key in (
+        "config", "run_config", "index_manifest", "fixture"
+    )}
+    session_output = Path(output) / session_name
+    workload = build_workload(
+        operation="evaluate", config=load_config(paths["config"]), page_count=4,
+        output=session_output, mode="docprune", run_config=paths["run_config"],
+        index_manifest=paths["index_manifest"],
+        sample_ids=tuple(case["qid"] for case in cases),
+        resume=session_output.exists(), ctp_policy=btp_qtp_no_ctp_policy(),
+        fixed_page_fixture=paths["fixture"],
+        fixed_page_fixture_sha256=resources["fixture"]["sha256"],
+        execution_runtime_commit=runtime_commit,
+    )
+    samples = {sample.question_id: sample for sample in workload.samples}
+    if set(samples) != {case["qid"] for case in cases}:
+        raise ValueError("persistent baseline workload samples differ from the corpus")
+    workload.runner.warmup(next(iter(samples.values())))
+    return {"runner": workload.runner, "samples": samples}
+
+
+def _workload_from_session(case, session):
+    from docprune.m3docrag import RetrievalOutput
+    runner = session["runner"]
+    sample = session["samples"].get(case["qid"])
+    if sample is None or sample.question != case["question"]:
+        raise ValueError("persistent workload question differs from frozen corpus question")
+    retrieval = runner.retriever.retrieve(case["question"], 4)
+    if not isinstance(retrieval, RetrievalOutput):
+        raise ValueError("requires sealed retrieval features")
+    expected = [(p["doc_id"], p["page_index"]) for p in case["pages"]]
+    if [(p.doc_id, p.page_index) for p in retrieval.pages] != expected:
+        raise ValueError("ordered supplied pages differ from corpus")
+    images = [runner.page_loader.load_page(p.doc_id, p.page_index) for p in retrieval.pages]
+    return runner.answerer, images, retrieval
+
+
+def _configured(base, *, mapping=None, targets=None, forced=None, native=False,
+                full_context=False):
     from docprune.answerers import DocPruneQwenAnswerer
     from docprune.ctp_policy import aggregate_native_threshold_policy, btp_qtp_no_ctp_policy
     kwargs = dict(page_config=base.page_config, reconstruction=base.reconstruction,
         qa_stage="full", max_new_tokens=base.max_new_tokens,
         teacher_forced_target_token_ids=targets,
-        frozen_post_qtp_geometry=None if mapping is None else mapping.geometry)
+        frozen_post_qtp_geometry=None if mapping is None else mapping.geometry,
+        full_context=full_context)
     if forced is not None:
         kwargs["forced_intervention"] = forced
-    else:
+    elif not full_context:
         kwargs["ctp_policy"] = aggregate_native_threshold_policy() if native else btp_qtp_no_ctp_policy()
     return DocPruneQwenAnswerer(base.model, base.processor, **kwargs)
 
@@ -193,35 +248,63 @@ def _forced(boundary, ids):
     return ForcedVisualIntervention(boundary=boundary, mode="physical_delete", retained_visual_ids=tuple(ids))
 
 
-def run_baseline(case, resources, root, output, runtime_commit):
-    from docprune.answerers import prepare_task7_likelihood_target_for_question
-    identity = {"case_sha256": digest(case), "resources_sha256": digest({k:v for k,v in resources.items() if k != "mappings"}),
-                "runtime_commit": runtime_commit, "phase": "baseline", "runtime_code_sha256": code_tree_sha256()}
+def run_baseline(case, resources, root, output, runtime_commit, *, session=None):
+    from docprune.answerers import (
+        AllKeptQwenAnswerer,
+        prepare_task7_likelihood_target_for_question,
+    )
+    identity = {
+        "case_sha256": digest(case),
+        "resources_sha256": digest({k:v for k,v in resources.items() if k != "mappings"}),
+        "runtime_commit": runtime_commit,
+        "phase": "baseline",
+        "experiment_schema": "correction-four-arm-baseline-v1",
+        "runtime_code_sha256": code_tree_sha256(),
+    }
     target_path = output / case["case_id"] / "baseline.json"
     existing = resume(target_path, identity)
     if existing:
         _baseline_reference(target_path, existing)
         return existing
-    base, images, retrieval = _workload(case, resources, root, output / case["case_id"] / "bootstrap-baseline", runtime_commit)
-    first = base.answer(images, case["question"], retrieval_output=retrieval)
-    population = first.trace.post_qtp_visual_tokens
-    target = prepare_task7_likelihood_target_for_question(base.processor, page_count=4,
-        question=case["question"], accepted_references=tuple(case["gold_answers"]))
+    base, images, retrieval = (
+        _workload(
+            case, resources, root, output / case["case_id"] / "bootstrap-baseline",
+            runtime_commit
+        )
+        if session is None
+        else _workload_from_session(case, session)
+    )
+    full_answerer = AllKeptQwenAnswerer(
+        base.model, base.processor, max_new_tokens=base.max_new_tokens
+    )
+    full_context = full_answerer.answer(
+        images, case["question"], retrieval_output=retrieval
+    )
+    own = tuple(full_context.generated_response_token_ids or ())
+    if not own or full_context.terminal_eos_token_id is None:
+        raise ValueError("full-context fixed self generation missing or truncated before EOS")
+    decoded = base.processor.tokenizer.decode(
+        list(own), skip_special_tokens=True, clean_up_tokenization_spaces=False
+    ).strip()
+    if decoded != full_context.answer.strip():
+        raise ValueError("full-context fixed-self token IDs do not reproduce its answer")
+    target = prepare_task7_likelihood_target_for_question(
+        base.processor, page_count=4, question=case["question"],
+        accepted_references=tuple(case["gold_answers"])
+    )
     references = tuple(tuple(x) for x in target["target_token_ids"])
-    shared = base.score_forced_intervention_likelihoods(images, case["question"], retrieval_output=retrieval,
-        forced_interventions=(_forced("input", range(population)),), teacher_forced_target_token_ids=references,
-        include_unpruned_generated_response=True)
-    own = tuple(shared.unpruned_generated_response_token_ids or ())
-    if not own or shared.unpruned_terminal_eos_token_id is None:
-        raise ValueError("fixed self generation missing or truncated before EOS")
-    decoded = base.processor.tokenizer.decode(list(own), skip_special_tokens=True, clean_up_tokenization_spaces=False).strip()
-    if decoded != first.answer.strip():
-        raise ValueError("unpruned generation did not reproduce for fixed-self capture")
     teacher = (*references, own)
-    unpruned = _configured(base, targets=teacher).answer(images, case["question"], retrieval_output=retrieval)
-    if unpruned.answer.strip() != first.answer.strip():
-        raise ValueError("baseline generation changed while scoring")
-    values = list(unpruned.teacher_forced_loglikelihoods)
+    btp_qtp = _configured(base, targets=teacher).answer(
+        images, case["question"], retrieval_output=retrieval
+    )
+    values = list(btp_qtp.teacher_forced_loglikelihoods or ())
+    population = btp_qtp.trace.post_qtp_visual_tokens
+    shared = base.score_forced_intervention_likelihoods(
+        images, case["question"], retrieval_output=retrieval,
+        forced_interventions=(_forced("input", range(population)),),
+        teacher_forced_target_token_ids=teacher,
+        include_unpruned_generated_response=False,
+    )
     if len(shared.result.branches) != 1:
         raise ValueError("baseline scoring did not return one all-keep branch")
     continued = list(shared.result.branches[0].teacher_forced_loglikelihoods)
@@ -229,15 +312,46 @@ def run_baseline(case, resources, root, output, runtime_commit):
     parity = max(abs(a-b) for a,b in zip(values, continued, strict=True))
     if parity > 1e-4:
         raise ValueError(f"input all-keep continuation likelihood parity failed: {parity}")
-    native = _configured(base, targets=teacher, native=True).answer(images, case["question"], retrieval_output=retrieval)
+    native = _configured(base, targets=teacher, native=True).answer(
+        images, case["question"], retrieval_output=retrieval
+    )
     validate_likelihood_rows([native.teacher_forced_loglikelihoods], len(teacher))
-    completed = publish(target_path, {"identity": identity, "case_id": case["case_id"], "qid": case["qid"],
-        "question": case["question"], "pages": case["pages"], "gold_answers": case["gold_answers"],
-        "answer_contract": case["answer_contract"], "reference_token_ids": [list(x) for x in references],
-        "fixed_self_token_ids": list(own), "terminal_eos_token_id": shared.unpruned_terminal_eos_token_id,
-        "prompt_sha256": shared.assistant_prompt_sha256, "input_ids_sha256": shared.prefill_input_ids_sha256,
-        "unpruned": _record(unpruned, case), "native_docprune": _record(native, case),
-        "all_keep_input_parity_max_abs": parity, "retrieval_search_run": False, "global_index_loaded": False})
+    full_record = _record(full_context, case)
+    btp_record = _record(btp_qtp, case)
+    native_record = _record(native, case)
+    transition = {
+        "from_arm": "full_context_qwen",
+        "to_arm": "btp_qtp_qwen",
+        "full_context_status": full_record["contract_score"]["status"],
+        "btp_qtp_status": btp_record["contract_score"]["status"],
+        "answer_changed": full_record["answer"].strip() != btp_record["answer"].strip(),
+    }
+    transition["preprocessing_damaged_answer"] = (
+        transition["full_context_status"] == "correct"
+        and transition["btp_qtp_status"] == "incorrect"
+    )
+    transition["preprocessing_preserved_correct_answer"] = (
+        transition["full_context_status"] == "correct"
+        and transition["btp_qtp_status"] == "correct"
+    )
+    completed = publish(target_path, {
+        "identity": identity, "case_id": case["case_id"], "qid": case["qid"],
+        "question": case["question"], "pages": case["pages"],
+        "gold_answers": case["gold_answers"], "answer_contract": case["answer_contract"],
+        "reference_token_ids": [list(x) for x in references],
+        "fixed_self_source_arm": "full_context_qwen",
+        "fixed_self_token_ids": list(own),
+        "terminal_eos_token_id": full_context.terminal_eos_token_id,
+        "prompt_sha256": shared.assistant_prompt_sha256,
+        "input_ids_sha256": shared.prefill_input_ids_sha256,
+        "full_context_qwen": full_record,
+        "btp_qtp_qwen": btp_record,
+        "unpruned": btp_record,
+        "native_docprune": native_record,
+        "baseline_transition": transition,
+        "all_keep_input_parity_max_abs": parity,
+        "retrieval_search_run": False, "global_index_loaded": False,
+    })
     _baseline_reference(target_path, completed)
     return completed
 
@@ -255,7 +369,10 @@ def _baseline_reference(path, baseline):
         destination.write_text(content)
 
 
-def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=("input", "dynamic"), holdout=0, adjudications=None):
+def run_comparison(
+    case, resources, root, output, runtime_commit, *,
+    depth_spec=("input", "dynamic"), holdout=0, adjudications=None, session=None,
+):
     if case.get("protected_overlap_clear") is not True or not case.get("evidence_review"):
         raise ValueError("oracle requires protected-cohort exclusion and recorded visual evidence review")
     if case.get("contract_sha256") != contract_digest(case["answer_contract"]):
@@ -266,17 +383,31 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
         whole_region_knapsack, _canonical_sha256)
     baseline_path = output / case["case_id"] / "baseline.json"
     baseline = read(baseline_path)
-    # Authenticate baseline against current case/resources/code, without rerunning it.
-    expected_identity = {"case_sha256": digest(case), "resources_sha256": digest({k:v for k,v in resources.items() if k != "mappings"}),
-        "runtime_commit": runtime_commit, "phase": "baseline", "runtime_code_sha256": code_tree_sha256()}
+    # Authenticate the completed historical baseline without requiring the later
+    # full-context comparison code to have the same source-tree hash.
+    expected_identity = baseline.get("identity")
+    required_identity = {
+        "case_sha256": digest(case),
+        "resources_sha256": digest({k:v for k,v in resources.items() if k != "mappings"}),
+        "runtime_commit": runtime_commit,
+        "phase": "baseline",
+        "experiment_schema": "correction-four-arm-baseline-v1",
+    }
+    if not isinstance(expected_identity, dict) or any(
+        expected_identity.get(key) != value for key, value in required_identity.items()
+    ):
+        raise ValueError("completed baseline identity differs from the current fixed inputs")
     baseline = resume(baseline_path, expected_identity)
     score = baseline_stratum(case, baseline, adjudications)
     if score["status"] == "review":
-        return {"case_id": case["case_id"], "status": "needs-baseline-adjudication", "baseline_score": score}
+        return {"case_id": case["case_id"], "status": "needs-full-context-baseline-adjudication", "baseline_score": score}
+    if score["status"] != "incorrect":
+        return {"case_id": case["case_id"], "status": "skipped-full-context-baseline-correct", "baseline_score": score}
     spec = resources["mappings"][case["qid"]]
     mapping = load_region_mapping(resource(spec, root), validate_raw_artifacts=True)
-    if mapping.geometry_count != baseline["unpruned"]["trace"]["post_qtp_visual_tokens"]:
-        raise ValueError("mapping population differs from baseline QTP")
+    full_context = baseline["full_context_qwen"]
+    if mapping.geometry_count != full_context["trace"]["original_visual_tokens"]:
+        raise ValueError("mapping population differs from the full-context visual grid")
     if any(page.fixture_question_id != case["qid"] for artifact in mapping.artifacts for page in artifact.pages):
         raise ValueError("mapping belongs to a different question")
     native = baseline["native_docprune"]
@@ -288,21 +419,32 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
     base = None
     for boundary in grid:
         identity = {"baseline_sha256": baseline["artifact_sha256"], "mapping_sha256": spec["sha256"],
-            "boundary": boundary, "fit_masks": 256, "holdout_masks": holdout, "baseline_score": score}
-        label = "B_input" if boundary == "input" else f"B_{boundary}"
-        path = output / case["case_id"] / label / "comparison.json"
+            "boundary": boundary, "fit_masks": 256, "holdout_masks": holdout,
+            "baseline_score": score, "context_source": "full_context_qwen",
+            "experiment_schema": "full-context-contextcite-depth-v2"}
+        boundary_label = "B_input" if boundary == "input" else f"B_{boundary}"
+        label = f"FC_{boundary_label}"
+        path = output / case["case_id"] / label / "comparison-rp105.json"
         existing = resume(path, identity)
         if existing:
             results.append(existing)
             continue
         if base is None:
-            base, images, retrieval = _workload(case, resources, root, output / case["case_id"] / "bootstrap-comparison", runtime_commit)
+            base, images, retrieval = (
+                _workload(
+                    case, resources, root,
+                    output / case["case_id"] / "bootstrap-comparison",
+                    runtime_commit,
+                )
+                if session is None
+                else _workload_from_session(case, session)
+            )
         references = tuple(tuple(x) for x in baseline["reference_token_ids"])
         own = tuple(baseline["fixed_self_token_ids"])
         teacher = (*references, own)
-        scorer = _configured(base, mapping=mapping)
+        scorer = _configured(base, mapping=mapping, full_context=True)
         regions = [{"source_id": x.source_id, "token_cost": len(x.token_ids)} for x in mapping.sources]
-        design = build_region_mask_design(regions, question_id=case["qid"], forced_boundary=label,
+        design = build_region_mask_design(regions, question_id=case["qid"], forced_boundary=boundary_label,
             mapping_artifact_sha256=spec["sha256"], prompt_input_sha256=baseline["input_ids_sha256"],
             target_kind="max-accepted-reference-mean-loglikelihood", reference_set_token_ids_sha256=digest([list(x) for x in references]),
             generated_response_token_ids_sha256=None, fit_mask_count=256, holdout_mask_count=holdout)
@@ -315,18 +457,32 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
             shared = scorer.score_forced_intervention_likelihoods(images, case["question"], retrieval_output=retrieval,
                 forced_interventions=(all_keep, *(x["forced_intervention"] for x in plan)),
                 teacher_forced_target_token_ids=teacher, include_unpruned_generated_response=False)
-            if shared.prefill_input_ids_sha256 != baseline["input_ids_sha256"] or shared.assistant_prompt_sha256 != baseline["prompt_sha256"]:
-                raise ValueError("prompt identity changed across depth")
+            if (shared.prefill_input_ids_sha256 != full_context["prefill_input_ids_sha256"]
+                    or shared.assistant_prompt_sha256 != full_context["assistant_prompt_sha256"]):
+                raise ValueError("full-context prompt identity changed across depth")
+            if (shared.result.original_visual_tokens != mapping.geometry_count
+                    or shared.result.post_btp_visual_tokens != mapping.geometry_count
+                    or shared.result.post_qtp_visual_tokens != mapping.geometry_count):
+                raise ValueError("mask scoring applied preprocessing before ContextCite")
             raw = [list(x.teacher_forced_loglikelihoods) for x in shared.result.branches]
             if len(raw) != len(plan) + 1 or len(shared.result.branch_decoder_seconds) != len(raw):
                 raise ValueError("scoring branch or timing count differs from mask plan")
             validate_likelihood_rows(raw, len(teacher))
             reference = raw[0]
-            parity = max(abs(a-b) for a,b in zip(reference, baseline["unpruned"]["likelihoods"], strict=True))
-            if parity > 1e-4:
-                raise ValueError(f"{label} all-keep likelihood parity failed")
+            input_scores_path = output / case["case_id"] / "FC_B_input" / "mask-scores.json"
+            if boundary == "input":
+                parity = None
+                parity_reference = "input all-keep anchor; generation parity checked separately"
+            else:
+                input_scores = read(input_scores_path)
+                input_reference = input_scores["raw"][0]
+                parity = max(abs(a-b) for a,b in zip(reference, input_reference, strict=True))
+                if parity > 1e-4:
+                    raise ValueError(f"{label} all-keep likelihood parity failed against input")
+                parity_reference = "FC_B_input all-keep likelihoods"
             scored = publish(scored_path, {"identity": identity, "raw": raw,
                 "all_keep_parity_max_abs": parity,
+                "all_keep_parity_reference": parity_reference,
                 "scoring_cost": {"encoder_seconds": shared.result.encoder_seconds,
                     "prefix_decoder_seconds": shared.result.prefix_decoder_seconds,
                     "branch_decoder_seconds": list(shared.result.branch_decoder_seconds),
@@ -335,18 +491,31 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
         raw = scored["raw"]
         reference = raw[0]
         parity = scored["all_keep_parity_max_abs"]
-        parity_path = path.with_name("all-keep-generation.json")
+        parity_path = path.with_name("all-keep-generation-rp105.json")
         parity_saved = resume(parity_path, identity)
         if parity_saved is None:
-            parity_generation = _record(_configured(base, mapping=mapping, targets=teacher, forced=all_keep).answer(
-                images, case["question"], retrieval_output=retrieval), case)
-            if parity_generation["answer"].strip() != baseline["unpruned"]["answer"].strip():
-                raise ValueError(f"{label} all-keep generation parity failed")
-            parity_saved = publish(parity_path, {"identity": identity, "record": parity_generation})
+            parity_generation = _record(_configured(
+                base, mapping=mapping, targets=teacher, forced=all_keep,
+                full_context=True
+            ).answer(images, case["question"], retrieval_output=retrieval), case)
+            parity_saved = publish(parity_path, {
+                "identity": identity,
+                "record": parity_generation,
+                "expected_full_context_answer": full_context["answer"],
+                "generation_matches": (
+                    parity_generation["answer"].strip() == full_context["answer"].strip()
+                ),
+            })
         parity_generation = parity_saved["record"]
+        if not parity_saved.get("generation_matches", False):
+            raise ValueError(
+                f"{label} all-keep generation parity failed: "
+                f"expected={full_context['answer']!r}, "
+                f"actual={parity_generation['answer']!r}"
+            )
         effects = [likelihood_effect(values, reference) for values in raw[1:]]
         surrogates, diagnostics = {}, {}
-        self_design = build_region_mask_design(regions, question_id=case["qid"], forced_boundary=label,
+        self_design = build_region_mask_design(regions, question_id=case["qid"], forced_boundary=boundary_label,
             mapping_artifact_sha256=spec["sha256"], prompt_input_sha256=baseline["input_ids_sha256"],
             target_kind="unpruned-generated-response-mean-loglikelihood", reference_set_token_ids_sha256=None,
             generated_response_token_ids_sha256=digest(list(own)), fit_mask_count=256, holdout_mask_count=holdout)
@@ -396,7 +565,7 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
                                    "achieved_token_count": selection["achieved_budget"]})
         selections.pop("selections_sha256")
         selections["selections_sha256"] = _canonical_sha256(selections)
-        selected_plan = build_task9_selected_arm_plan(mapping, selections, boundary=label)
+        selected_plan = build_task9_selected_arm_plan(mapping, selections, boundary=boundary_label)
         by_arm = {row["arm"]: row for row in selected_plan}
         context_comparison = {"interpretation": "Selected-set overlap is descriptive, not individual causal attribution."}
         for kind, field in (("regions", "retained_source_ids"), ("tokens", "retained_visual_ids")):
@@ -408,12 +577,14 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
                 "direct_margin_selected": list(by_arm["contextcite_gold_margin"][field])}
         selected = []
         for row in selected_plan:
-            arm_path = path.with_name(row["arm"] + ".json")
+            arm_path = path.with_name(row["arm"] + "-rp105.json")
             arm_identity = dict(identity, selection_sha256=digest({k:v for k,v in row.items() if k != "forced_intervention"}))
             saved_arm = resume(arm_path, arm_identity)
             if saved_arm is None:
-                record = _record(_configured(base, mapping=mapping, targets=teacher, forced=row["forced_intervention"]).answer(
-                    images, case["question"], retrieval_output=retrieval), case)
+                record = _record(_configured(
+                    base, mapping=mapping, targets=teacher,
+                    forced=row["forced_intervention"], full_context=True
+                ).answer(images, case["question"], retrieval_output=retrieval), case)
                 saved_arm = publish(arm_path, {"identity": arm_identity, "record": record})
             record = dict(saved_arm["record"])
             validate_likelihood_rows([record["likelihoods"]], len(teacher))
@@ -424,14 +595,18 @@ def run_comparison(case, resources, root, output, runtime_commit, *, depth_spec=
             selected.append(record)
         results.append(publish(path, {"identity": identity, "case_id": case["case_id"], "qid": case["qid"],
             "boundary": label, "baseline_stratum": score["status"], "design": design,
-            "analysis_schema": "correction-depth-gold-self-residual-v2", "fixed_self_design": self_design,
+            "analysis_schema": "full-context-correction-depth-gold-self-residual-v2", "fixed_self_design": self_design,
             "selected_context_comparison": context_comparison,
             "mask_vectors_sha256": digest([x["vector"] for x in plan]),
             "mask_plan": [{k:v for k,v in x.items() if k != "forced_intervention"} for x in plan],
             "raw_likelihoods": raw[1:], "full_context_likelihoods": reference, "effects": effects,
             "surrogates": surrogates, "holdout_diagnostics": diagnostics, "selections": selections,
             "selected_results": selected, "native_docprune": native, "all_keep": parity_generation,
-            "all_keep_parity_max_abs": parity, "margin_degenerate_gold_equals_self": own in references,
+            "all_keep_parity_max_abs": parity,
+            "all_keep_parity_reference": scored["all_keep_parity_reference"],
+            "context_source": "full_context_qwen",
+            "generation_repetition_penalty": float(getattr(getattr(base.model, "generation_config", None), "repetition_penalty", 1.0) or 1.0),
+            "margin_degenerate_gold_equals_self": own in references,
             "scoring_cost": scored["scoring_cost"]}))
     if len({x["mask_vectors_sha256"] for x in results}) != 1:
         raise ValueError("depths did not use identical region masks")
@@ -446,7 +621,7 @@ def summarize(cases, output):
             rows.append({"case_id": case["case_id"], "status": "baseline_pending"})
             continue
         baseline = read(baseline_path)
-        comparison_paths = sorted((output / case["case_id"]).glob("B_*/comparison.json"))
+        comparison_paths = sorted((output / case["case_id"]).glob("FC_B_*/comparison-rp105.json"))
         native_added = False
         for path in comparison_paths:
             result = read(path)
@@ -469,7 +644,7 @@ def summarize(cases, output):
                     "retained_tokens": arm["trace"]["post_ctp_visual_tokens"],
                     "native_retained_tokens": baseline["native_docprune"]["trace"]["post_ctp_visual_tokens"],
                     "effects": arm["effects"], "evidence": str(path)})
-        if not list((output / case["case_id"]).glob("B_*/comparison.json")):
+        if not list((output / case["case_id"]).glob("FC_B_*/comparison-rp105.json")):
             rows.append({"case_id": case["case_id"], "status": "comparison_pending",
                          "baseline_score": baseline["unpruned"]["contract_score"]})
     counts = {}

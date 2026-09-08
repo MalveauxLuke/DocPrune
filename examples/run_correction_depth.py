@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from docprune.correction_depth import (read, resource, validate_case, run_baseline,
-    run_comparison, summarize)
+from docprune.correction_depth import (build_baseline_session, read, resource,
+    validate_case, run_baseline, run_comparison, summarize)
 
 
 def main():
@@ -48,13 +48,29 @@ def main():
         print(json.dumps(summarize(cases, args.output), indent=2, ensure_ascii=False))
         return
     reviews = read(args.adjudications) if args.adjudications else None
+    model_session = (
+        build_baseline_session(
+            cases, resources, root, args.output, args.runtime_commit,
+            session_name=(
+                "_baseline-session"
+                if args.phase == "baseline"
+                else "_comparison-session-full-context-incorrect17-v1"
+            ),
+        )
+        if args.phase in {"baseline", "compare"}
+        else None
+    )
     for case in cases:
         if args.phase == "baseline":
-            result = run_baseline(case, resources, root, args.output, args.runtime_commit)
+            result = run_baseline(
+                case, resources, root, args.output, args.runtime_commit,
+                session=model_session,
+            )
             print(json.dumps({"case_id": case["case_id"], "status": "baseline_completed", "score": result["unpruned"]["contract_score"]}), flush=True)
         else:
             result = run_comparison(case, resources, root, args.output, args.runtime_commit,
-                depth_spec=args.boundaries, holdout=args.holdout_masks, adjudications=reviews)
+                depth_spec=args.boundaries, holdout=args.holdout_masks,
+                adjudications=reviews, session=model_session)
             print(json.dumps({"case_id": case["case_id"], "result": "comparison_completed" if isinstance(result, list) else result}), flush=True)
 
 if __name__ == "__main__":

@@ -179,6 +179,22 @@ def _end_synchronized_timer(started: float, device: torch.device | None) -> floa
     return max(time.perf_counter() - started, 1e-12)
 
 
+def _apply_repetition_penalty(
+    logits: torch.Tensor, history: torch.Tensor, penalty: float
+) -> torch.Tensor:
+    """Match Transformers' greedy RepetitionPenaltyLogitsProcessor."""
+
+    if penalty <= 0:
+        raise ValueError("repetition penalty must be positive")
+    if penalty == 1.0:
+        return logits
+    if logits.ndim != 2 or history.ndim != 2 or logits.shape[0] != history.shape[0]:
+        raise ValueError("repetition penalty requires aligned batched logits and token history")
+    scores = torch.gather(logits, 1, history)
+    scores = torch.where(scores < 0, scores * penalty, scores / penalty)
+    return logits.scatter(1, history, scores)
+
+
 def _module_timer_hooks(
     model: object, modules: list[object]
 ) -> tuple[list[float | tuple[object, object]], list[object]]:
@@ -468,13 +484,21 @@ class DocPruneQwen2VL:
             generated: list[torch.Tensor] = []
             logits = self.model.lm_head(prefill.hidden_states[:, -1, :])
             first_step_logits = logits.detach()
-            next_token = logits.argmax(dim=-1)
+            generation_config = getattr(self.model, "generation_config", None)
+            repetition_penalty = float(
+                getattr(generation_config, "repetition_penalty", 1.0) or 1.0
+            )
+            history = compact.input_ids
+            next_token = _apply_repetition_penalty(
+                logits, history, repetition_penalty
+            ).argmax(dim=-1)
             next_position = int(prefill.position_ids.max().item()) + 1
             eos = set(eos_token_ids)
             for token_index in range(max_new_tokens):
                 generated.append(next_token)
                 if int(next_token.item()) in eos or token_index + 1 == max_new_tokens:
                     break
+                history = torch.cat((history, next_token[:, None]), dim=1)
                 token_embedding = self.model.model.embed_tokens(next_token[:, None])
                 step_positions = torch.full(
                     (3, 1, 1),
@@ -488,7 +512,10 @@ class DocPruneQwen2VL:
                     step_positions,
                     prefill.cache,
                 )
-                next_token = self.model.lm_head(hidden[:, -1, :]).argmax(dim=-1)
+                logits = self.model.lm_head(hidden[:, -1, :])
+                next_token = _apply_repetition_penalty(
+                    logits, history, repetition_penalty
+                ).argmax(dim=-1)
                 next_position += 1
             generated_ids = torch.stack(generated, dim=1)
         finally:

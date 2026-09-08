@@ -245,6 +245,15 @@ def assemble(package: Path, output: Path, roots: list[Path], *, config: Path, ru
         if wanted - available:
             raise ValueError('unknown case IDs: ' + str(sorted(wanted - available)))
         corpus['cases'] = [c for c in corpus['cases'] if c['case_id'] in wanted or c['qid'] in wanted]
+    for case in corpus['cases']:
+        for page in case['pages']:
+            if 'score' in page:
+                page.setdefault('score_provenance', 'retrieval')
+                continue
+            if page.get('selection') != 'manual gold-page recovery; not retrieval result':
+                raise ValueError('page without retrieval score is not a documented manual recovery')
+            page['score'] = 0.0
+            page['score_provenance'] = 'manual recovery; unscored 0.0 compatibility sentinel'
     needed = {p['doc_id'] for c in corpus['cases'] for p in c['pages']}
     paths, failures = {}, []
     for asset in corpus['assets']:

@@ -93,12 +93,16 @@ def test_mock_model_baseline_and_two_depths_publish_and_resume():
 
     calls = []
     population = 15
-    trace = lambda retained, boundary=None: PruningTrace(20, 18, population, retained, boundary)
+    trace = lambda retained, boundary=None: PruningTrace(
+        population, population, population, retained, boundary
+    )
     values = lambda count: (-3.0 + .1*(population-count), -2.0-.05*(population-count))
     policy = SimpleNamespace(to_dict=lambda: {'achieved_budget': 9, 'native_layer': 14,
         'boundary': 'B_14', 'visual_population': population})
 
     class FakeAnswerer:
+        model = object()
+        max_new_tokens = 128
         processor = SimpleNamespace(tokenizer=SimpleNamespace(decode=lambda *a, **kw: 'wrong'))
         def __init__(self, targets=None, forced=None, native=False):
             self.targets, self.forced, self.native = targets, forced, native
@@ -111,7 +115,10 @@ def test_mock_model_baseline_and_two_depths_publish_and_resume():
             return AnswerOutput(answer='right' if count < population and not self.native else 'wrong',
                 trace=trace(count, boundary), qa_seconds=.1, encoder_seconds=.02, decoder_seconds=.08,
                 forced_intervention=forced_record, policy_selection=policy if self.native else None,
-                teacher_forced_loglikelihoods=values(count) if self.targets else None)
+                teacher_forced_loglikelihoods=values(count) if self.targets else None,
+                generated_response_token_ids=(7,), terminal_eos_token_id=151645,
+                assistant_prompt_sha256='a'*64, prefill_input_ids_shape=(1,30),
+                prefill_input_ids_sha256='b'*64)
         def score_forced_intervention_likelihoods(self, images, question, *, retrieval_output,
                 forced_interventions, teacher_forced_target_token_ids, include_unpruned_generated_response):
             assert len(teacher_forced_target_token_ids) == (1 if include_unpruned_generated_response else 2)
@@ -119,7 +126,8 @@ def test_mock_model_baseline_and_two_depths_publish_and_resume():
             branches = tuple(ForcedInterventionLikelihoodBranch(None, values(len(x.retained_visual_ids)))
                              for x in forced_interventions)
             result = SharedBoundaryLikelihoodResult(boundary=str(forced_interventions[0].boundary),
-                original_visual_tokens=20, post_btp_visual_tokens=18, post_qtp_visual_tokens=population,
+                original_visual_tokens=population, post_btp_visual_tokens=population,
+                post_qtp_visual_tokens=population,
                 checkpoint_cache_lengths=(30,), query_aggregate_attention_scores=(0.,)*population,
                 branches=branches, encoder_seconds=.2, prefix_decoder_seconds=.3,
                 branch_decoder_seconds=(.1,)*len(branches))
@@ -153,16 +161,20 @@ def test_mock_model_baseline_and_two_depths_publish_and_resume():
              patch.object(runtime, '_workload', return_value=(FakeAnswerer(), [], object())), \
              patch.object(runtime, '_configured', side_effect=lambda base, **kw: FakeAnswerer(
                  targets=kw.get('targets'),forced=kw.get('forced'),native=kw.get('native',False))), \
+             patch('docprune.answerers.AllKeptQwenAnswerer', side_effect=lambda *a, **kw: FakeAnswerer()), \
              patch('docprune.answerers.prepare_task7_likelihood_target_for_question', return_value={'target_token_ids':[[9]]}), \
              patch('docprune.segmentation.load_region_mapping', return_value=mapping), \
              patch('docprune.task9_attribution._fit_contextcite_solver', side_effect=lambda matrix, targets:
                  (__import__('numpy').ones(matrix.shape[1]), float(__import__('numpy').mean(targets)))) as solver:
             baseline = runtime.run_baseline(case,resources,root,root/'results','f'*40)
             assert baseline['fixed_self_token_ids'] == [7]
-            assert baseline['unpruned']['contract_score']['status'] == 'incorrect'
+            assert baseline['fixed_self_source_arm'] == 'full_context_qwen'
+            assert baseline['full_context_qwen']['contract_score']['status'] == 'incorrect'
+            assert baseline['btp_qtp_qwen']['contract_score']['status'] == 'incorrect'
+            assert baseline['unpruned'] == baseline['btp_qtp_qwen']
             assert json.loads((root/'results/q-v1/reference.jsonl').read_text())['trace']['post_qtp_visual_tokens'] == 15
             results = runtime.run_comparison(case,resources,root,root/'results','f'*40)
-            assert [r['boundary'] for r in results] == ['B_input','B_14']
+            assert [r['boundary'] for r in results] == ['FC_B_input','FC_B_14']
             assert all(len(r['raw_likelihoods']) == 256 for r in results)
             assert all(len(row)==2 for r in results for row in r['raw_likelihoods'])
             assert all(x['genuine_correction'] for r in results for x in r['selected_results'])
@@ -192,6 +204,6 @@ def test_mock_model_baseline_and_two_depths_publish_and_resume():
             runtime.run_comparison(case,resources,root,root/'results','f'*40)
             assert len(calls) == before
             # Missing final summary does not force another completed mask sweep.
-            (root/'results/q-v1/B_input/comparison.json').unlink()
+            (root/'results/q-v1/FC_B_input/comparison-rp105.json').unlink()
             runtime.run_comparison(case,resources,root,root/'results','f'*40)
             assert len(calls) == before
