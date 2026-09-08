@@ -55,7 +55,12 @@ def _processor_image_size(processor: object) -> tuple[int, int] | None:
     return None
 
 
-def assert_supported_colpali(model: object, processor: object) -> ColPaliCompatibility:
+def assert_supported_colpali(
+    model: object,
+    processor: object,
+    *,
+    expected_transformers_version: str = SUPPORTED_TRANSFORMERS_VERSION,
+) -> ColPaliCompatibility:
     """Require the exact package types, component paths, and 448/14 geometry."""
 
     engine_version = _package_version("colpali-engine")
@@ -64,9 +69,9 @@ def assert_supported_colpali(model: object, processor: object) -> ColPaliCompati
         raise ColPaliCompatibilityError(
             f"colpali-engine {SUPPORTED_COLPALI_ENGINE_VERSION} is required, got {engine_version}"
         )
-    if transformers_version != SUPPORTED_TRANSFORMERS_VERSION:
+    if transformers_version != expected_transformers_version:
         raise ColPaliCompatibilityError(
-            f"transformers {SUPPORTED_TRANSFORMERS_VERSION} is required, got {transformers_version}"
+            f"transformers {expected_transformers_version} is required, got {transformers_version}"
         )
 
     from colpali_engine.models import ColPali, ColPaliProcessor

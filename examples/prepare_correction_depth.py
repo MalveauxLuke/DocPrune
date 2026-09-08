@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -129,25 +130,156 @@ def segment(case, smoke, case_root, commit, template_path, executable, gpu):
     return completion
 
 
-def geometry(case, smoke, case_root, baseline_root, fixture, fixture_sha, commit, models):
+def import_segment(case, smoke, case_root, commit, template_path, staging_path, batch_output):
+    """Authenticate and finalize already completed corpus-batch MinerU outputs."""
+    from docprune.task8_runtime import (
+        prepare_task8_mineru_smoke,
+        finalize_task8_mineru_smoke,
+        load_task8_mineru_completion,
+        _load_signed_run_manifest,
+    )
+    job = case_root/'mineru'
+    job.mkdir(exist_ok=True)
+    completion = job/'completion-manifest.json'
+    if completion.exists():
+        value = load_task8_mineru_completion(completion, expected_sha256=sha(completion))
+        if _load_signed_run_manifest(Path(value['run_manifest_path']))['qid'] != case['qid']:
+            raise ValueError('completed imported segmentation belongs to a different question')
+        return completion
+
+    template = _load_signed_run_manifest(template_path)
+    run_path = job/'run-manifest.json'
+    if not run_path.exists():
+        kwargs = {}
+        for key in ('configuration', 'tool_manifest', 'model_weights', 'model_inventory'):
+            kwargs[key+'_path'] = Path(template[key+'_path'])
+            kwargs[key+'_sha256'] = template[key+'_sha256']
+        prepare_task8_mineru_smoke(
+            smoke_input_manifest_path=smoke,
+            smoke_input_manifest_sha256=sha(smoke),
+            job_root=job,
+            output_dir=job/'output',
+            runtime_commit=commit,
+            **kwargs,
+        )
+    run = _load_signed_run_manifest(run_path)
+    if run['smoke_input_manifest_sha256'] != sha(smoke) or run['runtime_commit'] != commit:
+        raise ValueError('imported segmentation resume inputs changed')
+
+    staging = read(staging_path)
+    rows = sorted(
+        (row for row in staging['inputs'] if row['case_id'] == case['case_id']),
+        key=lambda row: row['page_index'],
+    )
+    if len(rows) != 4 or [row['page_index'] for row in rows] != list(range(4)):
+        raise ValueError('MinerU staging manifest does not contain four ordered case pages')
+    if [
+        {'path': row['source_path'], 'sha256': row['sha256']} for row in rows
+    ] != run['inputs']:
+        raise ValueError('MinerU batch inputs differ from the sealed case inputs')
+
+    output = job/'output'
+    output.mkdir(exist_ok=True)
+    imported = []
+    for row in rows:
+        staged_stem = Path(row['staged_path']).stem
+        source = batch_output/staged_stem/'vlm'/(staged_stem+'_middle.json')
+        destination = (
+            output/f"page-{row['page_index']:02d}"/'vlm'/
+            f"page-{row['page_index']:02d}_middle.json"
+        )
+        if not source.is_file():
+            raise ValueError('completed MinerU batch middle JSON is missing: '+str(source))
+        source_sha = sha(source)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            if sha(destination) != source_sha:
+                raise ValueError('imported MinerU output changed: '+str(destination))
+        else:
+            shutil.copyfile(source, destination)
+        imported.append({
+            'page_index': row['page_index'],
+            'batch_path': str(source),
+            'imported_path': str(destination),
+            'sha256': source_sha,
+        })
+
+    import_path = job/'batch-import.json'
+    import_value = {
+        'schema_version': 'correction-depth-mineru-batch-import-v1',
+        'case_id': case['case_id'],
+        'qid': case['qid'],
+        'staging_manifest_path': str(staging_path),
+        'staging_manifest_sha256': sha(staging_path),
+        'batch_output': str(batch_output),
+        'outputs': imported,
+    }
+    if import_path.exists():
+        if read(import_path) != import_value:
+            raise ValueError('MinerU batch import identity changed')
+    else:
+        canonical_write(import_path, import_value)
+
+    template_gpu_path = template_path.parent/'gpu.json'
+    gpu_value = read(template_gpu_path)
+    gpu_path = job/'gpu.json'
+    if gpu_path.exists():
+        if read(gpu_path) != gpu_value:
+            raise ValueError('imported segmentation GPU identity changed')
+    else:
+        canonical_write(gpu_path, gpu_value)
+    finalize_task8_mineru_smoke(
+        job_root=job,
+        output_dir=output,
+        gpu_manifest_path=gpu_path,
+        gpu_manifest_sha256=sha(gpu_path),
+    )
+    return completion
+
+
+def geometry(
+    case, smoke, case_root, baseline_root, fixture, fixture_sha, commit,
+    models, run_config,
+):
     from docprune.task8_geometry import capture_task8_btp_qtp_geometry, load_task8_geometry_capture
     path = case_root/'geometry.json'
     if path.exists():
         value = load_task8_geometry_capture(path, expected_sha256=sha(path))
-        if value['qid'] != case['qid'] or value['fixed_page_fixture_sha256'] != fixture_sha:
-            raise ValueError('geometry resume fixture changed')
+        if (value['qid'] != case['qid']
+                or value['fixed_page_fixture_sha256'] != fixture_sha
+                or value['schema_version'] != 'docprune-task9-full-context-geometry-v1'):
+            raise ValueError('geometry resume fixture or context mode changed')
         return path
-    reference = baseline_root/case['case_id']/'reference.jsonl'
     baseline = read(baseline_root/case['case_id']/'baseline.json')
+    full = baseline['full_context_qwen']
+    reference = case_root/'full-context-reference.jsonl'
+    reference_row = {
+        'question_id': baseline['qid'],
+        'question': baseline['question'],
+        'retrieved_pages': [
+            {key: page[key] for key in ('doc_id', 'page_index', 'score')}
+            for page in baseline['pages']
+        ],
+        'trace': full['trace'],
+    }
+    reference_content = json.dumps(reference_row, sort_keys=True) + '\n'
+    if reference.exists():
+        if reference.read_text() != reference_content:
+            raise ValueError('full-context geometry reference changed')
+    else:
+        reference.write_text(reference_content)
     if not models:
         from docprune.m3docvqa_factory import load_pinned_colpali_query_encoder, load_pinned_qwen_processor
-        models.extend([load_pinned_colpali_query_encoder(), load_pinned_qwen_processor()])
+        models.extend([
+            load_pinned_colpali_query_encoder(run_config),
+            load_pinned_qwen_processor(run_config),
+        ])
     capture_task8_btp_qtp_geometry(fixture_path=fixture, fixture_sha256=fixture_sha,
         smoke_input_manifest_path=smoke, smoke_input_manifest_sha256=sha(smoke),
         reference_results_path=reference, reference_results_sha256=sha(reference), qid=case['qid'],
-        expected_geometry_count=baseline['unpruned']['trace']['post_qtp_visual_tokens'],
+        expected_geometry_count=full['trace']['original_visual_tokens'],
         expected_geometry_sha256=None, output_path=path, runtime_commit=commit,
-        query_encoder=models[0], qwen_processor=models[1])
+        query_encoder=models[0], qwen_processor=models[1], context_mode='full_context')
     return path
 
 
@@ -173,7 +305,7 @@ def mapping(case, case_root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('phase', choices=['seal', 'segment', 'geometry', 'map'])
+    parser.add_argument('phase', choices=['seal', 'segment', 'import-segment', 'geometry', 'map'])
     parser.add_argument('--corpus', type=Path, required=True)
     parser.add_argument('--resources', type=Path, required=True)
     parser.add_argument('--baseline-root', type=Path, required=True)
@@ -182,13 +314,20 @@ def main():
     parser.add_argument('--case-id', action='append')
     parser.add_argument('--mineru-template-run-manifest', type=Path)
     parser.add_argument('--mineru-executable', type=Path)
+    parser.add_argument('--mineru-staging-manifest', type=Path)
+    parser.add_argument('--mineru-batch-output', type=Path)
     parser.add_argument('--execute-gpu', action='store_true', help='operator explicitly authorizes this allocated-GPU stage')
     args = parser.parse_args()
     gpu_phase = args.phase in {'segment', 'geometry'}
     if gpu_phase and not args.execute_gpu:
         parser.error('GPU phases require --execute-gpu on the allocated H200')
-    if args.phase in {'segment'} and (args.mineru_template_run_manifest is None or args.mineru_executable is None):
+    if args.phase == 'segment' and (
+            args.mineru_template_run_manifest is None or args.mineru_executable is None):
         parser.error('segment requires pinned existing template run manifest and MinerU executable')
+    if args.phase == 'import-segment' and any(value is None for value in (
+            args.mineru_template_run_manifest, args.mineru_staging_manifest,
+            args.mineru_batch_output)):
+        parser.error('import-segment requires template, staging manifest, and batch output')
     cases = [validate_case(c) for c in read(args.corpus)['cases']]
     if args.case_id:
         wanted = set(args.case_id)
@@ -206,12 +345,22 @@ def main():
         case_root = args.output/case['case_id']
         case_root.mkdir(exist_ok=True)
         smoke = seal(case, fixture, resources['fixture']['sha256'], case_root, args.runtime_commit)
-        if args.phase in {'segment'}:
+        if args.phase == 'segment':
             segment(case, smoke, case_root, args.runtime_commit,
                 args.mineru_template_run_manifest.resolve(), args.mineru_executable.resolve(), gpu)
-        if args.phase in {'geometry'}:
-            geometry(case, smoke, case_root, args.baseline_root.resolve(), fixture,
-                     resources['fixture']['sha256'], args.runtime_commit, models)
+        if args.phase == 'import-segment':
+            import_segment(
+                case, smoke, case_root, args.runtime_commit,
+                args.mineru_template_run_manifest.resolve(),
+                args.mineru_staging_manifest.resolve(),
+                args.mineru_batch_output.resolve(),
+            )
+        if args.phase == 'geometry':
+            geometry(
+                case, smoke, case_root, args.baseline_root.resolve(), fixture,
+                resources['fixture']['sha256'], args.runtime_commit, models,
+                read(resource(resources['run_config'], root)),
+            )
         if args.phase in {'map'}:
             resources.setdefault('mappings', {})[case['qid']] = mapping(case, case_root)
             # Derived resource registry only. Source inputs and previous baselines stay immutable.

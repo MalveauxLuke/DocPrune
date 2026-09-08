@@ -12,7 +12,10 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from docprune.answerers import derive_btp_qtp_geometry_without_qwen_model
+from docprune.answerers import (
+    derive_btp_qtp_geometry_without_qwen_model,
+    derive_full_context_geometry_without_qwen_model,
+)
 from docprune.benchmark_config import (
     COLPALI_BACKBONE_MODEL,
     COLPALI_BACKBONE_REVISION,
@@ -28,6 +31,9 @@ from docprune.task8_runtime import load_task8_smoke_inputs
 TASK8_GEOMETRY_SCHEMA_VERSION = "docprune-task8-btp-qtp-geometry-v1"
 TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION = (
     "docprune-task9-preliminary-btp-qtp-geometry-v1"
+)
+TASK9_FULL_CONTEXT_GEOMETRY_SCHEMA_VERSION = (
+    "docprune-task9-full-context-geometry-v1"
 )
 _GEOMETRY_CAPTURE_KEYS = {
     "schema_version",
@@ -293,7 +299,11 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
         raise ValueError("Task 8 geometry capture bytes are not canonical")
     if (
         value["schema_version"]
-        not in {TASK8_GEOMETRY_SCHEMA_VERSION, TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION}
+        not in {
+            TASK8_GEOMETRY_SCHEMA_VERSION,
+            TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION,
+            TASK9_FULL_CONTEXT_GEOMETRY_SCHEMA_VERSION,
+        }
         or value["status"] != "complete"
         or value["global_index_loaded"] is not False
         or value["retrieval_search_run"] is not False
@@ -366,7 +376,10 @@ def load_task8_geometry_capture(path: Path, *, expected_sha256: str) -> dict[str
             reference, expected_geometry_count=None
         )
     trace_matches = value["trace"] == reference_trace
-    if value["schema_version"] == TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION:
+    if value["schema_version"] in {
+        TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION,
+        TASK9_FULL_CONTEXT_GEOMETRY_SCHEMA_VERSION,
+    }:
         live_trace = value["trace"]
         trace_matches = (
             isinstance(live_trace, Mapping)
@@ -412,9 +425,12 @@ def capture_task8_btp_qtp_geometry(
     query_encoder: object,
     qwen_processor: object,
     require_cuda: bool = True,
+    context_mode: str = "btp_qtp",
 ) -> dict[str, object]:
-    """Capture exact post-QTP geometry without retrieval search or Qwen weights."""
+    """Capture exact visual geometry without retrieval search or Qwen weights."""
 
+    if context_mode not in {"btp_qtp", "full_context"}:
+        raise ValueError("geometry context_mode must be btp_qtp or full_context")
     _require_commit(runtime_commit)
     fixture_sha = _require_sha256(fixture_sha256, "fixture checksum")
     smoke_sha = _require_sha256(smoke_input_manifest_sha256, "smoke input checksum")
@@ -487,11 +503,19 @@ def capture_task8_btp_qtp_geometry(
     ]
     if live_pages != reference_pages:
         raise ValueError("Task 8 fixed pages differ from the Task 6 reference")
-    capture = derive_btp_qtp_geometry_without_qwen_model(
-        qwen_processor,
-        images,
-        question,
-        retrieval_output,
+    capture = (
+        derive_full_context_geometry_without_qwen_model(
+            qwen_processor,
+            images,
+            question,
+        )
+        if context_mode == "full_context"
+        else derive_btp_qtp_geometry_without_qwen_model(
+            qwen_processor,
+            images,
+            question,
+            retrieval_output,
+        )
     )
     if not preliminary and (
         capture.geometry_count != expected_geometry_count
@@ -546,9 +570,13 @@ def capture_task8_btp_qtp_geometry(
         _require_sha256(digest, label)
     unsigned: dict[str, object] = {
         "schema_version": (
-            TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION
-            if preliminary
-            else TASK8_GEOMETRY_SCHEMA_VERSION
+            TASK9_FULL_CONTEXT_GEOMETRY_SCHEMA_VERSION
+            if context_mode == "full_context"
+            else (
+                TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION
+                if preliminary
+                else TASK8_GEOMETRY_SCHEMA_VERSION
+            )
         ),
         "status": "complete",
         "runtime_commit": runtime_commit,
@@ -594,6 +622,7 @@ def capture_task8_btp_qtp_geometry(
 __all__ = [
     "TASK8_GEOMETRY_SCHEMA_VERSION",
     "TASK9_PRELIMINARY_GEOMETRY_SCHEMA_VERSION",
+    "TASK9_FULL_CONTEXT_GEOMETRY_SCHEMA_VERSION",
     "capture_task8_btp_qtp_geometry",
     "load_task8_geometry_capture",
 ]

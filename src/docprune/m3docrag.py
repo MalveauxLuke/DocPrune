@@ -138,6 +138,8 @@ class AnswerOutput:
     assistant_prompt_sha256: str | None = None
     prefill_input_ids_shape: tuple[int, int] | None = None
     prefill_input_ids_sha256: str | None = None
+    generated_response_token_ids: tuple[int, ...] | None = None
+    terminal_eos_token_id: int | None = None
 
 
 @dataclass(frozen=True)
