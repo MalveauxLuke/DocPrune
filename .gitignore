@@ -59,3 +59,7 @@ slurm-*.err
 
 # Temporary, owner-authorized Colfeatures17 transport uses *.partNNNN chunks.
 # Add exact input/result directory ignores AFTER verified local receipt.
+
+# Local receipt verified 2026-09-11; preserve archives locally.
+/transfer/colfeatures17/input/
+/transfer/colfeatures17/result/

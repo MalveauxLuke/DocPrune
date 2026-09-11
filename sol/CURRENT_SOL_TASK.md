@@ -1,3 +1,12 @@
+# Completed — no active SOL execution
+
+The Colfeatures17 task completed and its package was verified locally on
+2026-09-11. Do not resubmit the historical instructions below. See
+[receipt](../agent-context/findings/2026-09-11-colfeatures17-receipt.md).
+A new execution requires a new binding handoff.
+
+---
+
 # Current SOL task — Colfeatures17
 
 Approved by the owner on 2026-09-11: run tests, gather evidence, recompute Col-style

@@ -99,3 +99,10 @@ were rechecked. Transfer files are prepared under `transfer/colfeatures17/result
 with the manifest committed last after two chunk batches. Publication remains
 blocked on authentication; resume by pushing the recorded batch commit refs
 sequentially (never all new chunks in one push). Do not regenerate valid chunks.
+
+## Publication and receipt resolved
+
+The earlier authentication block was resolved using the authorized VS Code
+terminal session. All three package batches were published and verified locally.
+See [receipt](2026-09-11-colfeatures17-receipt.md); its current status supersedes
+the preparation-time publication blockers above.
