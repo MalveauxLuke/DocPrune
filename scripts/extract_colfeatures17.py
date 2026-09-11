@@ -14,6 +14,39 @@ ADAPTER = ('vidore/colqwen2.5-v0.2', 'dcbe8d9cede518bce830488364ba0e40c873645b')
 BASE = ('vidore/colqwen2.5-base', '92908120384b7a2110c5beda3ab29cbdb2c08e49')
 
 
+def load_verified_adapter(model, adapter_path):
+    """Map historical Qwen keys and verify every loaded adapter tensor."""
+    import re
+    import torch
+    from safetensors import safe_open
+
+    # Transformers' automatic VLM detection does not recognize ColQwen2_5.
+    mapping = dict(model._checkpoint_conversion_mapping)
+    model.load_adapter(adapter_path, adapter_kwargs={'key_mapping': mapping})
+    loaded = model.get_adapter_state_dict()
+    matched = set()
+    with safe_open(str(Path(adapter_path) / 'adapter_model.safetensors'),
+                   framework='pt', device='cpu') as source:
+        for key in source.keys():
+            target = key.removeprefix('base_model.model.')
+            for pattern, replacement in mapping.items():
+                target, count = re.subn(pattern, replacement, target)
+                if count:
+                    break
+            if target in matched or target not in loaded:
+                raise ValueError(f'Unmatched or duplicate adapter key: {key} -> {target}')
+            actual = loaded[target].detach().cpu()
+            expected = source.get_tensor(key).to(dtype=actual.dtype)
+            if actual.shape != expected.shape or not torch.equal(actual, expected):
+                raise ValueError(f'Adapter tensor differs from pinned checkpoint: {target}')
+            matched.add(target)
+    if matched != set(loaded):
+        raise ValueError('Loaded adapter contains unverified tensors')
+    return {'status': 'passed', 'key_mapping': mapping, 'verified_tensors': len(matched),
+            'comparison': 'exact equality after casting checkpoint to loaded dtype',
+            'active_adapters': model.active_adapters()}
+
+
 def dump(path, data):
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(data, indent=2, allow_nan=False) + '\n')
@@ -103,7 +136,7 @@ def extract(packet, output, limit):
     # Loading base and adapter separately pins BOTH repositories (adapter config has revision=null).
     model = ColQwen2_5.from_pretrained(base_path, torch_dtype=torch.bfloat16,
                                       device_map='cuda:0', attn_implementation='sdpa')
-    model.load_adapter(adapter_path)
+    dump(provenance / 'adapter-verification.json', load_verified_adapter(model, adapter_path))
     model.eval()
     processor = ColQwen2_5_Processor.from_pretrained(adapter_path)
     processor.query_prefix = 'Query: '
