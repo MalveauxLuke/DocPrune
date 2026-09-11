@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "archive_sha256": "7f1dc8f339b643123b858d58cdca5c6fb08759d59c14f8012c521aaabea8308e",
+  "archive_bytes": 761073274,
+  "files": 1164,
+  "chunks": 19,
+  "original_input_files": 829,
+  "cases": 17,
+  "pages": 68,
+  "checks": [
+    "chunk sizes and hashes",
+    "archive SHA256",
+    "exact restored member inventory and hashes",
+    "complete feature verification",
+    "original 829-file input identity",
+    "gathered expected hashes"
+  ],
+  "sealed_code_commit": "d79307b9a633448a62051eadfb78da853b586844",
+  "execution_head": "d370a05b5ee55b199bb3681921cc87e677af03ff"
+}
