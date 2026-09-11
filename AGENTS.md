@@ -28,6 +28,10 @@ This repository concerns token compression for document QA.
   after every insight or experiment. Link evidence and distinguish measurements
   from hypotheses; this complements any required experiment logs.
 - Never add secrets, model weights, datasets, caches, or generated outputs.
+- Owner-authorized exception: `h200/correction-depth/recipe/` may contain the
+  reviewed 40-case assembly metadata (questions, answer contracts, page IDs,
+  source ledger and hashes) for sparse Git transfer. PDF, feature, model and
+  generated segmentation bytes remain outside Git.
 - Owner-authorized exception: the curated presentation packet in
   `legacy/evidence/2026-09-06/` may include selected evidence images,
   measurement extracts and source snapshots for Git-based transfer. This does not

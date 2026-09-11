@@ -8,6 +8,39 @@ while separating completed development evidence from the two active studies.
 Operational commands belong in machine handoffs, results belong in the
 experiment log, and superseded detail remains in the archive.
 
+## Owner-directed correction-depth comparison — 2026-09-07
+
+This additional exploratory track uses 40 evidence-reviewed candidates, including
+10 minimal question revisions and nine explicitly recovered-page fixtures.
+It does not change the separate 600-question preparation or 100-question
+confirmation. Recovered fixtures are designed four-page inputs, not evidence
+that the original retriever found the answer.
+
+Run matching post-BTP/QTP, no-CTP frozen-Qwen baselines first, with native
+DocPrune as the pruning comparator. Review unknown answer scores before assigning
+incorrect/correct strata. Compare deletion before the first decoder block
+(`input`) with deletion after each question's native DocPrune block (`dynamic`).
+This is the initial two-boundary comparison; no expanded numerical grid is fixed.
+Keep pages, regions, mask vectors and achievable retained-token budgets matched.
+Fit separate 256-mask oracles at each depth: gold support primary, fixed
+gold-versus-self margin secondary. Report correction and preservation separately,
+along with native and regional-random comparisons and achieved token counts.
+No additional holdout is required in the initial package; absent diagnostics
+must be labeled unmeasured. This track does not train or choose a selector.
+
+Owner addition: reuse each depth's same 256 scored masks to fit self support as
+well as gold support and direct G−S. Compare the coefficient residual
+`beta_G−beta_S` from the two separate fits, explicitly distinct from a direct
+margin fit under Lasso. Export gold/self selected-set overlap and differences.
+Self-support and coefficient-residual arms add only their selected-context
+generation costs, not a second 256-mask sweep. The self target remains the
+fixed original no-CTP answer across masks and depths.
+
+The [scoped H200 handoff](../../../h200/correction-depth/HANDOFF.md) defines
+assembly, provenance, baseline admission, parity and execution order. Package
+preparation does not authorize a GPU launch. Designed variants remain exploratory
+and any later learned experiment must separate documents across its splits.
+
 ## Purpose
 
 The project asks two connected questions:

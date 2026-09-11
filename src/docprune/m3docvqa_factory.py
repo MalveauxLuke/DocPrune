@@ -77,6 +77,18 @@ _EXPECTED_CONTRACT_RESOURCES = {
         "revision": COLPALI_BACKBONE_REVISION,
     },
 }
+
+CORRECTION_QWEN_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
+CORRECTION_QWEN_REVISION = "cc594898137f460bfe9f0759e9844b3ce807cfb5"
+CORRECTION_TRANSFORMERS_VERSION = "4.49.0"
+_CORRECTION_CONTRACT_RESOURCES = {
+    "qwen": {"model": CORRECTION_QWEN_MODEL, "revision": CORRECTION_QWEN_REVISION},
+    "colpali": {"model": COLPALI_MODEL, "revision": COLPALI_REVISION},
+    "colpali_backbone": {
+        "model": COLPALI_BACKBONE_MODEL,
+        "revision": COLPALI_BACKBONE_REVISION,
+    },
+}
 _CLI_PLACEHOLDER_KEYS = frozenset(
     {
         "schema_version",
@@ -159,7 +171,11 @@ def _source_file_identity(value: str | Path | None, *, label: str) -> tuple[str 
     return str(resolved), sha256_file(resolved)
 
 
-def validate_processor_contract_file(path: Path) -> dict[str, object]:
+def validate_processor_contract_file(
+    path: Path,
+    *,
+    expected_resources: Mapping[str, object] = _EXPECTED_CONTRACT_RESOURCES,
+) -> dict[str, object]:
     """Read and validate the immutable processor-probe contract."""
 
     path = Path(path)
@@ -177,9 +193,52 @@ def validate_processor_contract_file(path: Path) -> dict[str, object]:
     resources = payload.get("resources")
     if not isinstance(resources, Mapping):
         raise ValueError("processor contract is missing resources")
-    if dict(resources) != _EXPECTED_CONTRACT_RESOURCES:
+    if dict(resources) != dict(expected_resources):
         raise ValueError("processor contract resources do not match the pinned resources")
     return payload
+
+
+
+
+def _correction_execution_qwen_identity(run_config: object) -> dict[str, object] | None:
+    """Validate the correction-only Qwen2.5 execution model separately from feature provenance."""
+
+    raw = _value(run_config, "execution_qwen")
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        raise ValueError("execution_qwen must be a mapping")
+    required = {
+        "model": CORRECTION_QWEN_MODEL,
+        "revision": CORRECTION_QWEN_REVISION,
+        "transformers_version": CORRECTION_TRANSFORMERS_VERSION,
+        "attention_implementation": "sdpa",
+    }
+    for name, expected in required.items():
+        if raw.get(name) != expected:
+            raise ValueError(f"execution_qwen {name} must equal {expected}")
+    snapshot = Path(str(raw.get("snapshot_path", "")))
+    if not snapshot.is_absolute() or snapshot.is_symlink() or not snapshot.is_dir():
+        raise ValueError("execution_qwen snapshot_path must be an absolute regular directory")
+    config_path = snapshot / "config.json"
+    if not config_path.is_file() or not config_path.resolve().is_file():
+        raise ValueError("execution_qwen snapshot is missing a readable config.json")
+    contract = Path(str(raw.get("processor_contract_path", "")))
+    contract_payload = validate_processor_contract_file(
+        contract, expected_resources=_CORRECTION_CONTRACT_RESOURCES
+    )
+    contract_sha256 = sha256_file(contract)
+    if raw.get("processor_contract_sha256") != contract_sha256:
+        raise ValueError("execution_qwen processor contract SHA-256 does not match")
+    return {
+        **required,
+        "snapshot_path": str(snapshot.resolve()),
+        "config_sha256": sha256_file(config_path),
+        "processor_contract_path": str(contract.resolve()),
+        "processor_contract_sha256": contract_sha256,
+        "processor_contract": contract_payload,
+        "feature_provenance_resources": _EXPECTED_CONTRACT_RESOURCES,
+    }
 
 
 def filter_samples(
@@ -1005,7 +1064,13 @@ def _corpus_identity_payload(corpus: object) -> dict[str, object]:
     return payload
 
 
-def _validate_run_identity(run_config: object, *, mode: str, page_count: int) -> dict[str, object]:
+def _validate_run_identity(
+    run_config: object,
+    *,
+    mode: str,
+    page_count: int,
+    validate_corpus_files: bool = True,
+) -> dict[str, object]:
     if str(_required(run_config, "m3docrag_commit")) != M3DOCRAG_COMMIT:
         raise ValueError(f"m3docrag checkout must use pinned commit {M3DOCRAG_COMMIT}")
     runtime_commit = str(_required(run_config, "runtime_commit"))
@@ -1055,7 +1120,7 @@ def _validate_run_identity(run_config: object, *, mode: str, page_count: int) ->
     if corpus is None:
         raise ValueError("run configuration is missing corpus identity")
     validate = getattr(corpus, "validate", None)
-    if callable(validate):
+    if validate_corpus_files and callable(validate):
         validate()
     return {
         "mode": mode,
@@ -1160,6 +1225,7 @@ def _cached_snapshot(repo_id: str, revision: str) -> Path:
 
 def _load_colpali(run_config: object) -> tuple[object, object]:
     device = _require_benchmark_cuda()
+    execution = _correction_execution_qwen_identity(run_config)
     from colpali_engine.models import ColPali, ColPaliProcessor
 
     backbone = _cached_snapshot(COLPALI_BACKBONE_MODEL, COLPALI_BACKBONE_REVISION)
@@ -1170,7 +1236,15 @@ def _load_colpali(run_config: object) -> tuple[object, object]:
     model.load_adapter(str(adapter))
     model = model.to(device).eval()
     processor = ColPaliProcessor.from_pretrained(str(adapter))
-    assert_supported_colpali(model, processor)
+    assert_supported_colpali(
+        model,
+        processor,
+        expected_transformers_version=(
+            CORRECTION_TRANSFORMERS_VERSION
+            if execution is not None
+            else "4.46.3"
+        ),
+    )
     return model, processor
 
 
@@ -1182,15 +1256,27 @@ def _validate_qwen_generation_identity(model: object) -> None:
 
 def _load_qwen(run_config: object) -> tuple[object, object]:
     device = _require_benchmark_cuda()
-    from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
-
-    snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
+    execution = _correction_execution_qwen_identity(run_config)
+    if execution is None:
+        from transformers import Qwen2VLForConditionalGeneration as model_class
+        snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
+        attention_implementation = "flash_attention_2"
+    else:
+        from importlib.metadata import version
+        from transformers import Qwen2_5_VLForConditionalGeneration as model_class
+        if version("transformers") != CORRECTION_TRANSFORMERS_VERSION:
+            raise ValueError(
+                f"correction Qwen2.5 requires transformers {CORRECTION_TRANSFORMERS_VERSION}"
+            )
+        snapshot = Path(str(execution["snapshot_path"]))
+        attention_implementation = str(execution["attention_implementation"])
     model = (
-        Qwen2VLForConditionalGeneration.from_pretrained(
+        model_class.from_pretrained(
             str(snapshot),
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="flash_attention_2",
+            attn_implementation=attention_implementation,
+            local_files_only=True,
         )
         .to(device)
         .eval()
@@ -1199,18 +1285,28 @@ def _load_qwen(run_config: object) -> tuple[object, object]:
     if vision_config is not None:
         vision_config.torch_dtype = torch.bfloat16
     _validate_qwen_generation_identity(model)
-    processor = AutoProcessor.from_pretrained(str(snapshot))
+    from transformers import AutoProcessor
+    processor = AutoProcessor.from_pretrained(
+        str(snapshot), local_files_only=True, use_fast=False
+    )
     return model, processor
 
 
-def load_pinned_qwen_processor() -> object:
-    """Load only the pinned cached Qwen processor, never the generation model."""
+def load_pinned_qwen_processor(run_config: object = None) -> object:
+    """Load only the configured pinned Qwen processor, never generation weights."""
 
     from transformers import AutoConfig, AutoProcessor
 
-    snapshot = _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
-    config = AutoConfig.from_pretrained(str(snapshot))
-    processor = AutoProcessor.from_pretrained(str(snapshot))
+    execution = _correction_execution_qwen_identity(run_config)
+    snapshot = (
+        Path(str(execution["snapshot_path"]))
+        if execution is not None
+        else _cached_snapshot(QWEN_MODEL, QWEN_REVISION)
+    )
+    config = AutoConfig.from_pretrained(str(snapshot), local_files_only=True)
+    processor = AutoProcessor.from_pretrained(
+        str(snapshot), local_files_only=True, use_fast=False
+    )
     image_token_id = getattr(config, "image_token_id", None)
     tokenizer = getattr(processor, "tokenizer", None)
     convert_token = getattr(tokenizer, "convert_tokens_to_ids", None)
@@ -1371,10 +1467,10 @@ class _ColPaliQueryAdapter:
         return [rows[mask.bool()] for rows, mask in zip(output, attention_mask, strict=True)]
 
 
-def load_pinned_colpali_query_encoder() -> object:
+def load_pinned_colpali_query_encoder(run_config: object = None) -> object:
     """Load the pinned ColPali model as the query-only retrieval adapter."""
 
-    model, processor = _load_colpali(None)
+    model, processor = _load_colpali(run_config)
     return _ColPaliQueryAdapter(model, processor)
 
 
@@ -1801,9 +1897,19 @@ def build_workload(
         ):
             raise ValueError("policy context is valid only for random or coverage CTP policies")
     resolved_run = _resolve_run_config(run_config, mode=resolved_mode, page_count=page_count)
-    identity = _validate_run_identity(resolved_run, mode=resolved_mode, page_count=page_count)
+    identity = _validate_run_identity(
+        resolved_run,
+        mode=resolved_mode,
+        page_count=page_count,
+        validate_corpus_files=not fixed_page_run,
+    )
     if fixed_page_run:
         identity = _task6_execution_identity(identity, str(execution_runtime_commit))
+    execution_qwen = _correction_execution_qwen_identity(resolved_run)
+    if execution_qwen is not None:
+        if not fixed_page_run:
+            raise ValueError("execution_qwen is reserved for authenticated fixed-page runs")
+        identity["execution_qwen"] = execution_qwen
     _validate_m3docrag_checkout(resolved_run)
     run_config_source_path, run_config_source_sha256 = _source_file_identity(
         run_config if isinstance(run_config, str | Path) else None,

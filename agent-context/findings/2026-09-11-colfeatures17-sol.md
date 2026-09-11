@@ -26,3 +26,14 @@ pre-projection states, merged vision features, processor tensors, spatial
 correspondence, similarities, provenance, available referenced PDFs/OCR, and
 missing-artifact inventory. This does not validate corrective learning or the
 other stages in the unchanged canonical plan.
+
+## Remote integration before publication
+
+Remote main advanced to c903b28 with already-published H200 correction-depth work.
+Merged it while preserving all runtime fixes. Six relocated legacy modules and
+all 20 inherited H200 helper/recipe/correction-code/test files match the remote
+blobs exactly. Kept Colfeatures17 as current authority and archived the older
+H200 task snapshot. Combined task and correction CPU tests: 23 passed. One
+initial macOS temporary-directory path-alias assertion passed with canonical
+`TMPDIR=/private/tmp`; no production-code change was needed. The 639/22/34
+characterization above predates this integration.
