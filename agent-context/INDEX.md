@@ -18,3 +18,5 @@ Archived task files are nonbinding. Open historical evidence only as needed.
 - [Historical H200 correction-corpus findings](findings/2026-09-06-development-audit-correction-corpus.md)
 - [Retained H200 correction-depth handoff](../h200/correction-depth/HANDOFF.md) — historical; current SOL authority is above.
 - [Archived H200 task snapshot](../archive/experiments/task6_9_2026_09_10/agent-context/CURRENT_TASK_H200_MERGED_2026-09-11.md)
+
+- [SOL Colfeatures17 execution and adapter repair](findings/2026-09-11-colfeatures17-execution.md)
