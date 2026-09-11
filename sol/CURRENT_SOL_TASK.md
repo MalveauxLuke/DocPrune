@@ -11,7 +11,7 @@ This handoff supersedes archived Task 6–9 authority for this bounded work only
 Repository: `https://github.com/MalveauxLuke/DocPrune.git`, branch `main`.
 Approved checkout: `/home/lmalveau/DocPrune`. If this checkout is absent or belongs
 to another user, stop and report the actual location; do not overwrite a checkout.
-Code/input commit: `CODE_COMMIT_TO_BE_SEALED` (replaced in the following metadata
+Code/input commit: `17a54c4ac3ff01787134d12527cd300df267d685` (replaced in the following metadata
 commit before dispatch). Execute from that content plus this binding handoff.
 `run.sh` permits only `sol/CURRENT_SOL_TASK.md` to differ from the sealed code
 commit, requires tracked files clean, and records execution HEAD in provenance.
@@ -64,7 +64,7 @@ not a measured final requirement). Do not put HF tokens in scripts or logs.
 In a compute allocation with the pinned environment active:
 
 ```bash
-export COLFEATURES_CODE_COMMIT=CODE_COMMIT_TO_BE_SEALED
+export COLFEATURES_CODE_COMMIT=17a54c4ac3ff01787134d12527cd300df267d685
 export COLFEATURES_ROOT=/scratch/lmalveau/docprune-colfeatures17/<new-run-id>
 bash sol/colfeatures17/run.sh
 ```
