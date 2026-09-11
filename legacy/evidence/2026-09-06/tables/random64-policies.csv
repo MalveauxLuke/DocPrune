@@ -1,0 +1,10 @@
+policy,n_questions,conditional_retention_pct,em,f1,rows,units,status
+aggregate-native-threshold,64,66.05580024464935,32.8125,39.921875,64,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+aggregate-score-top-m,64,66.05580024464935,32.8125,39.921875,64,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+btp-qtp-no-ctp,64,100.0,32.8125,39.5625,64,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+coverage-matched-identity-shuffle,64,66.05580024464935,32.890625,39.58203125,1280,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+global-uniform-random,64,66.05580024464935,32.1875,39.42734375,1280,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+grid-stratified-random,64,66.05580024464935,31.484375,38.6375,1280,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+literal-native-threshold,64,40.928049093061176,32.8125,39.53125,64,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+literal-score-top-m,64,66.05580024464935,32.8125,39.8125,64,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"
+page-stratified-random,64,66.05580024464935,30.859375,38.70234375,1280,"F1 and EM points, 0–100; retention relative to post-QTP population","saved 64-question development, R20 for random arms"

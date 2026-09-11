@@ -1,0 +1,22 @@
+{
+  "component_count": 248,
+  "component_sizes": {
+    "1": 245,
+    "2": 2,
+    "3": 1
+  },
+  "draw_count": 10000,
+  "estimand": "mean_qid(aggregate_score_f1 - mean_mask(global_random_f1))",
+  "parent_analysis_file_sha256": "b995f963f826475dcbfaea847ab7d71bfb4521fbb5d9de6c6a394984c9be8373",
+  "point_estimate": 2.050992063492063,
+  "seed": 20260828,
+  "status": "descriptive-interim-10k-nested-cluster-bootstrap",
+  "superiority_95_interval": [
+    0.33151048307407904,
+    3.767482467649986
+  ],
+  "tost_90_interval": [
+    0.5989832835915673,
+    3.486750723825535
+  ]
+}

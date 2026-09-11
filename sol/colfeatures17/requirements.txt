@@ -1,0 +1,13 @@
+# Isolated retrieval environment. Do not install the legacy [model] extra here.
+torch==2.6.0
+torchvision==0.21.0
+transformers==4.53.3
+colpali-engine==0.3.12
+peft==0.16.0
+accelerate==1.8.1
+huggingface-hub==0.34.4
+safetensors==0.6.2
+numpy==1.26.4
+Pillow==11.3.0
+scipy==1.15.3
+pytest==8.4.2

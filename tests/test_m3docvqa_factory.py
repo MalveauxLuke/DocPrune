@@ -543,7 +543,7 @@ def test_cli_placeholder_requires_exact_invocation_values(tmp_path: Path) -> Non
     from docprune.cli import _manifest
     from docprune.config import load_config
 
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     config = load_config(config_path)
     placeholder = _manifest(
         "evaluate",

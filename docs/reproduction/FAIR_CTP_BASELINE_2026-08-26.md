@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # Fair CTP Comparison Baseline
 
 Date: 2026-08-26

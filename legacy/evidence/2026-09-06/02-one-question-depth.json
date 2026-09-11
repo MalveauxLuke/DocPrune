@@ -1,0 +1,598 @@
+{
+  "scope": "one development question, saved measurements only",
+  "question": {
+    "answers": [
+      {
+        "answer": "FK Tuzla City",
+        "image_instances": [
+          {
+            "doc_id": "52830c5f8b6e8b19add8756c8f56576d",
+            "doc_part": "image"
+          }
+        ],
+        "modality": "image",
+        "table_indices": [],
+        "text_instances": [],
+        "type": "string"
+      }
+    ],
+    "metadata": {
+      "image_doc_ids": [
+        "646fcf83873ebe378fc68068800de8b6",
+        "625600b3773cdb43d5e7654848069067",
+        "dc54cfefc8b099fe36c7b4949a55c929",
+        "1e1604a8d45723628dc8d006f7607d8e",
+        "52830c5f8b6e8b19add8756c8f56576d"
+      ],
+      "intermediate_answers": [],
+      "modalities": [
+        "image"
+      ],
+      "table_id": "3be6caa43eb96153fd2d622392c07aee",
+      "text_doc_ids": [
+        "accf26d3c82476c282c6325b1a577760",
+        "4e4b901b88042ed50852290d9ed5425c",
+        "44be5213096378cc9d8aff3bbc24a775",
+        "089170b19ef0fcb64f851e8a5cf92f4e",
+        "6bac01339b203da0a66bfd454b678a6c",
+        "ddef24518f9f31df6b23da54a0131f8b",
+        "954e19d68a923ccc71ddf3d54f49b268",
+        "3870264e0ee03453af9d1d0a97fafd89",
+        "8f065ddeceb528556ff4ef2dc5122b65",
+        "484498a11745bc0e6f20115f1b4e0e23"
+      ],
+      "type": "ImageListQ",
+      "wiki_entities_in_answers": [
+        "FK Tuzla City"
+      ],
+      "wiki_entities_in_question": []
+    },
+    "qid": "e1e6ed53f9ad11813845088f4cf2f6b1",
+    "question": "Which Club(s), in Career statistics | Club of Dženis Beganović, have a flower on the logo?",
+    "supporting_context": [
+      {
+        "doc_id": "52830c5f8b6e8b19add8756c8f56576d",
+        "doc_part": "image"
+      }
+    ]
+  },
+  "retrieved_pages": [
+    {
+      "doc_id": "3be6caa43eb96153fd2d622392c07aee",
+      "feature_page_index": 0,
+      "feature_shard_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/documents/000792.safetensors",
+      "feature_shard_sha256": "3dc2ada1ec52a5214c4534595d0b0e10058e2cd2777ec2c7efc98e4c2cd5a61d",
+      "page_index": 0,
+      "rank": 0,
+      "rendered_rgb_height": 1584,
+      "rendered_rgb_sha256": "221984aa9119e533197e54ec7b8ac456ed8f6787755c9c4729adadce4dfa6ae1",
+      "rendered_rgb_width": 1224,
+      "renderer_contract": "pdf2image-1.17.0|poppler-pdftoppm-26.05.0|dpi-144|rgb-contiguous|pdftoppm-sha256-1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33",
+      "score": 12.998507916927338,
+      "source_pdf_path": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/3be6caa43eb96153fd2d622392c07aee.pdf",
+      "source_pdf_sha256": "60516fface08c9b6f26c16dd4f7f06870083f6d31ed0dc3dd2952a4e711430a6"
+    },
+    {
+      "doc_id": "58eb8f467b1936834aee86981b8e2b2c",
+      "feature_page_index": 9,
+      "feature_shard_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/documents/001160.safetensors",
+      "feature_shard_sha256": "642f0208285b077cb8615c82cb1c4609e8bf6d058d0953157260862ca9b3d44c",
+      "page_index": 9,
+      "rank": 1,
+      "rendered_rgb_height": 1584,
+      "rendered_rgb_sha256": "a7942014f9f0447dfa9a7a1610a8d6aadfb87a87a7e1f8e9e0713eb9659b9ac8",
+      "rendered_rgb_width": 1224,
+      "renderer_contract": "pdf2image-1.17.0|poppler-pdftoppm-26.05.0|dpi-144|rgb-contiguous|pdftoppm-sha256-1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33",
+      "score": 3.0941258668899536,
+      "source_pdf_path": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/58eb8f467b1936834aee86981b8e2b2c.pdf",
+      "source_pdf_sha256": "240d6b1c93a4f6051f7f4225d2913beeb9fff3786358f776b7d44333382a8f28"
+    },
+    {
+      "doc_id": "aa28afef3aca49dad475407a3d9e357c",
+      "feature_page_index": 0,
+      "feature_shard_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/documents/002238.safetensors",
+      "feature_shard_sha256": "ab2502dd32d4d2318f432f71d59c4095c672a7febaf211ad5f8bc7e7cca56e93",
+      "page_index": 0,
+      "rank": 2,
+      "rendered_rgb_height": 1584,
+      "rendered_rgb_sha256": "ca472ed85106b320be6318881a6f3a8f2943dc8f6a0ad88f5a35d87b51d21142",
+      "rendered_rgb_width": 1224,
+      "renderer_contract": "pdf2image-1.17.0|poppler-pdftoppm-26.05.0|dpi-144|rgb-contiguous|pdftoppm-sha256-1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33",
+      "score": 2.383165121078491,
+      "source_pdf_path": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/aa28afef3aca49dad475407a3d9e357c.pdf",
+      "source_pdf_sha256": "3354c5a6ac4267860b7b0cca4d90459565769cb1bd478ef9153a96eaa25ff1eb"
+    },
+    {
+      "doc_id": "33d49a7d8270fcecbaf52c66989c15a4",
+      "feature_page_index": 2,
+      "feature_shard_path": "/scratch/lmalveau/docprune/benchmark-15301ea/attempt-2/indexes/docprune/top4/docprune/documents/000698.safetensors",
+      "feature_shard_sha256": "51f3d8864ca89cc794e4d330d988c1c08d302950dd8161df6794fa930df24958",
+      "page_index": 2,
+      "rank": 3,
+      "rendered_rgb_height": 1584,
+      "rendered_rgb_sha256": "5575d749be368478a28a8aa67196c184fd3d6f816e32ed3db985eeb8a1083421",
+      "rendered_rgb_width": 1224,
+      "renderer_contract": "pdf2image-1.17.0|poppler-pdftoppm-26.05.0|dpi-144|rgb-contiguous|pdftoppm-sha256-1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33",
+      "score": 2.230490028858185,
+      "source_pdf_path": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/33d49a7d8270fcecbaf52c66989c15a4.pdf",
+      "source_pdf_sha256": "5b8e8eef26de3589745c992e8b7f4c636d9262354f3850f3bd2d2c5c968f1f7c"
+    }
+  ],
+  "metrics": [
+    {
+      "experiment": "task9-regional-development-7616b29-v1",
+      "arm": "primary",
+      "target": "max-accepted-reference-mean-loglikelihood",
+      "target_scale": "mean-token-log-probability",
+      "boundary": "B_13",
+      "fit_masks": 64,
+      "holdout_masks": 32,
+      "fit_masks_sha256": "e5b3c52ed1c826bd1b01ac783a55ddd5e5b278099034b57523d429fe3c635a94",
+      "holdout_masks_sha256": "87e2a82cba2106a9261fb859b4693b2e6fe16902c506166fcc5e328ebf9bd16f",
+      "lds": 0.8878299120234603,
+      "rmse": 0.24043597646895476,
+      "constant_rmse": 1.0162899764963313,
+      "rmse_ratio": 0.23658206026773965,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.39520522916779327,
+        "minimum_defined": 0.24705580145431552,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.7007899670180094,
+        "minimum_defined": 0.6363636363636364,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 45,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 64,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json",
+      "internal_analysis_sha256": "95ead2d334542606bdaa0fac517a851fb163bc84325b7c751048f348e5e5224b"
+    },
+    {
+      "experiment": "task9-regional-development-7616b29-v1",
+      "arm": "secondary",
+      "target": "unpruned-generated-response-mean-loglikelihood",
+      "target_scale": "mean-token-log-probability",
+      "boundary": "B_13",
+      "fit_masks": 64,
+      "holdout_masks": 32,
+      "fit_masks_sha256": "e5b3c52ed1c826bd1b01ac783a55ddd5e5b278099034b57523d429fe3c635a94",
+      "holdout_masks_sha256": "87e2a82cba2106a9261fb859b4693b2e6fe16902c506166fcc5e328ebf9bd16f",
+      "lds": 0.5879765395894427,
+      "rmse": 0.9825739081690632,
+      "constant_rmse": 0.9332444565813031,
+      "rmse_ratio": 1.0528580172535562,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.4873276608584233,
+        "minimum_defined": 0.36699061531116595,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.7628912547637502,
+        "minimum_defined": 0.7111111111111111,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 57,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 64,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json",
+      "internal_analysis_sha256": "95ead2d334542606bdaa0fac517a851fb163bc84325b7c751048f348e5e5224b"
+    },
+    {
+      "experiment": "task9-paired-256-diagnostics-c49abb5-v2",
+      "arm": "b13",
+      "target": "unpruned-generated-response-mean-loglikelihood",
+      "target_scale": "contextcite-sequence-logit-per-generated-token",
+      "boundary": "B_13",
+      "fit_masks": 256,
+      "holdout_masks": 64,
+      "fit_masks_sha256": "71fb434a80ecb345bf52a1e0a854e16d703f8c5ef49c4bf3ca15fd66fc39dcc3",
+      "holdout_masks_sha256": "ef3bcf894b4e13ba1de9f5179e585fb601f7eab5e2f7f4d559939766e112bfe5",
+      "lds": 0.7159340659340658,
+      "rmse": 0.9790532062091022,
+      "constant_rmse": 1.3407957025863322,
+      "rmse_ratio": 0.7302031206697295,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.5447006365941632,
+        "minimum_defined": 0.4093496227256374,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.6223183507657192,
+        "minimum_defined": 0.5466666666666666,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 77,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 256,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "released aggregate_logit_probs sequence logit reconstructed from sealed mean log-likelihood and divided by generated non-EOS token count"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-paired-256-diagnostics-c49abb5-v2/analysis.json",
+      "internal_analysis_sha256": "4d5f27cfd8a069ed8fff976a24b1529780b6f0a9430c5b53949bd9ddf3e40605",
+      "selected_regions": 64
+    },
+    {
+      "experiment": "task9-paired-256-diagnostics-c49abb5-v2",
+      "arm": "input",
+      "target": "unpruned-generated-response-mean-loglikelihood",
+      "target_scale": "contextcite-sequence-logit-per-generated-token",
+      "boundary": "B_input",
+      "fit_masks": 256,
+      "holdout_masks": 64,
+      "fit_masks_sha256": "71fb434a80ecb345bf52a1e0a854e16d703f8c5ef49c4bf3ca15fd66fc39dcc3",
+      "holdout_masks_sha256": "ef3bcf894b4e13ba1de9f5179e585fb601f7eab5e2f7f4d559939766e112bfe5",
+      "lds": 0.6488553113553113,
+      "rmse": 0.8893199311430566,
+      "constant_rmse": 1.1960054791828736,
+      "rmse_ratio": 0.7435751312365655,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.47214958696582354,
+        "minimum_defined": 0.3177675143197705,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.6100841102370632,
+        "minimum_defined": 0.5308641975308642,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 70,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 256,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "released aggregate_logit_probs sequence logit reconstructed from sealed mean log-likelihood and divided by generated non-EOS token count"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-paired-256-diagnostics-c49abb5-v2/analysis.json",
+      "internal_analysis_sha256": "4d5f27cfd8a069ed8fff976a24b1529780b6f0a9430c5b53949bd9ddf3e40605",
+      "selected_regions": 65
+    },
+    {
+      "experiment": "task9-paired-256-accepted-answer-0d40fad-v1",
+      "arm": "b13",
+      "target": "max-accepted-reference-mean-loglikelihood",
+      "target_scale": "normalized-full-sequence-loglikelihood",
+      "boundary": "B_13",
+      "fit_masks": 256,
+      "holdout_masks": 64,
+      "fit_masks_sha256": "71fb434a80ecb345bf52a1e0a854e16d703f8c5ef49c4bf3ca15fd66fc39dcc3",
+      "holdout_masks_sha256": "ef3bcf894b4e13ba1de9f5179e585fb601f7eab5e2f7f4d559939766e112bfe5",
+      "lds": 0.9148351648351647,
+      "rmse": 0.19368087338989468,
+      "constant_rmse": 0.9942792593403827,
+      "rmse_ratio": 0.19479524647671417,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.669752806062043,
+        "minimum_defined": 0.5741193446099361,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.7077915078116679,
+        "minimum_defined": 0.65,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 44,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 256,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-paired-256-accepted-answer-0d40fad-v1/analysis.json",
+      "internal_analysis_sha256": "2e695fbb4413392bf8dae633294174881458c4d2fcfe3ced67a3996cdd3e65fc",
+      "selected_regions": 71
+    },
+    {
+      "experiment": "task9-paired-256-accepted-answer-0d40fad-v1",
+      "arm": "input",
+      "target": "max-accepted-reference-mean-loglikelihood",
+      "target_scale": "normalized-full-sequence-loglikelihood",
+      "boundary": "B_input",
+      "fit_masks": 256,
+      "holdout_masks": 64,
+      "fit_masks_sha256": "71fb434a80ecb345bf52a1e0a854e16d703f8c5ef49c4bf3ca15fd66fc39dcc3",
+      "holdout_masks_sha256": "ef3bcf894b4e13ba1de9f5179e585fb601f7eab5e2f7f4d559939766e112bfe5",
+      "lds": 0.8995421245421243,
+      "rmse": 0.21934655859013333,
+      "constant_rmse": 1.0095033087746832,
+      "rmse_ratio": 0.2172816638475135,
+      "coefficient_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.6528194829739643,
+        "minimum_defined": 0.5890372505421971,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "selection_stability": {
+        "all_defined": true,
+        "defined_count": 10,
+        "mean_defined": 0.6832272228122084,
+        "minimum_defined": 0.6265060240963856,
+        "pair_count": 10,
+        "undefined_count": 0
+      },
+      "requested_tokens": 2689,
+      "achieved_tokens": 2689,
+      "sources": 95,
+      "nonzero_coefficients": 50,
+      "bootstrap_refits": 5,
+      "bootstrap_draws": 256,
+      "bootstrap_replace": true,
+      "solver": {
+        "method": "pinned-contextcite-standardscaler-lasso",
+        "lasso_alpha": 0.01,
+        "upstream_repository": "https://github.com/MadryLab/context-cite",
+        "upstream_commit": "c11f8ace6e68ba0121b2e2f1f5c896da9e4156f4",
+        "adaptation": "upstream num_output_tokens=1 because targets are already per-token means"
+      },
+      "source_analysis": "/scratch/lmalveau/docprune/task9-paired-256-accepted-answer-0d40fad-v1/analysis.json",
+      "internal_analysis_sha256": "2e695fbb4413392bf8dae633294174881458c4d2fcfe3ced67a3996cdd3e65fc",
+      "selected_regions": 68
+    }
+  ],
+  "raw_runs": {
+    "task9-regional-development-7616b29-v1": {
+      "runtime_commit": "7616b29b4dc5ba33584a6e26371281be6886188f",
+      "boundary": "B_13",
+      "checkpoint_cache_lengths": [
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644
+      ],
+      "original_visual_tokens": 10032,
+      "post_btp_visual_tokens": 4336,
+      "post_qtp_visual_tokens": 3586,
+      "unpruned_trace": {
+        "ctp_layer": null,
+        "original_visual_tokens": 10032,
+        "post_btp_visual_tokens": 4336,
+        "post_ctp_visual_tokens": 3586,
+        "post_qtp_visual_tokens": 3586
+      },
+      "generated_response_token_ids": [
+        82043,
+        11,
+        1863,
+        2152,
+        73,
+        6355,
+        13
+      ],
+      "reference_sequence_count": 1,
+      "prompt_sha256": "7af76289887e358b43f9346a184bff3b03e893db27358a07c00d133a2c786fd1",
+      "mapping_sha256": "a1c986232259c4979b6c3e423f866b8ff107f1f430ed96feaf5062ce42d04ab6",
+      "all_completion_members_hash_verified": true
+    },
+    "task9-b13-256-39aa5f5-v1": {
+      "runtime_commit": "39aa5f5142cd1ef87291e72f30bcfb23d813195f",
+      "boundary": "B_13",
+      "checkpoint_cache_lengths": [
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644,
+        3644
+      ],
+      "original_visual_tokens": 10032,
+      "post_btp_visual_tokens": 4336,
+      "post_qtp_visual_tokens": 3586,
+      "unpruned_trace": {
+        "ctp_layer": null,
+        "original_visual_tokens": 10032,
+        "post_btp_visual_tokens": 4336,
+        "post_ctp_visual_tokens": 3586,
+        "post_qtp_visual_tokens": 3586
+      },
+      "generated_response_token_ids": [
+        82043,
+        11,
+        1863,
+        2152,
+        73,
+        6355,
+        13
+      ],
+      "reference_sequence_count": 1,
+      "prompt_sha256": "7af76289887e358b43f9346a184bff3b03e893db27358a07c00d133a2c786fd1",
+      "mapping_sha256": "a1c986232259c4979b6c3e423f866b8ff107f1f430ed96feaf5062ce42d04ab6",
+      "all_completion_members_hash_verified": true
+    },
+    "task9-input-256-8e956be-v2": {
+      "runtime_commit": "8e956be8259e4d72ba1aa7b534649c2f411ef16c",
+      "boundary": "B_input",
+      "checkpoint_cache_lengths": [],
+      "original_visual_tokens": 10032,
+      "post_btp_visual_tokens": 4336,
+      "post_qtp_visual_tokens": 3586,
+      "unpruned_trace": {
+        "ctp_layer": null,
+        "original_visual_tokens": 10032,
+        "post_btp_visual_tokens": 4336,
+        "post_ctp_visual_tokens": 3586,
+        "post_qtp_visual_tokens": 3586
+      },
+      "generated_response_token_ids": [
+        82043,
+        11,
+        1863,
+        2152,
+        73,
+        6355,
+        13
+      ],
+      "reference_sequence_count": 1,
+      "prompt_sha256": "7af76289887e358b43f9346a184bff3b03e893db27358a07c00d133a2c786fd1",
+      "mapping_sha256": "a1c986232259c4979b6c3e423f866b8ff107f1f430ed96feaf5062ce42d04ab6",
+      "all_completion_members_hash_verified": true
+    }
+  },
+  "parity": {
+    "smoke_shared_prefix_first_mask_max_abs_error": 0.0,
+    "not_all_keep_parity": true
+  },
+  "provenance": [
+    {
+      "path": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/analysis.json",
+      "sha256": "1dd375f5e52374b17b3efc3b8cad97e50e159e138f90a8270d406641e752de40"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-paired-256-diagnostics-c49abb5-v2/analysis.json",
+      "sha256": "cfe9b9456b0040aa9bcee1ce7f332d67401f203a8a53646402a905f009798a18"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-paired-256-accepted-answer-0d40fad-v1/analysis.json",
+      "sha256": "5c67c85a0223bbd8ee84d8787a40789ac2f3cf19a4bde8dd706fcde1ad8e8d98"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/output/run-manifest.json",
+      "sha256": "d9f520f5ee28d06773899f0a1a33019f27fc7aa96a8d09e51b1db9b2a2f08e64"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/output/raw-result.json",
+      "sha256": "4847d011a36fdcfb170fb42e084d01ea69c5f9f1c71bfab975c23439621ddc9c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-regional-development-7616b29-v1/output/completion-manifest.json",
+      "sha256": "5b2f3bcba250640f6172a9cf513c50cc4fb112019cd497bc56a47445e1c3b71c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-b13-256-39aa5f5-v1/output/run-manifest.json",
+      "sha256": "cb69c7993d23e7849d73d435176120b42fc8c79839ed25eaa7b01d8dbd5936a3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-b13-256-39aa5f5-v1/output/raw-result.json",
+      "sha256": "72dddb4a66d4e4ae98b99c3b39f334831db6f610e580b5ff46db08aac100ab95"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-b13-256-39aa5f5-v1/output/completion-manifest.json",
+      "sha256": "db46773f64c45fdbcbc9109af6f92458a96378ec177e6a3c61c978b61d0dec86"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-input-256-8e956be-v2/output/run-manifest.json",
+      "sha256": "0821994bcac28dccd08214b6f36f2319f2c9c64a0e689a38e171c51121d78d2b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-input-256-8e956be-v2/output/raw-result.json",
+      "sha256": "8ac8bde6e8a8c42a1c506f4f9748271f95600969e91d43b7e558feaa8a25e634"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-input-256-8e956be-v2/output/completion-manifest.json",
+      "sha256": "8c2051e559064fcbc47ae317e123aaccb2cb685a3930c39c61b6ea9a6efe752e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-fixed-page-gate-v1/fixture-stage64-top4-v2.json",
+      "sha256": "32b3ddd6a1f608db509f002f9541dbc92317b59ac769f0b41fcb20bcc536652b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/benchmark-4e2473b/attempt-2/diagnostics/stage64-v1/eligible-single-hop.jsonl",
+      "sha256": "99d5e45a6ab55c298d8262cd23e996d78babf59cf45a453e3ba837fa40920795"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task9-regional-smoke-4e2f44c-v1/output/result.json",
+      "sha256": "53b7610e62a23c705cb790036b3105c32a19fe2a2dda495f3def027be06eda3a"
+    }
+  ],
+  "caveats": [
+    "Two actual depth conditions, not four decoder layers: target changes are separate curves.",
+    "64 versus 256 generated targets use different transforms and different holdouts; not a pure mask-count ablation.",
+    "One development question, no population confidence interval.",
+    "LDS predicts intervention likelihood ranking, not QA accuracy or causal sufficiency.",
+    "B13 retains information already processed before deletion; B_input is before first decoder block after vision/BTP/QTP."
+  ]
+}

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Keep M3DocRAG, Qwen, ColPali adapter, and ColPali backbone at the immutable revisions in `configs/docprune-m3docvqa.toml`.
+- Keep M3DocRAG, Qwen, ColPali adapter, and ColPali backbone at the immutable revisions in `legacy/configs/docprune-m3docvqa.toml`.
 - Preserve every nonvisual ColPali and Qwen token and every retained visual token's original raster/rotary identity.
 - QTP consumes retrieval-produced document and question embeddings; it never runs ColPali again.
 - Indexed retrieval uses exactly `k=top_k`, matching pinned M3DocRAG MaxSim aggregation.
@@ -56,8 +56,8 @@
 
 **Files:**
 - Modify: `src/docprune/m3docvqa_factory.py`
-- Modify: `src/docprune/qwen2vl/decoder.py`
-- Modify: `src/docprune/qwen2vl/model.py`
+- Modify: `src/docprune/_legacy/qwen2vl/decoder.py`
+- Modify: `src/docprune/_legacy/qwen2vl/model.py`
 - Modify: `src/docprune/answerers.py`
 - Modify: `src/docprune/m3docrag.py`
 - Modify: `src/docprune/metrics.py`

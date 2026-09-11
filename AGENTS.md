@@ -29,6 +29,14 @@ This repository concerns token compression for document QA.
   from hypotheses; this complements any required experiment logs.
 - Never add secrets, model weights, datasets, caches, or generated outputs.
 - Owner-authorized exception: the curated presentation packet in
-  `docs/presentation-evidence/2026-09-06/` may include selected evidence images,
+  `legacy/evidence/2026-09-06/` may include selected evidence images,
   measurement extracts and source snapshots for Git-based transfer. This does not
   authorize adding raw experiment directories or other generated outputs.
+
+- Owner-authorized temporary exception (2026-09-11):
+  `transfer/colfeatures17/input/` and `transfer/colfeatures17/result/` may track
+  hashed, chunked archives of the selected 17-case images/evidence and extracted
+  Col-style features. This task-specific exception overrides the general
+  generated-artifact prohibition above. It excludes model weights, credentials,
+  caches and unrelated datasets. Remove from tracking only after verified local
+  receipt, following `docs/experiments/corrective-selection/COLFEATURES17.md`.

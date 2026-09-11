@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # Exact reference
 
 Companion to `README.md`. This file favors exact recovery data over narrative.
@@ -62,14 +64,14 @@ tau_info/comp    = 45
 tau_att          = 0.075
 ```
 
-Local `configs/docprune-m3docvqa.toml` matches these values. Paper-matched
+Local `legacy/configs/docprune-m3docvqa.toml` matches these values. Paper-matched
 architecture: BTP/QTP prune 2x2 blocks before Qwen2-VL's spatial merger; CTP
 recomputes attention only for the last token at the selected layer to remain
 FlashAttention-compatible. Relevant code:
 
 ```text
 src/docprune/ctp.py
-src/docprune/qwen2vl/decoder.py
+src/docprune/_legacy/qwen2vl/decoder.py
 ```
 
 Author-undocumented reconstruction detail: exact head aggregation and
@@ -211,4 +213,3 @@ held fixed.
 - Use short HTC arrays. Broaden compatible GPU types/concurrency when fidelity
   permits. A100-40GB only for the existing controlled diagnostic protocol.
 - Never combine timing/efficiency metrics across mixed GPU models.
-

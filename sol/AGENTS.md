@@ -25,3 +25,8 @@ authority.
   fresh-retrieval output as non-canonical and never score or merge it.
 - Treat `archive/source-repo/` as historical reference, never as current
   submission authority.
+
+- For the owner-approved Colfeatures17 task only, the two transfer directories
+  named in root `AGENTS.md` may contain packaged evidence and feature tensors.
+  Runtime files/cache still stay on scratch. Publish a complete hashed transfer;
+  do not untrack until the receiving local agent verifies receipt.

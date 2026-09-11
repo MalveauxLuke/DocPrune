@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "examples" / "m3docvqa"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "legacy" / "examples" / "m3docvqa"))
 from gate_dtype import prepare_stock_colpali_batch  # noqa: E402
 
 

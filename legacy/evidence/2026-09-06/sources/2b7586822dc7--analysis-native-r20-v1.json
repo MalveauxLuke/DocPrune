@@ -1,0 +1,1186 @@
+{
+  "admission": {
+    "extension_rows": 2560,
+    "fixed_page_provenance": true,
+    "global_index_loaded": false,
+    "member_digest_sha256": "5772ca20f7f2c7235a4811f6e2d2a6c47c69a68b98cc69d2b36b89edc2228692",
+    "member_file_count": 256,
+    "native_rows": 2880,
+    "shards": 64
+  },
+  "analysis_sha256": "c2d806785b61726ce6ecf1f1573b48d6ee9276ba900bc101d086b4d5cdb251a6",
+  "fixture_sha256": "32b3ddd6a1f608db509f002f9541dbc92317b59ac769f0b41fcb20bcc536652b",
+  "gate_sha256": "4d44e297081b152c2e492ec68be58445c7ac17c8d106ceb2ddb1f6331fd57761",
+  "job_ids": {
+    "extension": "62313075",
+    "native": "62279046"
+  },
+  "members": [
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0000/run_manifest.json",
+      "sha256": "ae559bf73de22f0e1ddacfb1db6fd776f5ac1178a4649e0644dcc09be8634ef7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0000/results.jsonl",
+      "sha256": "50945fc78034d1ce54cc522e13a64d08c599e5be14076f43b7a39e43254ac3f0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0001/run_manifest.json",
+      "sha256": "d037d8c488e413d651c43af7feb0a78d5231a1268063a45fa8a730478587bb80"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0001/results.jsonl",
+      "sha256": "2ae08c4bfddce866d02d5602fa282aa3e7754c17b15ace5517b9459fbb162631"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0002/run_manifest.json",
+      "sha256": "47e2f80b4603ba249f1d85257b9622a8f46ca773bad1336f2d1387a200d3e972"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0002/results.jsonl",
+      "sha256": "cf362321cf907ff8e3dd315ab16352fb4d09fe2d9b372c34bd0bb0a62e939820"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0003/run_manifest.json",
+      "sha256": "e650529e5acd11ffdbcc79d93673f1ff39fd22fede7a47dba4a359dbd5d7219a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0003/results.jsonl",
+      "sha256": "c23d3e6e045de5ee04e35405cfcbce6257962465dbe41c44746b4903cd1b03d6"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0004/run_manifest.json",
+      "sha256": "88791596247f6fc13abc8f911ca339a4bdd4f0a5747476bf3c8085da986bef8b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0004/results.jsonl",
+      "sha256": "4e883a021f2c5793767b1af6115b98da13ebe335e6627a5976a60cfcff5351df"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0005/run_manifest.json",
+      "sha256": "4f5cc210295249ceaacc756a43fd4182973f89bbdc819ce142158092891a5f40"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0005/results.jsonl",
+      "sha256": "ecde36462733625abfeee2a1351f245186f4d26ade44d212085f0bac6680d764"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0006/run_manifest.json",
+      "sha256": "a28f9a87a3a5bd002de01191c041497af779176b8bbbf20907a0d684cb0f4cfb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0006/results.jsonl",
+      "sha256": "18d0e3f477cae94a1b1aec5c347d4e75d69ee316001aeb30a6d9e12dc96b8c30"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0007/run_manifest.json",
+      "sha256": "4ad9a105a29d658f0f950256430fa533e03655089947a176792b455211189ec7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0007/results.jsonl",
+      "sha256": "8bc4290ee653b38ea27c5e8450044d761fe47381dd5787a3b722fd4517b4b28d"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0008/run_manifest.json",
+      "sha256": "1bab0b803c63f2800f9007b772f0c6e8bafa35feb9dfa8ba0a318afab54913a2"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0008/results.jsonl",
+      "sha256": "a4b05937db0cc6f451fdcdebb4b6444f576eaa99cb94e525110d3b99f15f27f9"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0009/run_manifest.json",
+      "sha256": "ad07e811dfb0252fd4f193329c3ec71188383f578bfc82c890e533b7b365af68"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0009/results.jsonl",
+      "sha256": "8b9d40b65b46d12e964ed7601d7e5cf6e7589ca657701df3b49d046124cdcd91"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0010/run_manifest.json",
+      "sha256": "7e3c3ec608f22e7fdf6423b7e41cf5c130dcffe2d7b1b63b3bd23d9b0eaa830c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0010/results.jsonl",
+      "sha256": "0ad848858d177d8620d90b2c8d46dc4a50bc8b85aed2fede6634e421f7615985"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0011/run_manifest.json",
+      "sha256": "d897ce93fbb0071a01a70c67141a0530aa9f2b9bf7f43da24423bf247b00bfb1"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0011/results.jsonl",
+      "sha256": "99f56d7dcc128f89c1d6c7877fbcbce51ba6663aa231977d704e4e0eab91f247"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0012/run_manifest.json",
+      "sha256": "06b59a22993bc26829097fef947c758ab8aae990638de171740523e0818edd19"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0012/results.jsonl",
+      "sha256": "68889a554e3d014aada090c5929380efc9740d46acc8fdffb7f3f744d2ccf50b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0013/run_manifest.json",
+      "sha256": "0ce4ed17e64150549885f44a1eb3899d8dc84a21786c5a7c2e052396d9328549"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0013/results.jsonl",
+      "sha256": "4fa7265c2f7e509a26bd40a0468f611c281c49dd52039f6218b2e0be91cb33d8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0014/run_manifest.json",
+      "sha256": "1428daba24200bc0a4a9a1b7e4a4973700b95d2144e241ed0cdbd1c69480f858"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0014/results.jsonl",
+      "sha256": "ad54c892ec5e6fd1bf99cbaa0d0cf70c1528745a7b4b7c08ffa01e2f7398e018"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0015/run_manifest.json",
+      "sha256": "2be3cb7886219adf56460435a1507686dabf979aec1f3ffb91cb62b8e37cac2b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0015/results.jsonl",
+      "sha256": "7a15d73fee2e4f5cce5c0cd8b91072bfecb83be9f53f2f1698e41d19ebc56930"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0016/run_manifest.json",
+      "sha256": "cfe7498e63fa6e7355176340da6825838a55a7aeef41e9f4cfacb91b0cfbfe80"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0016/results.jsonl",
+      "sha256": "783c9a366157522829346fe6da0ab78c0313c0a7cf7d9c811c4f4cfa3eb8fd08"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0017/run_manifest.json",
+      "sha256": "5e331e19fa6901765dbdba1f5989cfe931267cef5a89992f9ce3f29c85943a03"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0017/results.jsonl",
+      "sha256": "2dda4e7c41ae4b93d0b4bf83763d42d75b4fbd6d033803eb6f7b7b38a34aaf6e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0018/run_manifest.json",
+      "sha256": "8c9d4c850c5139f3aefe93f039714b262af2e964ad93a5c4f83195ad70b0fbdb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0018/results.jsonl",
+      "sha256": "cb3fb82f387110882780d0acaaee9f4646c11310372cb322dff83e89f041b7bf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0019/run_manifest.json",
+      "sha256": "84ae0f3c15720764c2f653c8437081c589c3bb5813798589a796e183938cb935"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0019/results.jsonl",
+      "sha256": "6dbff63e680acde974bd0bee0843194bce639290b7570394c24e90b523752433"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0020/run_manifest.json",
+      "sha256": "8b61ad297707e76d408ef3c3032d31e27cd2ddf46ab6842990c7db4eeba139fa"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0020/results.jsonl",
+      "sha256": "75d604f439bdafe1be9457de4246c540f6e89762d9ecc8a1758419887b9bcde3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0021/run_manifest.json",
+      "sha256": "c76a2ef80ec670a7aa64c77d7d591332f0f40671b06cfbf83272c6395b409b1a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0021/results.jsonl",
+      "sha256": "1a662720bb80e9df1308c880099cacaf44f8f7b85dfd94f777132c0dc2e5d8ab"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0022/run_manifest.json",
+      "sha256": "3d8e0f3730f5f015e34ec9e5e0b484876d9edeb0276a18ac5f6a324bd130a7a4"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0022/results.jsonl",
+      "sha256": "b27833f2c67d9d704890a8e876fa2002c44e5b87cf925b959620253433931be0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0023/run_manifest.json",
+      "sha256": "5e4ce22562aeeda0fb838a3f86740c25bdf3fd673c8f020e9656bd6efd869857"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0023/results.jsonl",
+      "sha256": "f113f42fabbb4f230d676f144a343d840a414673d05bd7403b6b5f8674694ef1"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0024/run_manifest.json",
+      "sha256": "bca29866aeaac9b6633520b0a7094049fcc649869e2bef1aab60181d15b3e46e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0024/results.jsonl",
+      "sha256": "35e2e1ed817bb16fc1d7ee7c86caeda5e43698c3aac4018722a646f7939e2e38"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0025/run_manifest.json",
+      "sha256": "4bb0e596eab5eda646d667efa22f8078a6f638dc378735ddf64addb6cf891682"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0025/results.jsonl",
+      "sha256": "b3a7e644ca041b2e921d48aefa3972882d2352ce648bcf8377fa0702d147f0a0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0026/run_manifest.json",
+      "sha256": "3d39824eb41ff9422228892440bd4bec0b843fcf5f272c4f0de6f354c79fcec9"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0026/results.jsonl",
+      "sha256": "1c7a9d6d9011390105cbbf4e414855dfe63129223272d004ef83bfe99c24e89c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0027/run_manifest.json",
+      "sha256": "8e8ac2610063014b4b13fd5863e5083dc1511af1159a5329837b939539bf980f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0027/results.jsonl",
+      "sha256": "80a410ff7b2c9701cc8c768d61a9be59e8478bd70ecbd49dc72b2391b635e7d3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0028/run_manifest.json",
+      "sha256": "cac24625377397e4cad55dfe84f8fc06aea04091641626b8df095198ec6cf9ca"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0028/results.jsonl",
+      "sha256": "f48d6852b29d1fe4e7a11cc1f5d50118c41a9b6f0dd8b1efd7bbbe7ab70c1fe6"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0029/run_manifest.json",
+      "sha256": "e948607d511bd7977c5faebfd9d37ab6b3ef05629f1f8eb381540deb98008894"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0029/results.jsonl",
+      "sha256": "93e22c2c0302ed9a6679dd568077e9c46e7f8ca06b225b159068245b1fc1fa80"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0030/run_manifest.json",
+      "sha256": "a27718dd195f01711dc2b8dcfa52bf161ec744879f50270c909a97fa0bed5d42"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0030/results.jsonl",
+      "sha256": "704675dce876371748df08b091368cd23847c42b0248e0b4cfc31a99149b5c2d"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0031/run_manifest.json",
+      "sha256": "25fe2f79f8a71b5ddf0412140238b602362dbd1db8858e1f4ac80d1faa3a3a2e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0031/results.jsonl",
+      "sha256": "d29bc0937c5547d21042f3032515feef94e74550735254c6cce0d9cf97ce85d5"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0032/run_manifest.json",
+      "sha256": "6054b1f5b5dff5f1525e33d5ba571a3b3db9929209378741947ae41eb35e799f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0032/results.jsonl",
+      "sha256": "64e6a54bd0746b8d368b18258206e550f5cd3aadd1a4dc08feb11517dccf380a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0033/run_manifest.json",
+      "sha256": "a0c3f70f977f227732d26be5de15873206c2e8817e367992e15ec762affd13ed"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0033/results.jsonl",
+      "sha256": "7a8180d33f0c6fbd0cf7c8b8c5e03d8f3e534455ef35fa919ee1fa0c0e28a614"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0034/run_manifest.json",
+      "sha256": "b4d9aed5050fa555cd190ae974b70687e23d63ab78533ce821ac3c5eead48f88"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0034/results.jsonl",
+      "sha256": "49c84203f97c6c9421b2b82b2e3a7f2f9f3e75d2105832ce285bba09ebb10c83"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0035/run_manifest.json",
+      "sha256": "1e80183d8917c03c8f3987baa25f13ee7cf6c8077358cdbb65d2af76a63ecc0d"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0035/results.jsonl",
+      "sha256": "ab1c7207cf58dd6ee6a1cd122169845ebb02946b327138f4cbb28174297fc4d2"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0036/run_manifest.json",
+      "sha256": "1576d6432e3a0a3bcb41cbb82f2c51026c91c4d6db347014769de5ca49ef7f57"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0036/results.jsonl",
+      "sha256": "47ae543f6949bcdc026c41b895bbc3b46fa431291df7ce50a847b40bef560c8c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0037/run_manifest.json",
+      "sha256": "17a97ffe6b7792ae7a33b9e8896f1c9435102501f1f3bf05a5410e14b7f597e0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0037/results.jsonl",
+      "sha256": "acabbb83850226546e5b3e95a60a1a6ff8431a7192ebbaeb25bb77eaf30b22ca"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0038/run_manifest.json",
+      "sha256": "0be2d8e6ae03f49fdaaad8a665d9aa351c0404d4c9c62ccef6d6fed49cd1eaed"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0038/results.jsonl",
+      "sha256": "c1e394d6353a0774c818d69677f1f3cfdb9fa9c19fb5b5755f5618e1ea1a585a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0039/run_manifest.json",
+      "sha256": "d3563ff9fef36b3132de2715309d49133a7994b4f6597874ee2311494f1980ed"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0039/results.jsonl",
+      "sha256": "1967f8a90fa67d31c63be7d1ed4fabf5f131bc16e0d9a7f3f0a5672162580865"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0040/run_manifest.json",
+      "sha256": "eee763036cb98c11e698ddad07e766b7ec313225d544d22101e5906c57e55233"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0040/results.jsonl",
+      "sha256": "ff2c42142fea462a6a4e56dda0eebdd5433c96e88bac55dbc12b8154762f8128"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0041/run_manifest.json",
+      "sha256": "bdbf81d1dc094e7d23bc90311ae57e0b39060415a2187a3f67393f1960039e2d"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0041/results.jsonl",
+      "sha256": "1396f802fcfb493961b3afb672b675480e13cb192635fe15013fc4189129e29a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0042/run_manifest.json",
+      "sha256": "3003dcbc9b043cc41addbec82ed3d27497581a1d9c759bda29ee02a3d88b8970"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0042/results.jsonl",
+      "sha256": "3a98fae7a7979babd39e3193f16a0e7fa3a2e5aa2e24af5568e3d453bd71265a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0043/run_manifest.json",
+      "sha256": "471b323489e02e6462b51820728aa2e054fafbc4129dfd632f8aae8dc735233a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0043/results.jsonl",
+      "sha256": "7d9faaaea9978b49138b50d27777c544e9e0c1a58b12d8d36bee42a796906092"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0044/run_manifest.json",
+      "sha256": "0134a5612e307eb4ffd8624854f08f89413e3105658978531b0cf671eb88e207"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0044/results.jsonl",
+      "sha256": "e1ca98bf7bac2009155f548418679bb56d18bb74077aeeb903a086f44a78f6c3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0045/run_manifest.json",
+      "sha256": "9f8ab233b2610b63d54b75be16e446c5141f4dcc70e9f157014a8ee2c193c194"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0045/results.jsonl",
+      "sha256": "874d5a5fca85cdc2ae54d0469a80c7bde924c8af18da0b8728ba295d9669449e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0046/run_manifest.json",
+      "sha256": "d986acb6301adfa4def543225b226af42e9c7e9c8e600c081dba19479861cd26"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0046/results.jsonl",
+      "sha256": "2ec51c754491445d1ba3aebe7684a9edd895df18175f3a6a963fb23e8d8e1845"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0047/run_manifest.json",
+      "sha256": "fd2fe395b2162eec148000d16b0356ce553f02013e60125e64035cc5d96686a7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0047/results.jsonl",
+      "sha256": "1d4a4abd5d39f566808e9cfbfe51c9e400347f10644c0e580fcd6a8d03bd4965"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0048/run_manifest.json",
+      "sha256": "eedd7ffced0f88640b7f1f4cd5c836bd5d98515ca6f18a97b7c69ec2c3259f4c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0048/results.jsonl",
+      "sha256": "799f9fefb0f1a3d60070bf106ff12008c5f53b747ba994fdef2c24a60c4b04bc"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0049/run_manifest.json",
+      "sha256": "8fe1d041223a038016779c6431020c34ba3495daa03c7f10a921ccfda00e0b25"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0049/results.jsonl",
+      "sha256": "0c2141899b42cf3e1ebc24c7d28147646414bea63fc4c4c8eaf94305054006bf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0050/run_manifest.json",
+      "sha256": "eebcec9621e070dcb2352ff4872a2b39d6f868a13918d7509c6f3406ae9446d7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0050/results.jsonl",
+      "sha256": "646edf237612c88508b726d916962ce5b68a6ccc1a1e82c7ee5cc4fcd7fcb6c0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0051/run_manifest.json",
+      "sha256": "430653b845101f19f0fa8c278e28e4c05bf5220923c24a5abb3ac43261767646"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0051/results.jsonl",
+      "sha256": "f9f7d798172c3c64508fe64a57bc62759ba7b5736e8446128bcf3de7d9b522e5"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0052/run_manifest.json",
+      "sha256": "bf3786f291f308879952cba1f30546950fb52312eafc11278ac9d0fdaf6f8ff1"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0052/results.jsonl",
+      "sha256": "9529c9af22157d68a15824611331841e339c5bba0f9993502ad100d6fd67fe7f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0053/run_manifest.json",
+      "sha256": "d7379cefd5d20597b40d1b4059bf8bab96e459700ca57146ea264c128783cc70"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0053/results.jsonl",
+      "sha256": "12b1b78e3270005c0819941c81cd01f993bdda87f68553b68ab7949dfa10b553"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0054/run_manifest.json",
+      "sha256": "cd3c35caaa9cd2b4bceaa2673f2f5b7ba9b2ab91a6f22d941195062cac53df7e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0054/results.jsonl",
+      "sha256": "0c88be034bc8bb06107b82fbc532cbfec62817386c9dc8ddd0f90f6f2884995a"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0055/run_manifest.json",
+      "sha256": "f7b80bd8a2a227f007d5cd83f1bff674dce801541b53ee1e0cd296d6078e1f2c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0055/results.jsonl",
+      "sha256": "8f838e5d3d57e8f2fde0b6f95889be6f6643d91effc359576641dea2c015668f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0056/run_manifest.json",
+      "sha256": "6ab4692521d57b2e51dc5ad3691d9fccb214467773c560a6ebe265d27aa8ef9b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0056/results.jsonl",
+      "sha256": "0e32255d8876d3fb0366207ddfe2e57f1a031b120f8756ac759b6dd1007322d1"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0057/run_manifest.json",
+      "sha256": "9e22368948aaf54883db99cc7556f016b9c8bf3b7d545bbf1fe929695060dad3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0057/results.jsonl",
+      "sha256": "1840aa57e02a957367657fe51f7d7384d6735b31d1d18b7b186b90b3a9729ab0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0058/run_manifest.json",
+      "sha256": "1f31ae9fc8def4ee916d6a70253450ea7d0ab2283ef83108a22388de2a4b7e6e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0058/results.jsonl",
+      "sha256": "79162b317dcc4436b51d8f9ee6ac1a1f51b876720cc7386715874e86cc9161df"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0059/run_manifest.json",
+      "sha256": "aab4ac4fbf23a2e4fc178f35dddf478b8043700d90e7464329a87e488627eb50"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0059/results.jsonl",
+      "sha256": "d04531bbf6f4b5b766470cafdb432be783c0ddee4e3de9f85ccf33ab697622e5"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0060/run_manifest.json",
+      "sha256": "f2ecc37ab1815fa83b54169f1a5c0e78b637ed13eb0e5c23be4020567cacd2d1"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0060/results.jsonl",
+      "sha256": "bcd51f1ba1254e5b3a2f4e730c53118d89a45fa3209ab59e9235709a43f6795b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0061/run_manifest.json",
+      "sha256": "c4488a946f06781d67f84d1e8e9b0e9a1889e9b980dd02368b00e25225ed57eb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0061/results.jsonl",
+      "sha256": "5a7231971fd491bffed84d4b0b274f96d30b55efbde30cd3342a212995938192"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0062/run_manifest.json",
+      "sha256": "df2a8d98f3dea275babc514aa1d81952c792f444978916dbd0054f26a8345973"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0062/results.jsonl",
+      "sha256": "df02eb3b5ef491c9c29aef603ce1a4a7122af9de8b76e288acca88389ec241e7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0063/run_manifest.json",
+      "sha256": "830c3b2d70fe36c33bc0bc4bf60ab7f12bf9f86dbbb39b06efd953280a6d4b11"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1/shard-0063/results.jsonl",
+      "sha256": "1a81edfb2896f57f0ab0771f87dae7a09588f56fb1451d9af1d14bfbae0d45fb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0000/run_manifest.json",
+      "sha256": "105f7378fe5d39c2b1c759f2d4b6bd5c8e59b18f37e68a13d8065315c3d18bda"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0000/results.jsonl",
+      "sha256": "e76de057e583d0b632994a7f053a974a9d24cd2406434a8024fda7107e16deb3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0001/run_manifest.json",
+      "sha256": "db5b149e1a6b8aa0ae7dbc37871a9e4e92b370fcb6011ed5fdb3d3293c2ab861"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0001/results.jsonl",
+      "sha256": "5dc805857aca8a8dedfa0836b59829754e99baa288c95d14cf1e4d938e8cbbc3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0002/run_manifest.json",
+      "sha256": "2a2f410446d79c8b06a11156b26a82e4acb21d68f28bdb69fbf1065c5607950b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0002/results.jsonl",
+      "sha256": "6541dd6e4bbe63b88e9e75478b49fb27182acf70b43a3ea2641e3ee48fde123b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0003/run_manifest.json",
+      "sha256": "862c04446fd9332836cd1cfb54136ad4f86a90d662bc6f4c6719dfa08c3b58f6"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0003/results.jsonl",
+      "sha256": "c9b22c35e4ab1c032af01e44b32b980e5b0710a14a67fee6e19ed5e0286449ac"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0004/run_manifest.json",
+      "sha256": "8807f976e2400523e81ba001a23719bd75f716d635b9a067dbff09042b955bbb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0004/results.jsonl",
+      "sha256": "79e43967d7f99686d89d1917945838051fa7741729895bd60f477aa2ca23c495"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0005/run_manifest.json",
+      "sha256": "15be74d564383f598727b88e6e3bca0551e5ba73a73a36f20b5f37684f875f51"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0005/results.jsonl",
+      "sha256": "3c7e04a9f32f31c1ca6de47a1a7ad5b7e8bb7d9154aed9e15dca726f566faedd"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0006/run_manifest.json",
+      "sha256": "3ef83073e7e173827e96a814ce42758fe4d2eb5d32495b8d64033c61ad8b9fd0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0006/results.jsonl",
+      "sha256": "f1b394a7f4141a6325b488e4c5ca81b79dfa37c746ce07a36542910fb3f7a3c8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0007/run_manifest.json",
+      "sha256": "fcad19b292dc1e5f0c406040a3bcb86ca17e63d214c019247b3a75f6830bd048"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0007/results.jsonl",
+      "sha256": "e4f9667ee9d79ffdc509c516e6883dca670e25f7949e21149836156268f50859"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0008/run_manifest.json",
+      "sha256": "f76a83d696bc78e0d7c1ca76ceb8d3af4942d801fac75e6627bfbd455ef7c3b6"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0008/results.jsonl",
+      "sha256": "0e525704c7e275d724dbe00ea741ec6c8df65d05879e75d02f9b32f1cba775af"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0009/run_manifest.json",
+      "sha256": "823353d6ae8f73e23341a5f52538a2dbb3efae0b43b77b3b129189dec9cbbbab"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0009/results.jsonl",
+      "sha256": "cc164227be45d15810561af4661fd3476dc90c59f4745761e5ec2a36df2dbf0b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0010/run_manifest.json",
+      "sha256": "45c5042f5fc82c806ca29e91b11e9ab2dd9f2c8d81477b41ae25c4cd9508fa04"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0010/results.jsonl",
+      "sha256": "f84a8a6c537bbc14641905e78c2ef9fc1b993bbd45ada5d4f78ebfe5b8b12b5b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0011/run_manifest.json",
+      "sha256": "ccfacffb5d6af7b97776442432203d0ef8a7af47af45df740fcd4b7e5e85b1d0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0011/results.jsonl",
+      "sha256": "dff8bc1890b7c65dddb77d1c26e587a1412b12cf0ef53ba3599875d879dba6fb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0012/run_manifest.json",
+      "sha256": "b49dbc3a4bdf463095c088e209b3e95d0dd45ea66e5d9fca9fe4059fe834e58c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0012/results.jsonl",
+      "sha256": "29d02d3afce0e2b265b03862a893ceaad43844dced9888069723d15bd9ecbf90"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0013/run_manifest.json",
+      "sha256": "5a76b8da46b54051b3f3e4f19f6a3baadcc7d4b69a4111ff1cc77a5e688ed723"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0013/results.jsonl",
+      "sha256": "4fe5def3f6e519dd43e43c865920cc8c7cd2ccc1daf3678991f4565eb7d44278"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0014/run_manifest.json",
+      "sha256": "fc6fc29f184cc869317405ff405e0264865a0f64fa6d9e765ec4e0d36358563f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0014/results.jsonl",
+      "sha256": "432ef22ff7e5b3b9516ffea8f5e32eeef52f5018248caa75e6a5eb518b217ea3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0015/run_manifest.json",
+      "sha256": "d4adfe346cead44800beb2cf22ac8a94e870633d65467c45859b072477122ee5"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0015/results.jsonl",
+      "sha256": "406c9dfbcbe1302d0f04c1a1c8ee09bd72310e2c6039f2cfe944c28916399b0f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0016/run_manifest.json",
+      "sha256": "2bb55dd334545ffbcf65ef920b572501d88e84261aa27968e7178fe85eac3b94"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0016/results.jsonl",
+      "sha256": "46984a30acff49439ee3386d0ebe642b2d6af979227060a163ba939520505759"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0017/run_manifest.json",
+      "sha256": "855ce3b2f8231d1587bbd6686f121988a2ad236244d11f097b87fe5d4eafb8f8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0017/results.jsonl",
+      "sha256": "5846e03718abb742a57f56fa35c7954411d41d257fb11dad6c9f89edabbe7953"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0018/run_manifest.json",
+      "sha256": "7fd4f5a39b61756d7142f6c48542e106a4bf99468114cbc5940e0ef6bd527fe4"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0018/results.jsonl",
+      "sha256": "7f173b79932983d98c2dd3fe74f440abacdca2863b80ba04c6b1a036718f71a4"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0019/run_manifest.json",
+      "sha256": "9dacef33ce9b038bfef27159734fbd87ba603d56534a9ca434c1c1c124568a93"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0019/results.jsonl",
+      "sha256": "8e51ea11dab86d47822f0073d29e2127fe64d03e6a51cc0d5592838799e49a87"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0020/run_manifest.json",
+      "sha256": "7bfb481bc15fe18535d009e47bc394144f4adfec48ceffb15f35b8e75db33fba"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0020/results.jsonl",
+      "sha256": "83b46381925f8421dd06a0cb9615ba64eea16212dfd57e3b63cd90c7033b8d12"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0021/run_manifest.json",
+      "sha256": "4f5d50b630d41b084f1616f0c571eb0d3d45bb07fa1add8ba32f2887a7b5bb9e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0021/results.jsonl",
+      "sha256": "7ec12dd1a8f7424fb41b6d80e9b52f86eefebc43f9cb5e0b52ed3f715ed52c54"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0022/run_manifest.json",
+      "sha256": "e04747bed70e8b2641f46894052020cd534a6a67ab7aaf89ddbc38af4fed67e8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0022/results.jsonl",
+      "sha256": "6fd98ca76ad570de60b9f3ac9eeacee3dde04254d68071dd73af06b63b315a85"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0023/run_manifest.json",
+      "sha256": "f8d4bacd9ee0a321101f8b73b0634043aa3bb6d68597cab43a5a170cbb6c6691"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0023/results.jsonl",
+      "sha256": "b3a951a6bc86948392e8cd7c5b85b9c0e6c1265a27dfaaeb494c572b0f9e7644"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0024/run_manifest.json",
+      "sha256": "1b625f24932d17fcadcd6bb3782024f25d234f46e2f3af27eab8d36a87a8e512"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0024/results.jsonl",
+      "sha256": "34adbefaf7a3601253d4b9eb005123fb9a5b855946c61bf4732784136522bbeb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0025/run_manifest.json",
+      "sha256": "b4fa03af48eaab3e5d0a90a4612de7d63a5d1bd51f70089de702d6be2f655dfb"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0025/results.jsonl",
+      "sha256": "a52ff1de69d9ace0004a16ef749bf145dcc6dc3e02907619364f64734aeabece"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0026/run_manifest.json",
+      "sha256": "ea18bbdcfff99a23988ababd7a530c16526c75d426179bff95169c262ff552e8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0026/results.jsonl",
+      "sha256": "726879c1777126ad2b695c957a584b95c454604b0b4f1e285213dfab8fcadd91"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0027/run_manifest.json",
+      "sha256": "b87f6b3eb7cd03d8e221afd4e5101070a3971d80444e7321185c1f994505bcdf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0027/results.jsonl",
+      "sha256": "2bd6dad353948522df71bb73f7b078add67e341872748b552e4c090efa0fbad7"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0028/run_manifest.json",
+      "sha256": "fed88e002e4b77d3d1419c16950f2779ce1dd16761df4e483966a0a1005515fe"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0028/results.jsonl",
+      "sha256": "afa9ab318dfb13d8bdbe64d9e1c1152136edb5f0361e38cba00083584270e5cf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0029/run_manifest.json",
+      "sha256": "35087475c87eb9bc05e48b8b4644dc7067ff63297e315fd47b83d6ea0dc40268"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0029/results.jsonl",
+      "sha256": "09bce3cd277763f1494661f85f7860239f8ddf371503581d27aae0d7d326ba1e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0030/run_manifest.json",
+      "sha256": "b8d68f7c0e71b82a8f4f43aad2b881f8fdd4be425dd8d6b348ead72feeb0db26"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0030/results.jsonl",
+      "sha256": "aa9168f8d15405150d742b49eefeb58cf3980effc08d8cf75f4e33ff4287fed9"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0031/run_manifest.json",
+      "sha256": "6d5f6f29a8fdd330971e6287bb0a47d39ffcebd0eeca1f1a1c7bfb30c3f3ab51"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0031/results.jsonl",
+      "sha256": "da904750238d99655aa98c16946d58d6c54873de9012a028a0cb542702836b81"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0032/run_manifest.json",
+      "sha256": "00e8a8670731b3754ef445b300d2992a4eebc3b516c9440b78e58ad384aa2cfe"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0032/results.jsonl",
+      "sha256": "c64e2ff5481a6a5a461ef8227c208b9cb19f7ed206dbb24ac92c8aa982e9b4d8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0033/run_manifest.json",
+      "sha256": "448eee95f0abf73fec5141bb60630b4a486e0ba61abc1802048027a681f94b76"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0033/results.jsonl",
+      "sha256": "ca91cb9a946a8cb6f44c2a433c9aca5c9544bf77fb7c38917a309356188c38c2"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0034/run_manifest.json",
+      "sha256": "ad21b09392c8af3bb6fef400bdede566331ad2944ced94a4191086f6dece5b82"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0034/results.jsonl",
+      "sha256": "458c2d73a6ad93349ce04bab5103c15895ae53b4564ca073148fcebaa91dc584"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0035/run_manifest.json",
+      "sha256": "60d8109f9401c9340569d93554af311c59745060366dfb9843811e1e67c86cb8"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0035/results.jsonl",
+      "sha256": "932164dfd29e644cfff99fa66ebbdaab85519914498c7e2471fdb4b4a7babd13"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0036/run_manifest.json",
+      "sha256": "3621394ee4e7fe1b7e6ca1ad0bf989afcac8aab6b9048bd51485f3bbce11ef3c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0036/results.jsonl",
+      "sha256": "91eea144b50ed52d0006ad3633c2b20d5fdbfa9ca436d6e5266abf8d4b1ad430"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0037/run_manifest.json",
+      "sha256": "bd622cf67a0617deafa5c977ec21dbf77457c06d21583607e87093709986f92e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0037/results.jsonl",
+      "sha256": "dc020d2af72a28a717a9e599457c721a1b1e250f7fb08cb8f9b2c0876d489d75"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0038/run_manifest.json",
+      "sha256": "1465785376ef6b440cb66cf4304ccd635a3b4d87f9b9a8f30dcc3320500bdef2"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0038/results.jsonl",
+      "sha256": "f7b397dfd6c5f98607c3658411d7107c500f419352a3bc5ef21edec6aca6eb07"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0039/run_manifest.json",
+      "sha256": "b3cc383e5ba3241f01aa5c3fad6aa20720a6d03c85b5deef23188378e1eb5785"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0039/results.jsonl",
+      "sha256": "a6ce264f0d4d9a1479857a26c490d21f520ca2818b41286851b40ffe7f2950d9"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0040/run_manifest.json",
+      "sha256": "c2a43fafae3f399df96ea114e758c77ab167ece4b1f1a5865ef7c2dc2b8499c3"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0040/results.jsonl",
+      "sha256": "a93b1c46ddbc545b474439e6bece9f1adf1cbdabecaf23d9e47bf34a091d48ea"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0041/run_manifest.json",
+      "sha256": "3129b525c82e3aeeeccdb2fdccabcc52deed7fdf02bede051fed727929fa7b52"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0041/results.jsonl",
+      "sha256": "3aa54f58833f433c73fe3c60d839e31be113b239b8635b042e5faf2198376e9e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0042/run_manifest.json",
+      "sha256": "7cfc4209bfb5ba6b0ddeb55a84d825f1dcaaeaea2e6123beed3d3e002bc78618"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0042/results.jsonl",
+      "sha256": "42b3681dadcdc82be384f13c0d9305243922e924bd351a1c86ba37beeeb19437"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0043/run_manifest.json",
+      "sha256": "d6385d07eff2329c43e85d6c17c73f573faff1b00c7d5233296820def5964578"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0043/results.jsonl",
+      "sha256": "3ebe2e1cb6878f34037a1a1c5dcf1311a0c8d33709500c6e5e8c9dd6f1f39169"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0044/run_manifest.json",
+      "sha256": "a2c81aa166f1eb9e4c2962faa33b69dba55536f3e32535f6e4f78999ccd77218"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0044/results.jsonl",
+      "sha256": "c9c74bc15c283797f7cb2b407b4c566522123ec0dbde63a5f654ca70c21fd1e4"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0045/run_manifest.json",
+      "sha256": "4025d0e73cd2eb6a333c05a90e6cd4496f9dea2390ec3a83b2de05e783b7144c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0045/results.jsonl",
+      "sha256": "3a28caab8ab0709121d127ed3674d68a4d132fcdc857a9eeee646e5c8b908f77"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0046/run_manifest.json",
+      "sha256": "bf2c9db8f52ab739283a05e0fde9ab2e02e2fcb9ef52de343a37ed5dafa47d23"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0046/results.jsonl",
+      "sha256": "953b6dd2a53dc406e5cba4f48cb9e6d2916a062558ef509235bcfef4ea7a59bf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0047/run_manifest.json",
+      "sha256": "8ba932487270a8b76b26604e3565de0608f669dab414ed5fe29cd2aa4b6d7d8b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0047/results.jsonl",
+      "sha256": "c9891f89f04195d9785e5a74092f99ba5a9905d1da014a332abea83f66960ddf"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0048/run_manifest.json",
+      "sha256": "333f0920fc91084a3c519fac148792a33774216bd7d2b39b94dfbf258709264f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0048/results.jsonl",
+      "sha256": "6f6de8296ca940ab013587dcc245ccc9cd29dbf42a740459eca7cff7ed904a04"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0049/run_manifest.json",
+      "sha256": "b3c2ae74f5b4e8ef55c9d9ff29886634adb2d63b970e5802862b5344dbd75d79"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0049/results.jsonl",
+      "sha256": "6092779316c4a8796fd2e0d808e3e27e8a5776a626cfb93effeec6beb939b81e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0050/run_manifest.json",
+      "sha256": "48e3cebff8a304fee7d65410f0b6ea58dd5ebfa49e7d391353b75be838bf3d04"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0050/results.jsonl",
+      "sha256": "a403c9f092e27a3237d08e99c4c3090f892e621a6f214a2572f9c9338024939d"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0051/run_manifest.json",
+      "sha256": "cb6d45d5e0b9699ecadf9bfc46ddd288890aa101f8b3ce24719bfcf3e47f4058"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0051/results.jsonl",
+      "sha256": "4b2c2bb404f17bad9ed5d8f3d0ca5c40fde2f7218e68d9425deac0a2a117c4f0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0052/run_manifest.json",
+      "sha256": "c3e5c6ada07e97f2fcf46f55f7073b001bd47cde4a57e47f94a83a5abe7e1f5b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0052/results.jsonl",
+      "sha256": "3dfcc7b21118ddea931d476c5103d6ae79fdff9ba079781766775473f8849cc5"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0053/run_manifest.json",
+      "sha256": "5a40d7535d8c503ea3719979132c19a7044004442b82edfeeff374869340701e"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0053/results.jsonl",
+      "sha256": "ea4361cc856c4767bb183287179108a970a5d06c1a529c299f4ecd8e2664cc71"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0054/run_manifest.json",
+      "sha256": "7e4810ab14e9102fcb81a98086d8068a6e27a5d4934ad8d7c23f832aa6105757"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0054/results.jsonl",
+      "sha256": "d3f74e8e96640418680fff9e35589d6501d3d68d060b99ccd7d5fc8377f30672"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0055/run_manifest.json",
+      "sha256": "df5084925674fbb8c2e8946851bd0ecbec7d65c604b683052453137610535a98"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0055/results.jsonl",
+      "sha256": "e1abc33fd2c3d970b1753c987e5f980cc77d34f5e31611a3f4dc6fd9d69c5cab"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0056/run_manifest.json",
+      "sha256": "e9cd1547bfb6a9d7c43a7f657b909d1c093446b54bf82a365c56473d9735500c"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0056/results.jsonl",
+      "sha256": "22910da899f4ddb82b62a871f447ead0a5c2896fb1959e88dd6ef5f940ccf58f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0057/run_manifest.json",
+      "sha256": "6f65c301bfbccffebeba9833fc64d17bc8703309c4bbe538578db2a427b0a6b0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0057/results.jsonl",
+      "sha256": "79d45145f4a10326ac19de11915587f5600b2327a9359904ebe86c4d2ae0aa7b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0058/run_manifest.json",
+      "sha256": "37e2defdf2a2b994ddff17ad8e97afed198fde3a95c9b90fa6b422d4f88775af"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0058/results.jsonl",
+      "sha256": "1906b07c4d11edbe13f4f06cffd96c0c424d5053452a97ca98b014dad68ab83b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0059/run_manifest.json",
+      "sha256": "08f2161fb6ed20a9434e286b157c4cd3fa4d4a759d286299b263889323b44c06"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0059/results.jsonl",
+      "sha256": "43a9fa16f5fe1e5dc4074bbabcbf7e86b3903633b4c6a81356e786c5c646e40f"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0060/run_manifest.json",
+      "sha256": "a92c4a630709fa214beee71359a53723b0229a292c7aeda9c256a5bac13382db"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0060/results.jsonl",
+      "sha256": "6ac2bb10fc3f9d6fdd0553f3fc506f064f29e06006efef689f7bccd1854a964b"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0061/run_manifest.json",
+      "sha256": "0e027e966b0956aa060fc41ba87dc6094574fb1bbb4adc38e0d3ceb0d5e59a90"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0061/results.jsonl",
+      "sha256": "7728ffdfe194721b6003f4ed633482aa8bb8b166e8cf4c341d424f773902bb87"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0062/run_manifest.json",
+      "sha256": "518a71fe7bed5f1082fb1e4aa56616f0a1f789c20ebe0b990ca1de7175936546"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0062/results.jsonl",
+      "sha256": "58e49bfb9c83722afbc9507e808fb5fb8f48177f2908583379474b27a4fe4549"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0063/run_manifest.json",
+      "sha256": "acc0c85b23b0c8fb04e3123a7bb49b857fa67bc9dada3486a77476afd3dcfce0"
+    },
+    {
+      "path": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1/shard-0063/results.jsonl",
+      "sha256": "e95ef8eb3204422dece15cbc33215915e42b65df2b088d7ea8cae5ec6b8b8aa4"
+    }
+  ],
+  "policy_summary": {
+    "aggregate-native-threshold": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 32.8125,
+      "f1": 39.921875,
+      "rows": 64
+    },
+    "aggregate-score-top-m": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 32.8125,
+      "f1": 39.921875,
+      "rows": 64
+    },
+    "btp-qtp-no-ctp": {
+      "conditional_retention_pct": 100.0,
+      "em": 32.8125,
+      "f1": 39.5625,
+      "rows": 64
+    },
+    "coverage-matched-identity-shuffle": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 32.890625,
+      "f1": 39.58203125,
+      "rows": 1280
+    },
+    "global-uniform-random": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 32.1875,
+      "f1": 39.42734375,
+      "rows": 1280
+    },
+    "grid-stratified-random": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 31.484375,
+      "f1": 38.6375,
+      "rows": 1280
+    },
+    "literal-native-threshold": {
+      "conditional_retention_pct": 40.928049093061176,
+      "em": 32.8125,
+      "f1": 39.53125,
+      "rows": 64
+    },
+    "literal-score-top-m": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 32.8125,
+      "f1": 39.8125,
+      "rows": 64
+    },
+    "page-stratified-random": {
+      "conditional_retention_pct": 66.05580024464935,
+      "em": 30.859375,
+      "f1": 38.70234375,
+      "rows": 1280
+    }
+  },
+  "primary_r20": {
+    "classification": {
+      "equivalence_margin_f1": 1.0,
+      "equivalent": false,
+      "inferior": false,
+      "label": "unresolved",
+      "superior": false
+    },
+    "developmental_sd_f1": 9.532151596701555,
+    "draws": 100000,
+    "estimand": "mean_qid(aggregate_score_f1 - mean_mask(global_random_f1))",
+    "point_estimate": 0.4945312500000001,
+    "seed": 20260827,
+    "superiority_95_interval": [
+      -1.9008007812499996,
+      3.246894531249996
+    ],
+    "tost_90_interval": [
+      -1.5265624999999998,
+      2.72734375
+    ]
+  },
+  "random_calibrations": {
+    "coverage-matched-identity-shuffle": {
+      "calibration_sha256": "491ca72fba4528789672eea662161f80d7ba0946f4e8771db520fc2a9d783449",
+      "decision_rule": "20 masks frozen by the admitted r10 trigger; no further extension",
+      "frozen_repetitions": 20,
+      "initial_repetitions": 10,
+      "mcse_f1": 0.22851451796290556,
+      "method": "sqrt(sum_i(sample_variance_i / R_i)) / N",
+      "observed_repetitions": 20,
+      "qid_count": 64,
+      "qid_sha256": "8c58e6a8df2e6749d05ccab9ab8d2a72e0f98e0bad070e2f1ac09f62cdaf43c5",
+      "schema_version": 1,
+      "status": "passed",
+      "threshold_f1": 0.25
+    },
+    "global-uniform-random": {
+      "calibration_sha256": "a0549ad4bbd95a04ead72b04197d9d02b72dbd8053970d6ff2edef63e5ae5cc9",
+      "decision_rule": "20 masks frozen by the admitted r10 trigger; no further extension",
+      "frozen_repetitions": 20,
+      "initial_repetitions": 10,
+      "mcse_f1": 0.3935645563074712,
+      "method": "sqrt(sum_i(sample_variance_i / R_i)) / N",
+      "observed_repetitions": 20,
+      "qid_count": 64,
+      "qid_sha256": "8c58e6a8df2e6749d05ccab9ab8d2a72e0f98e0bad070e2f1ac09f62cdaf43c5",
+      "schema_version": 1,
+      "status": "passed",
+      "threshold_f1": 0.25
+    },
+    "grid-stratified-random": {
+      "calibration_sha256": "fecb5979e4c73e6506afb6563bfa778cdd8a3538a2c28203007a40491169b4a2",
+      "decision_rule": "20 masks frozen by the admitted r10 trigger; no further extension",
+      "frozen_repetitions": 20,
+      "initial_repetitions": 10,
+      "mcse_f1": 0.417423286783939,
+      "method": "sqrt(sum_i(sample_variance_i / R_i)) / N",
+      "observed_repetitions": 20,
+      "qid_count": 64,
+      "qid_sha256": "8c58e6a8df2e6749d05ccab9ab8d2a72e0f98e0bad070e2f1ac09f62cdaf43c5",
+      "schema_version": 1,
+      "status": "passed",
+      "threshold_f1": 0.25
+    },
+    "page-stratified-random": {
+      "calibration_sha256": "83ec644c34be257b148f94cd81ad0ba229a2809b473981a5e4f8baf2affa8501",
+      "decision_rule": "20 masks frozen by the admitted r10 trigger; no further extension",
+      "frozen_repetitions": 20,
+      "initial_repetitions": 10,
+      "mcse_f1": 0.3275326047355971,
+      "method": "sqrt(sum_i(sample_variance_i / R_i)) / N",
+      "observed_repetitions": 20,
+      "qid_count": 64,
+      "qid_sha256": "8c58e6a8df2e6749d05ccab9ab8d2a72e0f98e0bad070e2f1ac09f62cdaf43c5",
+      "schema_version": 1,
+      "status": "passed",
+      "threshold_f1": 0.25
+    }
+  },
+  "roots": {
+    "extension": "/scratch/lmalveau/docprune/task6-native-extension-l40s-8d2231f-v1",
+    "native": "/scratch/lmalveau/docprune/task6-native-l40s-2d2bea2-v1"
+  },
+  "schema_version": 1,
+  "status": "admitted-development-r20"
+}

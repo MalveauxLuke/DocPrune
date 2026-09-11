@@ -32,7 +32,7 @@ version.
 - Demonstrate that the focused test fails on the unmodified Python 3.10 code.
 - Run the focused test after the compatibility change.
 - Run the complete pytest suite and Ruff in the pinned SOL environment.
-- Confirm Python 3.10 imports and parses `configs/docprune-m3docvqa.toml`.
+- Confirm Python 3.10 imports and parses `legacy/configs/docprune-m3docvqa.toml`.
 - Confirm the worktree contains only the intended source, dependency, test, and
   design changes.
 

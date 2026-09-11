@@ -1,0 +1,212 @@
+[
+  {
+    "question": "Which drink is considered a highball, a Rickey, a Greyhound, or both?",
+    "gold": [
+      "Rickey",
+      "Greyhound"
+    ],
+    "edit": "Allow both as an explicit answer option; preserve the same two drinks and highball classification.",
+    "reasoning_preserved": true,
+    "support_ranks": [
+      0,
+      1
+    ],
+    "reason": "Both candidates satisfy the original attribute in supplied pages. Textual classification comparison remains; answer cardinality is explicitly corrected.",
+    "baseline": null,
+    "admission": "pending_new_baseline",
+    "answer_contract": {
+      "kind": "set",
+      "items": [
+        {
+          "canonical": "Rickey",
+          "aliases": [
+            "a Rickey"
+          ]
+        },
+        {
+          "canonical": "Greyhound",
+          "aliases": [
+            "a Greyhound"
+          ]
+        }
+      ],
+      "accepted_complete": [
+        "both",
+        "both drinks",
+        "Rickey and Greyhound",
+        "Greyhound and Rickey",
+        "Both Rickey and Greyhound"
+      ],
+      "separator": " and "
+    },
+    "id": "c61938c1dff72fbe9d26ad1b754e7bbf::minimal-round2-v1",
+    "parent_qid": "c61938c1dff72fbe9d26ad1b754e7bbf",
+    "original_question": "Which drink is considered a highball, a Rickey or a Greyhound?",
+    "question_type": "TextQ",
+    "modalities": [
+      "text"
+    ],
+    "document_component": "c61938c1dff72fbe9d26ad1b754e7bbf",
+    "pages": [
+      {
+        "doc_id": "f4b8066abd83fdf9783ecefbd3528e72",
+        "page_index": 0,
+        "score": 12.591607451438904,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/f4b8066abd83fdf9783ecefbd3528e72.pdf"
+      },
+      {
+        "doc_id": "b0bb628e63c966df698ff91950c25fb5",
+        "page_index": 0,
+        "score": 7.968196749687195,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/b0bb628e63c966df698ff91950c25fb5.pdf"
+      },
+      {
+        "doc_id": "f4b8066abd83fdf9783ecefbd3528e72",
+        "page_index": 5,
+        "score": 3.7625118494033813,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/f4b8066abd83fdf9783ecefbd3528e72.pdf"
+      },
+      {
+        "doc_id": "ed21c82d81ab2b1854342ac29b01b561",
+        "page_index": 17,
+        "score": 2.88554847240448,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/ed21c82d81ab2b1854342ac29b01b561.pdf"
+      }
+    ],
+    "question_variant": true,
+    "admitted_for_correction_evaluation": false,
+    "status": "minimal_revision_pending_new_baseline_and_contract_review",
+    "design_blinding": "Original baseline and gold known at revision; no oracle outcomes used.",
+    "retrieval_policy": "Same four cached pages and order; designed fixed-context coverage, not new retrieval recall."
+  },
+  {
+    "question": "According to the supplied document, what time do alcohol sales at convenience stores, grocers, and liquor stores stop in Indiana Monday–Saturday?",
+    "gold": [
+      "3:00 AM"
+    ],
+    "edit": "Specify Monday–Saturday and the retailer scope of the documented hours.",
+    "reasoning_preserved": true,
+    "support_ranks": [
+      0
+    ],
+    "reason": "Disambiguates two competing documented time schedules without adding the answer or changing textual closing-time lookup.",
+    "baseline": null,
+    "answer_contract": {
+      "kind": "scalar",
+      "items": [
+        {
+          "canonical": "3:00 AM",
+          "aliases": [
+            "3 AM",
+            "3 a.m.",
+            "03:00",
+            "03:00 AM"
+          ]
+        }
+      ]
+    },
+    "id": "40e0d01ff113e9af79af0e93bb11b49e::minimal-round2-v1",
+    "parent_qid": "40e0d01ff113e9af79af0e93bb11b49e",
+    "original_question": "what time do alcohol sales stop in indiana",
+    "question_type": "TextQ",
+    "modalities": [
+      "text"
+    ],
+    "document_component": "e8cced179864d0a9d5e98b30195774b8",
+    "pages": [
+      {
+        "doc_id": "fbeef0fa7d13883b9ab19417de6d3269",
+        "page_index": 0,
+        "score": 10.899632632732391,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/fbeef0fa7d13883b9ab19417de6d3269.pdf"
+      },
+      {
+        "doc_id": "432f73bb39afd9e74ee89177ade2ea82",
+        "page_index": 4,
+        "score": 6.405196368694305,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/432f73bb39afd9e74ee89177ade2ea82.pdf"
+      },
+      {
+        "doc_id": "fbeef0fa7d13883b9ab19417de6d3269",
+        "page_index": 1,
+        "score": 4.5234339237213135,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/fbeef0fa7d13883b9ab19417de6d3269.pdf"
+      },
+      {
+        "doc_id": "63e672e09dd16f0426c6aec2ccb5499c",
+        "page_index": 1,
+        "score": 2.0993959307670593,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/63e672e09dd16f0426c6aec2ccb5499c.pdf"
+      }
+    ],
+    "question_variant": true,
+    "admitted_for_correction_evaluation": false,
+    "status": "minimal_revision_pending_new_baseline_and_contract_review",
+    "design_blinding": "Original baseline and gold known at revision; no oracle outcomes used.",
+    "retrieval_policy": "Same four cached pages and order; designed fixed-context coverage, not new retrieval recall."
+  },
+  {
+    "question": "Which player in the Order of Merit of 2004 Asian Tour has a worse finishing position: Terry Pilkadaris or Simon Yates?",
+    "gold": [
+      "Terry Pilkadaris"
+    ],
+    "edit": "lower rank → worse finishing position; whitespace normalization",
+    "reasoning_preserved": "Same table, two named rows, ordinal comparison, answer entity and worse-placement interpretation of original gold.",
+    "support_ranks": [
+      0,
+      1
+    ],
+    "reason": "Eliminates lower-number versus lower-standing ambiguity without supplying either value.",
+    "baseline": null,
+    "answer_contract": {
+      "kind": "scalar",
+      "items": [
+        {
+          "canonical": "Terry Pilkadaris",
+          "aliases": []
+        }
+      ]
+    },
+    "baseline_status": "unknown; do not inherit original Simon answer",
+    "id": "d68e6791f80599aebc424343d7de0576::minimal-round2-v1",
+    "parent_qid": "d68e6791f80599aebc424343d7de0576",
+    "original_question": "Which player in the Order of Merit of 2004 Asian Tour has a lower rank:  Terry Pilkadaris or Simon Yates?",
+    "question_type": "TableQ",
+    "modalities": [
+      "table",
+      "table"
+    ],
+    "document_component": "d68e6791f80599aebc424343d7de0576",
+    "pages": [
+      {
+        "doc_id": "68c3fd6a973a211fdf9f41190347972e",
+        "page_index": 2,
+        "score": 15.775085866451263,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/68c3fd6a973a211fdf9f41190347972e.pdf"
+      },
+      {
+        "doc_id": "68c3fd6a973a211fdf9f41190347972e",
+        "page_index": 0,
+        "score": 8.722307682037354,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/68c3fd6a973a211fdf9f41190347972e.pdf"
+      },
+      {
+        "doc_id": "87ec8c5929aaee21fe56a589c79391ff",
+        "page_index": 17,
+        "score": 5.579032480716705,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/87ec8c5929aaee21fe56a589c79391ff.pdf"
+      },
+      {
+        "doc_id": "68c3fd6a973a211fdf9f41190347972e",
+        "page_index": 1,
+        "score": 4.0218705534935,
+        "source_pdf": "/scratch/lmalveau/docprune/datasets/m3docvqa/pdfs_dev/68c3fd6a973a211fdf9f41190347972e.pdf"
+      }
+    ],
+    "question_variant": true,
+    "admitted_for_correction_evaluation": false,
+    "status": "minimal_revision_pending_new_baseline_and_contract_review",
+    "design_blinding": "Original baseline and gold known at revision; no oracle outcomes used.",
+    "retrieval_policy": "Same four cached pages and order; designed fixed-context coverage, not new retrieval recall."
+  }
+]

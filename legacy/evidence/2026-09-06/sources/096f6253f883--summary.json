@@ -1,0 +1,70 @@
+{
+  "wrong": {
+    "contextcite_gold_margin": {
+      "n": 24,
+      "mean_f1": 0.36874999999999997,
+      "em_count": 5
+    },
+    "contextcite_gold_support": {
+      "n": 24,
+      "mean_f1": 0.38125000000000003,
+      "em_count": 4
+    },
+    "native_docprune": {
+      "n": 24,
+      "mean_f1": 0.1375,
+      "em_count": 0
+    },
+    "random_region_size_aware": {
+      "n": 24,
+      "mean_f1": 0.15416666666666667,
+      "em_count": 0
+    },
+    "unpruned": {
+      "n": 24,
+      "mean_f1": 0.16583333333333333,
+      "em_count": 0
+    },
+    "support_vs_native_docprune": {
+      "wins": 9,
+      "ties": 15,
+      "losses": 0
+    },
+    "support_vs_unpruned": {
+      "wins": 7,
+      "ties": 17,
+      "losses": 0
+    }
+  },
+  "correct": {
+    "contextcite_gold_support": {
+      "n": 24,
+      "mean_f1": 1.0,
+      "em_count": 24
+    },
+    "native_docprune": {
+      "n": 24,
+      "mean_f1": 1.0,
+      "em_count": 24
+    },
+    "random_region_size_aware": {
+      "n": 24,
+      "mean_f1": 0.9166666666666666,
+      "em_count": 22
+    },
+    "unpruned": {
+      "n": 24,
+      "mean_f1": 1.0,
+      "em_count": 24
+    }
+  },
+  "boundaries_wrong": {
+    "B_14": 16,
+    "B_16": 8
+  },
+  "boundaries_all48": {
+    "B_14": 34,
+    "B_16": 13,
+    "B_15": 1
+  }
+}

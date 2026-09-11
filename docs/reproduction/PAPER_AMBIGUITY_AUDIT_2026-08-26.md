@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # DocPrune paper ambiguity audit after the aggregate-logit diagnostics
 
 ## Scope and evidence
@@ -87,8 +89,8 @@ resolve lower-level choices listed later.
 | QTP | Bilinear resize, then Gaussian smoothing, then inclusive `S'_i >= tau_qst` | `src/docprune/qtp.py:83-128,174-201` |
 | Merger safety | BTP and QTP prune complete 2x2 spatial blocks at encoder input | `src/docprune/layout.py:61-78`, `btp.py:60-79`, `qtp.py:131-150`, `qwen2vl/vision.py:52-68` |
 | CTP trigger | L2 norm of the last-token representation; first inclusive threshold crossing | `src/docprune/ctp.py:28-49`, `qwen2vl/decoder.py:123-148` |
-| CTP mechanics | One selected layer, reduced last-token query recomputation, visual threshold inequality, pruning after that layer | `src/docprune/qwen2vl/decoder.py:50-89,134-175`, `ctp.py:78-103` |
-| Thresholds | Published 1/2/4-page BTP, QTP, comprehension, and attention values | `src/docprune/config.py:85-93`, `configs/docprune-m3docvqa.toml:19-41` |
+| CTP mechanics | One selected layer, reduced last-token query recomputation, visual threshold inequality, pruning after that layer | `src/docprune/_legacy/qwen2vl/decoder.py:50-89,134-175`, `ctp.py:78-103` |
+| Thresholds | Published 1/2/4-page BTP, QTP, comprehension, and attention values | `src/docprune/config.py:85-93`, `legacy/configs/docprune-m3docvqa.toml:19-41` |
 | Models | Training-free Qwen2-VL-7B family for QA | `src/docprune/m3docvqa_factory.py:751-785` |
 | Metrics | Dataset arithmetic means for EM/F1 and the paper's evidence/hop slices | `src/docprune/evaluation.py:217-240,330-395` |
 
@@ -126,7 +128,7 @@ procedure, but the paper does not identify what completes it.
 The active canonical code chooses full-key softmax, visual selection, equal
 mean across repeated query heads, and multiplication by the current visual
 count (`src/docprune/ctp.py:52-75` and
-`src/docprune/qwen2vl/decoder.py:50-89`). That is a reconstruction choice, not
+`src/docprune/_legacy/qwen2vl/decoder.py:50-89`). That is a reconstruction choice, not
 a paper guarantee.
 
 ### P0: “output token,” layer state, and timing
@@ -145,7 +147,7 @@ representation at layer `l`. It never states:
 
 Canonical code observes the norm after a complete block, then recomputes Q/K
 from that block's input, using the last prompt token during prefill
-(`src/docprune/qwen2vl/decoder.py:61-89,123-175`). This is plausible but not
+(`src/docprune/_legacy/qwen2vl/decoder.py:61-89,123-175`). This is plausible but not
 specified. The rejected first-generated/layer-output experiment proves that
 one attractive timing interpretation is not sufficient; it does not prove the
 canonical timing is the authors' choice.
@@ -168,7 +170,7 @@ The paper says tokens are removed after the chosen layer but does not specify:
 
 Local code keeps the selected/earlier layer caches full, compacts deeper caches,
 preserves original visual positions, and sets the first new position to the
-maximum retained position plus one (`src/docprune/qwen2vl/decoder.py:134-201`,
+maximum retained position plus one (`src/docprune/_legacy/qwen2vl/decoder.py:134-201`,
 `qwen2vl/model.py:188-259`). These choices can change every later token even
 when the selected mask is identical.
 
@@ -193,7 +195,7 @@ Consequently:
 - failing to match it is evidence only under the endpoint interpretation.
 
 The repository reports endpoint `1 - post_ctp/original` in
-`src/docprune/qwen2vl/model.py:264-275` and `src/docprune/metrics.py:218-255`.
+`src/docprune/_legacy/qwen2vl/model.py:264-275` and `src/docprune/metrics.py:218-255`.
 It has not established equivalence to the paper's decoder column.
 
 ## BTP ambiguity inventory
@@ -301,7 +303,7 @@ These are not paper ambiguities and should not be hidden inside them.
 
 Main Section 4.1 and the supplement's resource list identify
 `vidore/colpali-v1`. The active configuration pins `vidore/colpali-v1.2`
-(`configs/docprune-m3docvqa.toml:7-10`,
+(`legacy/configs/docprune-m3docvqa.toml:7-10`,
 `src/docprune/m3docvqa_factory.py:751-764`). This changes retrieval and every
 QTP embedding even when retrieved pages are held fixed.
 

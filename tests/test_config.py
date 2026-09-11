@@ -50,7 +50,7 @@ def test_reconstruction_defaults_are_labeled() -> None:
 
 
 def test_repository_toml_loads_the_same_paper_values() -> None:
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
 
     assert config.for_pages(1) == DocPruneConfig.paper_defaults().for_pages(1)
     assert config.for_pages(2) == DocPruneConfig.paper_defaults().for_pages(2)

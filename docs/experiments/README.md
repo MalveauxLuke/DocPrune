@@ -1,8 +1,5 @@
 # Experiments
 
-| Experiment | Status | Entry point |
-| --- | --- | --- |
-| Task 6 full M3DocVQA and CTP controls | Complete; results consolidated | [Results](../results/README.md) |
-| Regional attribution | Development complete; two H200 tracks active | [Experiment index](regional-attribution/INDEX.md) |
-
-Large outputs are external to Git. Every reported result must link an immutable artifact path and, when available, its digest in the experiment log.
+- Current: [corrective region selection](corrective-selection/README.md), repository preparation; no new results yet.
+- Historical: [retired experiment archive](../../archive/experiments/task6_9_2026_09_10/README.md).
+- Prior measured outcomes: [results](../results/README.md).

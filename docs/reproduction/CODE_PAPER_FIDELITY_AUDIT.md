@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # DocPrune executable-code versus paper fidelity audit
 
 ## Scope and evidence
@@ -63,7 +65,7 @@ checkpoint/runtime revisions, and the decoder token-drop measurement.
 
 | Item | Executable evidence | Paper authority | Classification | Consequence |
 |---|---|---|---|---|
-| Retriever checkpoint | `configs/docprune-m3docvqa.toml:7-10`; `src/docprune/m3docvqa_factory.py:751-764` load `vidore/colpali-v1.2` | Main Section 4.1 names ColPali-v1; supplement resource list links `vidore/colpali-v1` | **CONFLICT** | Retrieval and every QTP embedding differ from the named paper resource. |
+| Retriever checkpoint | `legacy/configs/docprune-m3docvqa.toml:7-10`; `src/docprune/m3docvqa_factory.py:751-764` load `vidore/colpali-v1.2` | Main Section 4.1 names ColPali-v1; supplement resource list links `vidore/colpali-v1` | **CONFLICT** | Retrieval and every QTP embedding differ from the named paper resource. |
 | CTP score scale | `src/docprune/ctp.py:68-75` averages heads and multiplies by the number of current visual tokens; `ctp.py:100-103` thresholds the result | Main Section 3.4 defines `a` as output-token-to-visual-token attention weights and Equation 9 compares `a_i >= tau_att`; supplement adds only last-query recomputation | **CONFLICT** | Exact Table B `tau_att` values are applied to a different operand. |
 | Paired EOS semantics | `src/docprune/answerers.py:250-265` uses stock `generate`; `answerers.py:419-447` passes only integer `model.config.eos_token_id`; `qwen2vl/model.py:235-260` uses a manual loop. Pinned `generation_config.json` has EOS `[151645,151643]`, while `config.json` has `151645` | DocPrune is presented as pruning the same Qwen2-VL QA model, not changing its decoding rule | **CONFLICT** | DocPrune may continue after token `151643` where all-kept stops. All-kept equivalence is not guaranteed. |
 | Paper hardware efficiency | `src/docprune/m3docvqa_factory.py:789-794` accepts any CUDA GPU; `metrics.py:26-39` labels non-A6000 data reconstruction-only | Main Section 4.1 uses one RTX A6000 | **CONFLICT** only if non-A6000 timing is presented as paper parity | The code correctly labels the limitation; quality can still be compared. |
@@ -76,7 +78,7 @@ checkpoint/runtime revisions, and the decoder token-drop measurement.
 | Paper requirement | Executable evidence | Classification |
 |---|---|---|
 | Training-free inference | Models are `.eval()` in `m3docvqa_factory.py:751-785`; generation paths use `torch.no_grad()` | **EXACT** |
-| Qwen2-VL-7B-Instruct family | `configs/docprune-m3docvqa.toml:5-6`; `m3docvqa_factory.py:767-785` | **EXACT** at model-family level; revision is unspecified |
+| Qwen2-VL-7B-Instruct family | `legacy/configs/docprune-m3docvqa.toml:5-6`; `m3docvqa_factory.py:767-785` | **EXACT** at model-family level; revision is unspecified |
 | Retrieve top-K pages, then answer | `m3docrag.py:177-245` | **EXACT**, main Equations 1-2 |
 | Page counts 1, 2, and 4 | `config.py:17,72-82`; `m3docrag.py:188-193` | **EXACT**, Table 2/Table B |
 | BTP before retrieval encoder | `indexing.py:445-476` | **EXACT**, Figure 7/Section 3.2 |
@@ -199,7 +201,7 @@ implementation audit.
 | Exact Qwen revision `eed130...` | TOML lines 5-6 | **UNSPECIFIED** |
 | Exact ColPali/backbone revisions | TOML lines 7-10 | **UNSPECIFIED**, in addition to the v1/v1.2 conflict |
 | BF16 weights and vision execution | `m3docvqa_factory.py:751-785` | **UNSPECIFIED** |
-| Transformers 4.46.3, ColPali-engine 0.3.1, Torch 2.4.1, CUDA 12.1 | `environments/docprune-sol.yml`; compatibility modules | **UNSPECIFIED** |
+| Transformers 4.46.3, ColPali-engine 0.3.1, Torch 2.4.1, CUDA 12.1 | `legacy/environments/docprune-sol.yml`; compatibility modules | **UNSPECIFIED** |
 | FlashAttention-2 concrete package/kernel behavior | Factory/decoder integration | **UNVERIFIED** against author runtime |
 | One user message, images first, question text last | `answerers.py:104-121` | **UNSPECIFIED** |
 | Prompt `question: ...\noutput only answer.` | `benchmark_config.py:28-29`; `answerers.py:104-111` | **UNSPECIFIED by DocPrune**, exact to pinned released M3DocRAG |

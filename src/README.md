@@ -1,18 +1,12 @@
-# Source Layout
+# Source layout
 
-The active `docprune/` package contains the training-free reproduction:
+The current `docprune/` package retains shared pruning, retrieval, evaluation and
+provenance infrastructure. New corrective-selection training is not implemented.
 
-- `btp.py`, `qtp.py`, `ctp.py`: paper-equation pruning logic
-- `layout.py`: merge-safe visual-token layout
-- `pipeline.py`: explicit pagewise BTP/QTP composition
-- `qwen2vl/`: pinned sparse-vision and decoder/KV-cache integration
-- `m3docrag.py`: official retrieval/page-loading boundary
-- `metrics.py`, `cli.py`, `provenance.py`: immutable results and execution control
+Older task modules, segmentation and Qwen2 integration live under
+[`docprune/_legacy/`](docprune/_legacy/README.md). Their original public import
+names remain compatible through the explicit package search path. This organization
+does not change their algorithms or declare them compatible with a new reader.
 
-The remaining directories are reserved scaffolding:
-
-- `candidates/`: query-conditioned token or region candidates
-- `data/`: data contracts and immutable-source adapters
-- `evaluation/`: quality and efficiency evaluation
-- `models/`: model components
-- `training/`: training and optimization workflows
+[Legacy index](../legacy/README.md) contains helpers, configs, evidence and tests.
+[Current experiment](../docs/experiments/corrective-selection/README.md).

@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # DocPrune Reproduction
 
 ## Status
@@ -16,7 +18,7 @@ caches, greedy generation, the pinned M3DocRAG API boundary, exact
 measurement identity, positive stage timing, metrics, immutable manifests,
 independent validation, and CLI behavior. The active benchmark runtime is
 pinned in
-[`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
+[`sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../archive/experiments/task6_9_2026_09_10/sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
 No benchmark result is claimed until its gate, index manifests, and 2,441-row
 validation report pass.
 
@@ -92,7 +94,7 @@ to the main paper's comprehension threshold `tau_comp`.
 | 4 | 1.0 | 0.8 | 1 | 0.4 | 45 | 0.075 |
 
 The machine-readable source is
-[`configs/docprune-m3docvqa.toml`](../../configs/docprune-m3docvqa.toml).
+[`legacy/configs/docprune-m3docvqa.toml`](../../legacy/configs/docprune-m3docvqa.toml).
 
 ## Code map
 
@@ -136,10 +138,10 @@ reconstruction measurements, not RTX A6000 hardware parity.
 
 ```bash
 docprune-m3docvqa inspect \
-  --config configs/docprune-m3docvqa.toml --pages 4
+  --config legacy/configs/docprune-m3docvqa.toml --pages 4
 
 docprune-m3docvqa evaluate \
-  --config configs/docprune-m3docvqa.toml --pages 4 \
+  --config legacy/configs/docprune-m3docvqa.toml --pages 4 \
   --mode docprune \
   --run-config /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/run-configs/docprune-top4.json \
   --index-manifest /scratch/lmalveau/docprune/benchmark-15301ea/attempt-1/indexes/docprune/top4/docprune/manifest.json \
@@ -166,7 +168,7 @@ docprune-m3docvqa compare-runs \
 ```
 
 Before benchmarking, SOL must execute the ordered gate and dependency graph in
-[`../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
+[`../../sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md`](../../archive/experiments/task6_9_2026_09_10/sol/handoffs/DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md).
 The gate records the pinned processor contract and fixed-sample equivalence;
 the six index jobs and six evaluation cells remain separate and manifest-bound.
 

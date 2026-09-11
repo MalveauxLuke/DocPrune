@@ -28,7 +28,7 @@
 - Create: `src/docprune/__init__.py`
 - Create: `src/docprune/config.py`
 - Create: `src/docprune/provenance.py`
-- Create: `configs/docprune-m3docvqa.toml`
+- Create: `legacy/configs/docprune-m3docvqa.toml`
 - Create: `tests/test_config.py`
 - Create: `tests/test_provenance.py`
 
@@ -162,12 +162,12 @@ def test_trigger_selects_only_the_first_crossing():
 ### Task 5: Qwen2-VL sparse vision and decoder integration
 
 **Files:**
-- Create: `src/docprune/qwen2vl/__init__.py`
-- Create: `src/docprune/qwen2vl/compat.py`
-- Create: `src/docprune/qwen2vl/vision.py`
-- Create: `src/docprune/qwen2vl/sequence.py`
-- Create: `src/docprune/qwen2vl/decoder.py`
-- Create: `src/docprune/qwen2vl/model.py`
+- Create: `src/docprune/_legacy/qwen2vl/__init__.py`
+- Create: `src/docprune/_legacy/qwen2vl/compat.py`
+- Create: `src/docprune/_legacy/qwen2vl/vision.py`
+- Create: `src/docprune/_legacy/qwen2vl/sequence.py`
+- Create: `src/docprune/_legacy/qwen2vl/decoder.py`
+- Create: `src/docprune/_legacy/qwen2vl/model.py`
 - Create: `tests/qwen2vl/test_compat.py`
 - Create: `tests/qwen2vl/test_vision.py`
 - Create: `tests/qwen2vl/test_sequence.py`
@@ -215,7 +215,7 @@ def test_trigger_selects_only_the_first_crossing():
 - [ ] **Step 4: Implement immutable per-sample JSONL results and aggregate metric serialization**
 - [ ] **Step 5: Write failing CLI dry-run tests that validate paths, revisions, page count, and output collision behavior without loading models**
 - [ ] **Step 6: Implement `inspect`, `embed`, `evaluate`, and `summarize` subcommands; refuse overwrite unless an explicit resume manifest matches**
-- [ ] **Step 7: Run the entire test suite and `docprune-m3docvqa inspect --config configs/docprune-m3docvqa.toml`**
+- [ ] **Step 7: Run the entire test suite and `docprune-m3docvqa inspect --config legacy/configs/docprune-m3docvqa.toml`**
 - [ ] **Step 8: Commit with `feat: add M3DocRAG reproduction runner`**
 
 ### Task 7: Reproduction documentation and SOL handoff
@@ -227,7 +227,7 @@ def test_trigger_selects_only_the_first_crossing():
 - Modify: `experiments/README.md`
 - Create: `docs/reproduction/DOCPRUNE.md`
 - Create: `docs/reproduction/RECONSTRUCTION_GAPS.md`
-- Create: `environments/docprune-sol.yml`
+- Create: `legacy/environments/docprune-sol.yml`
 - Create: `examples/sbatch/10_docprune_smoke.sbatch`
 - Create: `examples/sbatch/11_docprune_m3docvqa.sbatch`
 - Create: `sol/handoffs/DOCPRUNE_SOL_HANDOFF.md`

@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# One immutable evaluation cell. The array wrapper supplies the selectors.
+#SBATCH --job-name=docprune-m3docvqa-cell
+#SBATCH --partition=htc
+#SBATCH --qos=public
+#SBATCH --gres=gpu:a100:1
+#SBATCH --constraint=a100_80
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=128G
+#SBATCH --time=04:00:00
+#SBATCH --output=slurm-%x-%j.out
+#SBATCH --error=slurm-%x-%j.err
+
+set -euo pipefail
+
+: "${PROJECT_DIR:?set PROJECT_DIR to the exact control checkout}"
+: "${CONTROL_COMMIT:?set CONTROL_COMMIT to this handoff commit}"
+: "${CONTROL_RECORD:?set CONTROL_RECORD to the sealed attempt control.json}"
+: "${RUNTIME_DIR:?set RUNTIME_DIR to the detached runtime checkout}"
+: "${ENV_DIR:?set ENV_DIR to the validated docprune-sol environment}"
+: "${PDFTOOLS_DIR:?set PDFTOOLS_DIR to the pinned Poppler environment}"
+: "${EXPECTED_COMMIT:?set EXPECTED_COMMIT to the immutable runtime commit}"
+: "${M3DOCRAG_DIR:?set M3DOCRAG_DIR to the pinned M3DocRAG checkout}"
+: "${M3DOCRAG_COMMIT:?set M3DOCRAG_COMMIT to the pinned upstream commit}"
+: "${RUN_CONFIG:?set RUN_CONFIG to the complete immutable run-config JSON}"
+: "${INDEX_MANIFEST:?set INDEX_MANIFEST to the matching mode/page index manifest}"
+: "${MODE:?set MODE to all-kept or docprune}"
+: "${PAGES:?set PAGES to 1, 2, or 4}"
+: "${ATTEMPT_ROOT:?set ATTEMPT_ROOT to the fresh benchmark attempt root}"
+: "${EXPECTED_ATTEMPT_ROOT:?set EXPECTED_ATTEMPT_ROOT to the exact fresh benchmark attempt root}"
+: "${CELL_ROOT:?set CELL_ROOT to a new attempt-specific cell directory}"
+: "${DOCPRUNE_FACTORY:?set DOCPRUNE_FACTORY to the reviewed factory}"
+
+test -d "$PROJECT_DIR"
+test "$(git -C "$PROJECT_DIR" rev-parse HEAD)" = "$CONTROL_COMMIT"
+test -z "$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=all)"
+test -f "$CONTROL_RECORD"
+CONTROL_TREE="$(git -C "$PROJECT_DIR" rev-parse "${CONTROL_COMMIT}^{tree}")"
+"$ENV_DIR/bin/python" - "$CONTROL_RECORD" "$CONTROL_COMMIT" "$CONTROL_TREE" "$PROJECT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if record.get("schema_version") != 1:
+    raise SystemExit("sealed control record schema mismatch")
+if record.get("control_commit") != sys.argv[2] or record.get("tree_sha") != sys.argv[3]:
+    raise SystemExit("sealed control record does not match the reviewed checkout")
+if Path(str(record.get("project_dir", ""))).resolve() != Path(sys.argv[4]).resolve():
+    raise SystemExit("sealed control record project path mismatch")
+PY
+
+source "$PROJECT_DIR/examples/m3docvqa/pdf_tools_preflight.sh"
+pdfinfo_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdfinfo" | awk '{print $1}')"
+pdftoppm_sha256="$(sha256sum "$PDFTOOLS_DIR/bin/pdftoppm" | awk '{print $1}')"
+test "$pdfinfo_sha256" = "5d0e1caa04f15391324c9e5f1d65753d8b925761eedc710c70e02f49b5080aae"
+test "$pdftoppm_sha256" = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53f33"
+
+case "$MODE" in all-kept|docprune) ;; *) echo "invalid MODE: $MODE" >&2; exit 2 ;; esac
+case "$PAGES" in 1|2|4) ;; *) echo "PAGES must be 1, 2, or 4" >&2; exit 2 ;; esac
+PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$ATTEMPT_ROOT" "$EXPECTED_ATTEMPT_ROOT" <<'PY'
+import sys
+from docprune.benchmark_seal import validate_attempt_root
+
+validate_attempt_root(sys.argv[1], sys.argv[2])
+PY
+EXPECTED_QUESTIONS=2441
+SAMPLE_ARGS=()
+if [[ -n "${SHARD_ID:-}" ]]; then
+  : "${SHARD_PLAN_ROOT:?set SHARD_PLAN_ROOT for shard execution}"
+  case "$SHARD_ID" in ''|*[!0-9]*) echo "SHARD_ID must be a nonnegative integer" >&2; exit 2 ;; esac
+  test "$SHARD_PLAN_ROOT" = "$ATTEMPT_ROOT/shard-plan"
+  SHARD_PLAN="$SHARD_PLAN_ROOT/plan.json"
+  SHARD_NAME="$(printf 'shard-%04d' "$SHARD_ID")"
+  QID_FILE="$SHARD_PLAN_ROOT/${SHARD_NAME}.qids"
+  test "$CELL_ROOT" = "$ATTEMPT_ROOT/eval-shards/${MODE}/top${PAGES}/${SHARD_NAME}"
+  test -f "$SHARD_PLAN"
+  test -f "$QID_FILE"
+  PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$SHARD_PLAN" "$SHARD_ID" "$QID_FILE" "$RUN_CONFIG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from docprune.evaluation_shards import load_shard_plan, shard_question_ids
+
+plan_path = Path(sys.argv[1])
+plan = load_shard_plan(plan_path)
+expected = shard_question_ids(plan_path, int(sys.argv[2]))
+observed = tuple(Path(sys.argv[3]).read_text(encoding="utf-8").splitlines())
+if observed != expected:
+    raise SystemExit("shard QID file does not match the sealed plan")
+run_config = json.loads(Path(sys.argv[4]).read_text(encoding="utf-8"))
+corpus = run_config.get("corpus", {})
+if (
+    plan.get("source_questions") != 2441
+    or plan.get("checkpoint_size") != 256
+    or plan.get("shard_size") != 64
+    or plan.get("shard_count") != 39
+):
+    raise SystemExit("shard plan does not have the production 2441/256/64/39 shape")
+if (
+    not isinstance(corpus, dict)
+    or corpus.get("expected_question_count") != 2441
+    or plan.get("source_questions_sha256") != corpus.get("questions_sha256")
+):
+    raise SystemExit("shard plan does not match the run configuration corpus")
+PY
+  mapfile -t SAMPLE_IDS < "$QID_FILE"
+  EXPECTED_QUESTIONS="${#SAMPLE_IDS[@]}"
+  test "$EXPECTED_QUESTIONS" -gt 0
+  SAMPLE_ARGS=(--sample-ids "${SAMPLE_IDS[@]}")
+else
+  test "$CELL_ROOT" = "$ATTEMPT_ROOT/eval/${MODE}/top${PAGES}"
+fi
+test "$RUN_CONFIG" = "$ATTEMPT_ROOT/run-configs/${MODE}-top${PAGES}.json"
+test "$INDEX_MANIFEST" = "$ATTEMPT_ROOT/indexes/${MODE}/top${PAGES}/${MODE}/manifest.json"
+test -d "$RUNTIME_DIR"
+test -f "$RUN_CONFIG"
+test -f "$INDEX_MANIFEST"
+test -d "$M3DOCRAG_DIR"
+test "$(git -C "$RUNTIME_DIR" rev-parse HEAD)" = "$EXPECTED_COMMIT"
+test -z "$(git -C "$RUNTIME_DIR" status --porcelain --untracked-files=all)"
+test "$(git -C "$M3DOCRAG_DIR" rev-parse HEAD)" = "$M3DOCRAG_COMMIT"
+test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"
+"$ENV_DIR/bin/python" - "$RUN_CONFIG" "$INDEX_MANIFEST" "$EXPECTED_COMMIT" <<'PY'
+import json
+import sys
+
+run_config = json.loads(open(sys.argv[1], encoding="utf-8").read())
+manifest = json.loads(open(sys.argv[2], encoding="utf-8").read())
+expected = sys.argv[3]
+if run_config.get("runtime_commit") != expected:
+    raise SystemExit("run configuration runtime identity does not equal EXPECTED_COMMIT")
+if manifest.get("runtime_commit") != expected:
+    raise SystemExit("index manifest runtime identity does not equal EXPECTED_COMMIT")
+PY
+
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+export PATH="$PDFTOOLS_DIR/bin:$ENV_DIR/bin:$PATH"
+export PYTHONPATH="$RUNTIME_DIR/src"
+export LD_LIBRARY_PATH="$ENV_DIR/lib:$ENV_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export HF_HOME="${HF_HOME:-/scratch/$USER/hf_cache}"
+export HUGGINGFACE_HUB_CACHE="${HUGGINGFACE_HUB_CACHE:-$HF_HOME/hub}"
+export HF_HUB_CACHE="${HF_HUB_CACHE:-$HUGGINGFACE_HUB_CACHE}"
+export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-$HF_HOME/datasets}"
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+export DOCPRUNE_M3DOCRAG_ROOT="$M3DOCRAG_DIR"
+mkdir -p "$CELL_ROOT"
+cd "$RUNTIME_DIR"
+
+GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
+GPU_MEMORY_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1)"
+"$ENV_DIR/bin/python" "$PROJECT_DIR/examples/m3docvqa/validate_gpu_policy.py" \
+  "${GPU_POLICY:-a100-80}" "$GPU_NAME" "$GPU_MEMORY_MIB"
+
+if [[ -d "$CELL_ROOT/run" ]] && PYTHONPATH="$RUNTIME_DIR/src" "$ENV_DIR/bin/python" - "$CELL_ROOT/run" "$EXPECTED_QUESTIONS" <<'PY'
+import sys
+from pathlib import Path
+
+from docprune.evaluation import validate_benchmark_run
+
+raise SystemExit(
+    0 if validate_benchmark_run(Path(sys.argv[1]), expected_questions=int(sys.argv[2])).valid else 1
+)
+PY
+then
+  echo "validated shard/cell already complete; no model load required"
+  exit 0
+fi
+
+RESUME_ARGS=()
+if [[ -d "$CELL_ROOT/run" ]]; then
+  RESUME_ARGS+=(--resume)
+fi
+
+"$ENV_DIR/bin/docprune-m3docvqa" evaluate \
+  --config configs/docprune-m3docvqa.toml \
+  --pages "$PAGES" \
+  --mode "$MODE" \
+  --run-config "$RUN_CONFIG" \
+  --index-manifest "$INDEX_MANIFEST" \
+  --output "$CELL_ROOT/run" \
+  --factory "$DOCPRUNE_FACTORY" \
+  "${SAMPLE_ARGS[@]}" \
+  "${RESUME_ARGS[@]}"
+
+"$ENV_DIR/bin/docprune-m3docvqa" validate-run \
+  --run "$CELL_ROOT/run" \
+  --expected-questions "$EXPECTED_QUESTIONS" \
+  | tee "$CELL_ROOT/validation.json"
+
+"$ENV_DIR/bin/python" - "$CELL_ROOT/validation.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    report = json.load(stream)
+if report.get("valid") is not True:
+    raise SystemExit("independent run validation failed")
+PY
+
+"$ENV_DIR/bin/python" - "$CELL_ROOT/run/summary.json" "$EXPECTED_QUESTIONS" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    summary = json.load(stream)
+if not isinstance(summary, dict):
+    raise SystemExit("summary is not a JSON object")
+efficiency = summary.get("efficiency")
+if not isinstance(efficiency, dict) or efficiency["samples"] != int(sys.argv[2]):
+    raise SystemExit("summary efficiency does not contain the planned sample count")
+quality = summary.get("quality")
+if not isinstance(quality, dict):
+    raise SystemExit("summary is missing combined quality metrics")
+if "count" in quality and quality["count"] != int(sys.argv[2]):
+    raise SystemExit("summary quality count is not the planned sample count")
+PY

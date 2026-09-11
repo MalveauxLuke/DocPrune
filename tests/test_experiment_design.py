@@ -19,12 +19,13 @@ from docprune import experiment_design
 ROOT = Path(__file__).resolve().parents[1]
 DEVELOPMENT_REGISTRY = (
     ROOT
+    / "archive/experiments/task6_9_2026_09_10"
     / "docs"
     / "experiments"
     / "regional-attribution"
     / "development-qid-registry.json"
 )
-TASK9_PRELIMINARY_SEALER = ROOT / "examples" / "seal_task9_preliminary_random48.py"
+TASK9_PRELIMINARY_SEALER = ROOT / "archive/experiments/task6_9_2026_09_10" / "examples" / "seal_task9_preliminary_random48.py"
 
 
 def _confirmation_row(qid: str, prediction: str = "wrong") -> dict[str, object]:

@@ -49,7 +49,7 @@ def test_python310_imports_and_parses_repository_config() -> None:
 from pathlib import Path
 from docprune.config import load_config
 
-config = load_config(Path("configs/docprune-m3docvqa.toml"))
+config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
 assert tuple(sorted(config.page_settings)) == (1, 2, 4)
 """
 
@@ -93,7 +93,7 @@ git commit -m "test: cover Python 3.10 TOML compatibility"
 **Files:**
 - Modify: `src/docprune/config.py:11`
 - Modify: `pyproject.toml:14-18`
-- Modify: `environments/docprune-sol.yml:17-41`
+- Modify: `legacy/environments/docprune-sol.yml:17-41`
 - Test: `tests/test_python310_compatibility.py`
 
 **Interfaces:**
@@ -121,7 +121,7 @@ Add to `[project].dependencies` in `pyproject.toml`:
 
 - [ ] **Step 3: Pin the SOL runtime dependency**
 
-Add to the pip subsection of `environments/docprune-sol.yml`:
+Add to the pip subsection of `legacy/environments/docprune-sol.yml`:
 
 ```yaml
 - tomli==2.4.1
@@ -154,7 +154,7 @@ Expected: all selected tests pass and Ruff reports no errors.
 - [ ] **Step 6: Commit the compatibility implementation**
 
 ```bash
-git add src/docprune/config.py pyproject.toml environments/docprune-sol.yml
+git add src/docprune/config.py pyproject.toml legacy/environments/docprune-sol.yml
 git commit -m "fix: support TOML parsing on Python 3.10"
 ```
 
@@ -163,7 +163,7 @@ git commit -m "fix: support TOML parsing on Python 3.10"
 **Files:**
 - Verify: `src/docprune/config.py`
 - Verify: `pyproject.toml`
-- Verify: `environments/docprune-sol.yml`
+- Verify: `legacy/environments/docprune-sol.yml`
 - Verify: `tests/test_python310_compatibility.py`
 
 **Interfaces:**
@@ -186,7 +186,7 @@ from pathlib import Path
 
 from docprune.config import load_config, tomllib
 
-config = load_config(Path("configs/docprune-m3docvqa.toml"))
+config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
 print(type(tomllib).__name__, tomllib.__name__)
 print(tuple(sorted(config.page_settings)))
 PY

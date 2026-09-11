@@ -71,7 +71,7 @@ def test_colpali_mapping_proves_contiguous_row_major_visual_span():
 - Create: `tests/test_benchmark_config.py`
 - Create: `tests/test_artifacts.py`
 - Create: `tests/test_m3docvqa_dataset.py`
-- Modify: `configs/docprune-m3docvqa.toml`
+- Modify: `legacy/configs/docprune-m3docvqa.toml`
 
 **Interfaces:**
 - Produces: `BenchmarkRunConfig.from_env(mode: str, page_count: int) -> BenchmarkRunConfig`
@@ -122,10 +122,10 @@ def test_colpali_mapping_proves_contiguous_row_major_visual_span():
 **Files:**
 - Modify: `src/docprune/pipeline.py`
 - Modify: `src/docprune/qtp.py`
-- Create: `src/docprune/qwen2vl/preprocessing.py`
+- Create: `src/docprune/_legacy/qwen2vl/preprocessing.py`
 - Create: `src/docprune/answerers.py`
-- Modify: `src/docprune/qwen2vl/model.py`
-- Modify: `src/docprune/qwen2vl/decoder.py`
+- Modify: `src/docprune/_legacy/qwen2vl/model.py`
+- Modify: `src/docprune/_legacy/qwen2vl/decoder.py`
 - Create: `tests/qwen2vl/test_preprocessing.py`
 - Create: `tests/test_answerers.py`
 - Modify: `tests/test_pipeline.py`

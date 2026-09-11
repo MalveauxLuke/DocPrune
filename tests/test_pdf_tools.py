@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).parents[1]
-sys.path.insert(0, str(ROOT / "examples" / "m3docvqa"))
+sys.path.insert(0, str(ROOT / "legacy" / "examples" / "m3docvqa"))
 from pdf_tools import validate_pdf_tools  # noqa: E402
 
 PDFTOOLS_DIR = Path("/home/lmalveau/mamba-envs/m3docvqa-acquisition")
@@ -24,7 +24,7 @@ PDFTOPPM_SHA256 = "1102bc3f4a12f3d3d207ac8e39f463d0fb3c403511fb4c817e776e5251b53
 def _load_probe_image_module():
     """Load the helper by file path; tests must not require ``examples`` as a package."""
 
-    path = ROOT / "examples" / "m3docvqa" / "make_probe_image.py"
+    path = ROOT / "legacy" / "examples" / "m3docvqa" / "make_probe_image.py"
     spec = importlib.util.spec_from_file_location("docprune_test_make_probe_image", path)
     if spec is None or spec.loader is None:
         raise AssertionError(f"could not load probe helper: {path}")
@@ -59,7 +59,7 @@ def test_validate_pdf_tools_rejects_symlinked_executables(tmp_path: Path) -> Non
 
 
 def test_each_benchmark_launcher_has_the_same_pdf_tool_preflight() -> None:
-    launcher_dir = ROOT / "examples" / "sbatch"
+    launcher_dir = ROOT / "archive/experiments/task6_9_2026_09_10" / "examples" / "sbatch"
     for name in (
         "11_docprune_m3docvqa.sbatch",
         "12_docprune_m3docvqa_gate.sbatch",
@@ -74,7 +74,7 @@ def test_each_benchmark_launcher_has_the_same_pdf_tool_preflight() -> None:
 
 
 def test_shell_pdf_tool_preflight_requires_the_directory() -> None:
-    helper = ROOT / "examples" / "m3docvqa" / "pdf_tools_preflight.sh"
+    helper = ROOT / "legacy" / "examples" / "m3docvqa" / "pdf_tools_preflight.sh"
     env = os.environ.copy()
     env.pop("PDFTOOLS_DIR", None)
     result = subprocess.run(
@@ -108,7 +108,7 @@ def test_real_production_pdf_render_uses_pinned_tools() -> None:
         result = subprocess.run(
             [
                 sys.executable,
-                str(ROOT / "examples/m3docvqa/make_probe_image.py"),
+                str(ROOT / "legacy/examples/m3docvqa/make_probe_image.py"),
                 "--corpus-root",
                 str(CORPUS_ROOT),
                 "--qid",

@@ -23,7 +23,7 @@ from docprune.qwen2vl.model import PruningTrace
 
 
 def test_inspect_validates_config_without_loading_models(capsys) -> None:
-    exit_code = main(["inspect", "--config", "configs/docprune-m3docvqa.toml", "--pages", "4"])
+    exit_code = main(["inspect", "--config", "legacy/configs/docprune-m3docvqa.toml", "--pages", "4"])
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
@@ -113,7 +113,7 @@ def test_evaluate_dry_run_refuses_existing_output(tmp_path, capsys) -> None:
         [
             "evaluate",
             "--config",
-            "configs/docprune-m3docvqa.toml",
+            "legacy/configs/docprune-m3docvqa.toml",
             "--pages",
             "1",
             "--output",
@@ -135,7 +135,7 @@ def test_evaluate_dry_run_emits_manifest_for_new_output(tmp_path, capsys) -> Non
         [
             "evaluate",
             "--config",
-            "configs/docprune-m3docvqa.toml",
+            "legacy/configs/docprune-m3docvqa.toml",
             "--pages",
             "2",
             "--output",
@@ -159,7 +159,7 @@ def test_evaluate_resume_requires_existing_output(tmp_path, capsys) -> None:
         [
             "evaluate",
             "--config",
-            "configs/docprune-m3docvqa.toml",
+            "legacy/configs/docprune-m3docvqa.toml",
             "--pages",
             "1",
             "--output",
@@ -178,7 +178,7 @@ def test_evaluate_resume_rejects_incomplete_manifest_before_custom_factory(
 ) -> None:
     output = tmp_path / "run"
     output.mkdir()
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     config = load_config(config_path)
     (output / "run_manifest.json").write_text(
         json.dumps(
@@ -235,7 +235,7 @@ def test_evaluate_rejects_workload_without_manifest_before_results(tmp_path, mon
         [
             "evaluate",
             "--config",
-            "configs/docprune-m3docvqa.toml",
+            "legacy/configs/docprune-m3docvqa.toml",
             "--pages",
             "1",
             "--output",
@@ -265,7 +265,7 @@ def test_evaluate_factory_manifest_cannot_change_invocation_identity(
     tmp_path, monkeypatch, field, value
 ) -> None:
     output = tmp_path / "run"
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
     baseline = {
@@ -313,7 +313,7 @@ def test_evaluate_factory_manifest_cannot_change_invocation_identity(
             [
                 "evaluate",
                 "--config",
-                "configs/docprune-m3docvqa.toml",
+                "legacy/configs/docprune-m3docvqa.toml",
                 "--pages",
                 "1",
                 "--output",
@@ -339,7 +339,7 @@ def test_fresh_evaluate_factory_cannot_change_authoritative_identity(
     tmp_path, monkeypatch, field, value
 ) -> None:
     output = tmp_path / "run"
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
     authoritative = {
@@ -387,7 +387,7 @@ def test_fresh_evaluate_factory_cannot_change_authoritative_identity(
             [
                 "evaluate",
                 "--config",
-                "configs/docprune-m3docvqa.toml",
+                "legacy/configs/docprune-m3docvqa.toml",
                 "--pages",
                 "1",
                 "--output",
@@ -403,7 +403,7 @@ def test_fresh_evaluate_factory_cannot_change_authoritative_identity(
 
 def test_fresh_evaluate_factory_samples_bind_to_authoritative_rows(tmp_path, monkeypatch) -> None:
     output = tmp_path / "run"
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
     authoritative_sample = SampleInput("q-1", "authoritative question", ("gold",))
@@ -457,7 +457,7 @@ def test_fresh_evaluate_factory_samples_bind_to_authoritative_rows(tmp_path, mon
             [
                 "evaluate",
                 "--config",
-                "configs/docprune-m3docvqa.toml",
+                "legacy/configs/docprune-m3docvqa.toml",
                 "--pages",
                 "1",
                 "--output",
@@ -475,7 +475,7 @@ def test_evaluate_factory_cannot_mutate_nested_or_scalar_invocation_identity(
     tmp_path, monkeypatch
 ) -> None:
     output = tmp_path / "run"
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     config = load_config(config_path)
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
@@ -583,7 +583,7 @@ def test_resume_rejects_changed_run_config_content_at_same_path(tmp_path) -> Non
     run_config.write_text('{"generation": {"max_new_tokens": 128}}')
     index_manifest = tmp_path / "index-manifest.json"
     index_manifest.write_text('{"manifest_sha256": "old"}')
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     config = load_config(config_path)
     manifest = _manifest(
         "evaluate",
@@ -660,7 +660,7 @@ def test_embed_requires_authoritative_default_run_config_before_custom_factory(
         [
             "embed",
             "--config",
-            "configs/docprune-m3docvqa.toml",
+            "legacy/configs/docprune-m3docvqa.toml",
             "--pages",
             "1",
             "--output",
@@ -757,7 +757,7 @@ def test_probe_processors_rejects_symbolic_revision(tmp_path, capsys) -> None:
 def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypatch) -> None:
     output = tmp_path / "run"
     calls = {"runs": 0, "answers": [], "warmups": []}
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     from docprune.m3docvqa_factory import _expected_pruning_identity
 
     workload_manifest = {
@@ -840,7 +840,7 @@ def test_evaluate_resume_uses_qids_without_duplicate_records(tmp_path, monkeypat
     args = [
         "evaluate",
         "--config",
-        "configs/docprune-m3docvqa.toml",
+        "legacy/configs/docprune-m3docvqa.toml",
         "--pages",
         "1",
         "--output",
@@ -881,7 +881,7 @@ def test_pending_evaluation_requires_runner_warmup_callable() -> None:
 
 
 def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> None:
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     output = tmp_path / "output"
     artifact_root = output / "all-kept"
     artifact_root.mkdir(parents=True)
@@ -938,7 +938,7 @@ def test_cli_embed_validates_manifest_identity_before_publication(tmp_path) -> N
 
 
 def test_embed_result_rejects_a_fake_inner_manifest(tmp_path) -> None:
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
 
     class FakeManifest(IndexManifest):
         def validate_files(self):
@@ -964,10 +964,10 @@ def test_embed_result_rejects_a_fake_inner_manifest(tmp_path) -> None:
 
 
 def test_evaluation_workload_cannot_inject_a_conflicting_command(tmp_path) -> None:
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     requested = _manifest(
         "evaluate",
-        Path("configs/docprune-m3docvqa.toml"),
+        Path("legacy/configs/docprune-m3docvqa.toml"),
         config,
         1,
         "fake:factory",
@@ -1031,10 +1031,10 @@ def test_evaluation_workload_cannot_inject_a_conflicting_command(tmp_path) -> No
 def test_fresh_evaluation_accepts_factory_resolved_measurement_identity(tmp_path) -> None:
     """Catch rejecting the canonical hardware/sample measurement as CLI tampering."""
 
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     requested = _manifest(
         "evaluate",
-        Path("configs/docprune-m3docvqa.toml"),
+        Path("legacy/configs/docprune-m3docvqa.toml"),
         config,
         1,
         "fake:factory",
@@ -1100,10 +1100,10 @@ def test_cli_authority_rejects_random_policy_seed_context_drift(tmp_path) -> Non
     from docprune.ctp_policy import fixed_retention_random_policy
     from docprune.m3docvqa_factory import _ctp_policy_context_identity, _expected_pruning_identity
 
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     requested = _manifest(
         "evaluate",
-        Path("configs/docprune-m3docvqa.toml"),
+        Path("legacy/configs/docprune-m3docvqa.toml"),
         config,
         1,
         "fake:factory",
@@ -1175,7 +1175,7 @@ def test_cli_authority_rejects_random_policy_seed_context_drift(tmp_path) -> Non
 def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
     tmp_path, monkeypatch
 ) -> None:
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     config = load_config(config_path)
     output = tmp_path / "embed"
     source_order = "a" * 64
@@ -1265,7 +1265,7 @@ def test_embed_publication_ignores_factory_rewritten_invocation_manifest(
 def test_embed_preflight_fails_closed_without_authoritative_source_order(
     tmp_path, monkeypatch
 ) -> None:
-    config_path = Path("configs/docprune-m3docvqa.toml")
+    config_path = Path("legacy/configs/docprune-m3docvqa.toml")
     calls = []
     monkeypatch.setattr(
         "docprune.m3docvqa_factory._resolve_run_config",
@@ -1303,7 +1303,7 @@ def test_embed_preflight_fails_closed_without_authoritative_source_order(
 
 
 def test_embed_result_rejects_a_fake_manifest_before_file_validation(tmp_path) -> None:
-    config = load_config(Path("configs/docprune-m3docvqa.toml"))
+    config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
     output = tmp_path / "output"
     artifact_root = output / "all-kept"
     artifact_root.mkdir(parents=True)

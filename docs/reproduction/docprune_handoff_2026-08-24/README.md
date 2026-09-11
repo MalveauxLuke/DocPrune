@@ -1,3 +1,5 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # DocPrune reproduction handoff (2026-08-24)
 
 Read this first. `REFERENCE.md` contains exact pins, paths, hashes, jobs, and
@@ -118,4 +120,3 @@ lower and gains 1.0.
 - Mixed hardware is acceptable for quality only, not efficiency aggregation.
 - Keep large data, indexes, caches, model weights, and generated outputs out of
   Git.
-

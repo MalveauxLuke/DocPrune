@@ -1,7 +1,9 @@
+> Historical baseline evidence. Commands and status below describe prior experiments; current work is defined in `docs/ExperimentPlan.md`.
+
 # Consolidated results
 
 This page is the human-facing results index. The regional-attribution
-[experiment-log index](../experiments/regional-attribution/experiment-log/INDEX.md)
+[experiment-log index](../../archive/experiments/task6_9_2026_09_10/docs/experiments/regional-attribution/experiment-log/INDEX.md)
 routes to the authoritative job, hash, failure, and decision ledgers.
 
 ## Main findings
@@ -62,7 +64,7 @@ Internal digest: `985a837b2094b5a925730eeb4b9bf07c594344f9021c4a718c49c11aa655a8
 
 Across five 192-mask repeats, baseline-correct preservation was 120/120, but only 16/20 canonical rescues were retained. Wrong-stratum mean F1 fell from 0.38125 at 256 masks to 0.32333; mean accepted-answer likelihood changed by `-0.01391` nats/token. The frozen gate therefore retained 256 masks.
 
-No strict outcome-blind diagnostic reliably identified the rescue-sensitive failure. See the [full analysis](../experiments/regional-attribution/analysis/mask-count-and-nesting-2026-09-02.md).
+No strict outcome-blind diagnostic reliably identified the rescue-sensitive failure. See the [full analysis](../../archive/experiments/task6_9_2026_09_10/docs/experiments/regional-attribution/analysis/mask-count-and-nesting-2026-09-02.md).
 
 Artifacts:
 

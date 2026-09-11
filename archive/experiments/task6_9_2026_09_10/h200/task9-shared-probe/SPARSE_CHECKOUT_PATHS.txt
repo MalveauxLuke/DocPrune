@@ -1,0 +1,32 @@
+/.gitignore
+/AGENTS.md
+/README.md
+/pyproject.toml
+/configs/docprune-m3docvqa.toml
+/environments/docprune-sol.yml
+/agent-context/INDEX.md
+/agent-context/CURRENT_TASK.md
+/agent-context/TASK9_H200_BASELINE_WRONG100_HANDOFF_2026-09-02.md
+/agent-context/TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md
+/docs/experiments/regional-attribution/
+/docs/SOL_INSTRUCTIONS.md
+/h200/task9-baseline-wrong-100/
+/h200/task9-shared-probe/
+/src/docprune/
+/examples/seal_task9_confirmation_inputs.py
+/examples/run_task8_mineru_smoke.py
+/examples/run_task9_h200_mineru_smoke.py
+/tests/test_task9_h200_mineru.py
+/examples/run_task9_preliminary_geometry_capture.py
+/examples/build_task9_preliminary_region_mapping.py
+/examples/relocate_task9_h200_inputs.py
+/examples/run_task9_regional_development.py
+/examples/analyze_task9_confirmation_attribution.py
+/examples/run_task9_preliminary_selected_arms.py
+/examples/run_task9_confirmation_batch.py
+/examples/aggregate_task9_confirmation.py
+/references/papers/README.md
+/references/papers/docprune-cvpr-2026.md
+
+# Phase 1/2 SOL implementations must append every new exact runner, validator,
+# test, and configuration path before asking H200 to pull that phase.

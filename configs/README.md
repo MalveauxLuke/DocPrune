@@ -1,5 +1,5 @@
-# Configs
+# Configurations
 
-Future versioned configuration belongs here. Every active config should record
-its schema version, source and model revisions, producer commit, and fixed
-random seeds. No project configuration is active.
+[Corrective selection](corrective-selection/README.md) is the active experiment area.
+No runnable new-study configuration has been frozen yet.
+The old reproduction config is retained under [legacy](../legacy/configs/docprune-m3docvqa.toml).

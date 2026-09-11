@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "examples" / "m3docvqa"))
+sys.path.insert(0, str(Path(__file__).parents[1] / "legacy" / "examples" / "m3docvqa"))
 from make_probe_image import render_probe_image  # noqa: E402
 from make_run_configs import (  # noqa: E402
     FIXED_GATE_SAMPLE_IDS,
@@ -31,7 +31,7 @@ from docprune.benchmark_seal import (  # noqa: E402
 from docprune.m3docrag import RetrievalOutput, RetrievedPage, RetrievedPageFeatures  # noqa: E402
 
 ROOT = Path(__file__).parents[1]
-LAUNCHER_DIR = ROOT / "examples" / "sbatch"
+LAUNCHER_DIR = ROOT / "archive/experiments/task6_9_2026_09_10" / "examples" / "sbatch"
 LAUNCHERS = tuple(
     LAUNCHER_DIR / name
     for name in (
@@ -42,7 +42,7 @@ LAUNCHERS = tuple(
         "15_docprune_m3docvqa_compare.sbatch",
     )
 )
-HANDOFF = ROOT / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
+HANDOFF = ROOT / "archive/experiments/task6_9_2026_09_10" / "sol" / "handoffs" / "DOCPRUNE_M3DOCVQA_BENCHMARK_HANDOFF.md"
 TEST_RUNTIME_COMMIT = "a" * 40
 ACTIVE_RUNTIME_COMMIT = "15301ea557288a4f67fc3c85228bf5e148014d17"
 ACTIVE_RUNTIME_DIR = "/home/lmalveau/DocPrune-runtime-15301ea"
@@ -196,7 +196,7 @@ def test_gate_semantic_wrapper_is_safe_without_ambient_pythonpath(tmp_path: Path
 
 def test_gate_renders_probe_image_from_pinned_corpus_qid() -> None:
     text = (LAUNCHER_DIR / "12_docprune_m3docvqa_gate.sbatch").read_text(encoding="utf-8")
-    helper = (ROOT / "examples" / "m3docvqa" / "make_probe_image.py").read_text(encoding="utf-8")
+    helper = (ROOT / "legacy" / "examples" / "m3docvqa" / "make_probe_image.py").read_text(encoding="utf-8")
     assert 'PROBE_IMAGE="$GATE_ROOT/' in text
     assert "make_probe_image.py" in text
     assert "convert_from_path" in helper
@@ -334,7 +334,7 @@ def test_gpu_policy_validator_enforces_hardware_floor(
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "examples" / "m3docvqa" / "validate_gpu_policy.py"),
+            str(ROOT / "legacy" / "examples" / "m3docvqa" / "validate_gpu_policy.py"),
             policy,
             gpu_name,
             memory_mib,
@@ -534,7 +534,7 @@ def test_launchers_validate_control_checkout_before_loading_helpers() -> None:
 
 
 def test_run_config_generator_is_executable_and_documented() -> None:
-    generator = ROOT / "examples" / "m3docvqa" / "make_run_configs.py"
+    generator = ROOT / "legacy" / "examples" / "m3docvqa" / "make_run_configs.py"
     assert generator.is_file()
     assert generator.stat().st_mode & 0o111
     handoff = HANDOFF.read_text(encoding="utf-8")
@@ -545,10 +545,10 @@ def test_run_config_generator_is_executable_and_documented() -> None:
 def test_active_benchmark_runtime_pin_is_sealed_to_approved_runtime() -> None:
     """Generators accept only the externally supplied detached runtime pin."""
 
-    gate_config = (ROOT / "examples" / "m3docvqa" / "make_gate_config.py").read_text(
+    gate_config = (ROOT / "legacy" / "examples" / "m3docvqa" / "make_gate_config.py").read_text(
         encoding="utf-8"
     )
-    run_config = (ROOT / "examples" / "m3docvqa" / "make_run_configs.py").read_text(
+    run_config = (ROOT / "legacy" / "examples" / "m3docvqa" / "make_run_configs.py").read_text(
         encoding="utf-8"
     )
     assert 'parser.add_argument("--runtime-commit", required=True)' in gate_config
@@ -964,7 +964,7 @@ def test_upstream_checkouts_require_strict_clean_status() -> None:
             'test -z "$(git -C "$M3DOCRAG_DIR" status --porcelain --untracked-files=all)"' in text
         )
         assert "__pycache__" not in text
-    generator = (ROOT / "examples" / "m3docvqa" / "make_run_configs.py").read_text(encoding="utf-8")
+    generator = (ROOT / "legacy" / "examples" / "m3docvqa" / "make_run_configs.py").read_text(encoding="utf-8")
     assert "if dirty:" in generator
     assert "non-bytecode" not in generator
 
@@ -1368,7 +1368,7 @@ def test_launchers_pin_python_and_cli_when_pdf_tools_shadows_path(tmp_path: Path
     (env_bin / "python").chmod(0o755)
     (env_bin / "docprune-m3docvqa").chmod(0o755)
 
-    preflight = ROOT / "examples" / "m3docvqa" / "pdf_tools_preflight.sh"
+    preflight = ROOT / "legacy" / "examples" / "m3docvqa" / "pdf_tools_preflight.sh"
     script = f"""
 set -euo pipefail
 export PDFTOOLS_DIR={shadow_bin.parent}

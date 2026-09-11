@@ -17,7 +17,7 @@ def test_python310_imports_and_parses_repository_config() -> None:
 from pathlib import Path
 from docprune.config import load_config
 
-config = load_config(Path("configs/docprune-m3docvqa.toml"))
+config = load_config(Path("legacy/configs/docprune-m3docvqa.toml"))
 assert tuple(sorted(config.page_settings)) == (1, 2, 4)
 """
 

@@ -1,14 +1,16 @@
 # Agent context index
 
-Open only the context required by the user's task:
-
 - [Current task](CURRENT_TASK.md)
-- [Regional attribution experiment index](../docs/experiments/regional-attribution/INDEX.md)
+- [Canonical experiment design](../docs/ExperimentPlan.md)
+- [Corrective selection workspace](../docs/experiments/corrective-selection/README.md)
+- [Repository preparation findings](findings/2026-09-10-corrective-selection-preparation.md)
+- [Resolved retention inventory](../legacy/RETENTION.md)
+- [Historical experiment archive](../archive/experiments/task6_9_2026_09_10/README.md)
 
-Machine-specific handoffs:
+Archived task files are nonbinding. Open historical evidence only as needed.
 
-- [SOL shared-probe handoff](TASK9_SHARED_PROBE_SOL_HANDOFF_2026-09-03.md)
-- [H200 baseline-wrong confirmation handoff](TASK9_H200_BASELINE_WRONG100_HANDOFF_2026-09-02.md)
-- [H200 shared-probe handoff](../h200/task9-shared-probe/HANDOFF.md)
+- [Retained legacy material](../legacy/README.md)
+- [Legacy retention findings](findings/2026-09-11-legacy-retention.md)
 
-Historical chat summaries are nonbinding and live under [docs/history/chat-summaries](../docs/history/chat-summaries/).
+- [Active SOL feature-package task](../docs/experiments/corrective-selection/COLFEATURES17.md)
+- [SOL feature-package preparation findings](findings/2026-09-11-colfeatures17-sol.md)

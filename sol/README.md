@@ -1,11 +1,7 @@
 # SOL operations
 
-SOL now serves as the DocPrune source-development, validation, packaging, and CPU-analysis environment. New Task 9 GPU work is assigned to H200 by the current experiment contract.
-
-Start with:
-
-1. [Current SOL task](CURRENT_SOL_TASK.md)
-2. [Repository current task](../agent-context/CURRENT_TASK.md)
-3. [Regional attribution experiments](../docs/experiments/regional-attribution/INDEX.md)
-
-`handoffs/` contains immutable historical SOL execution contracts. Current H200 execution authority lives under `h200/` and `agent-context/`.
+Read [current SOL state](CURRENT_SOL_TASK.md), [SOL guidance](AGENTS.md), and
+[cluster instructions](../docs/SOL_INSTRUCTIONS.md) before cluster work.
+The selected executable handoff is the 17-case ColQwen feature package.
+See [task contract](../docs/experiments/corrective-selection/COLFEATURES17.md).
+Old handoffs are archived and do not assign the new study to any machine.
