@@ -1,6 +1,7 @@
 # Agent context index
 
 - [Current task](CURRENT_TASK.md)
+- [Start SOL in the ASU browser](modules/sol-browser-startup.md)
 - [Canonical experiment design](../docs/ExperimentPlan.md)
 - [Corrective selection workspace](../docs/experiments/corrective-selection/README.md)
 - [Repository preparation findings](findings/2026-09-10-corrective-selection-preparation.md)
