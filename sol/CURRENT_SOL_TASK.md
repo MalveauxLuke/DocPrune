@@ -11,7 +11,7 @@ This handoff supersedes archived Task 6–9 authority for this bounded work only
 Repository: `https://github.com/MalveauxLuke/DocPrune.git`, branch `main`.
 Approved checkout: `/home/lmalveau/DocPrune`. If this checkout is absent or belongs
 to another user, stop and report the actual location; do not overwrite a checkout.
-Code/input commit: `6b4313f47de45396224f91e3cfcf65f434a7fec3`. Execute from that content plus this binding handoff.
+Code/input commit: `d79307b9a633448a62051eadfb78da853b586844`. Execute from that content plus this binding handoff.
 `run.sh` permits only `sol/CURRENT_SOL_TASK.md` to differ from the sealed code
 commit, requires tracked files clean, and records execution HEAD in provenance.
 Inspect local changes before pulling; preserve them, never reset/discard.
@@ -63,7 +63,7 @@ not a measured final requirement). Do not put HF tokens in scripts or logs.
 In a compute allocation with the pinned environment active:
 
 ```bash
-export COLFEATURES_CODE_COMMIT=6b4313f47de45396224f91e3cfcf65f434a7fec3
+export COLFEATURES_CODE_COMMIT=d79307b9a633448a62051eadfb78da853b586844
 export COLFEATURES_ROOT=/scratch/lmalveau/docprune-colfeatures17/<new-run-id>
 bash sol/colfeatures17/run.sh
 ```
@@ -141,3 +141,24 @@ within the same extraction contract; record and commit the repair, reseal the
 code pin in this handoff, and repeat Q01 smoke before full extraction. Do not
 silently change checkpoint, dtype, resolution, prompts or region assignment.
 Never delete caches/data or overwrite another agent's output as recovery.
+
+## SOL execution repair and owner resource override (2026-09-11)
+
+The first GPU job 63031264 completed but its adapter keys did not match the
+Transformers language-model names; its features are non-canonical and preserved
+under `/scratch/lmalveau/docprune-colfeatures17/20260911-run01/{smoke,result}`.
+The resealed code explicitly applies the installed Qwen checkpoint conversion
+and requires exact equality of every loaded adapter tensor to its pinned source
+(after dtype conversion). Repeat Q01 smoke before the replacement full run;
+write new `smoke-repaired` / `result-repaired` directories, never overwrite.
+No checkpoint, dtype, processor, region or prompt change is authorized.
+
+Owner resource override supersedes the earlier 48 GiB/four-core estimate. SOL
+rejected 16 GiB host RAM because its GPU-job minimum is 24000 MiB; use that exact
+minimum, two CPUs, one suitable GPU and 20 minutes (first job used 6m39s).
+Reuse the existing isolated environment with `PYTHONNOUSERSITE=1`. Reuse verified
+inputs/cache and passing CPU preparation. Run the smoke and extraction on GPU;
+perform final verification, analysis, gathering and packaging in a CPU compute
+allocation. Preserve scratch launchers and exact commands in the export.
+Optional historical PDF hash mismatches must be listed as unavailable with both
+hashes, never substituted for the required already-authenticated saved images.
