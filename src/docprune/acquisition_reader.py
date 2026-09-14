@@ -83,6 +83,8 @@ class QwenTeacher:
             str(snapshot), torch_dtype=torch.bfloat16, low_cpu_mem_usage=True,
             attn_implementation='sdpa', local_files_only=True).to('cuda:0').eval()
         self.model.config.vision_config.torch_dtype = torch.bfloat16
+        from .acquisition_attention import install_segmented_vision_sdpa
+        self.identity['vision_attention'] = install_segmented_vision_sdpa(self.model.visual)
         self.processor = AutoProcessor.from_pretrained(str(snapshot), local_files_only=True, use_fast=False)
         self.model.generation_config.repetition_penalty = 1.05
         eos = self.model.generation_config.eos_token_id

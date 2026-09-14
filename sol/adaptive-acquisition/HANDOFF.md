@@ -40,3 +40,12 @@ a comparison of the three acquisition policies. Return the log and receipt.
 Owner resource update: use any compatible GPU and the admitted 24000 MiB host
 RAM minimum. This is a bounded memory-fit trial; actual peak RAM/VRAM will be
 measured. Never relax scientific parity checks for a different GPU.
+
+Owner-approved memory repair (2026-09-14): the acquisition reader installs an
+instance-local segmented vision SDPA implementation. It retains the original
+window/page boundaries, weights, BF16 and rotary positions, batches equal-sized
+groups with rank-four q/k/v, and forbids CUDA dense-math fallback. This applies
+to compact and stock-generation vision paths; decoder attention is unchanged.
+No package upgrade is required. Run tests/test_acquisition_attention.py on the
+existing setup allocation before submission. Existing all-keep 1e-4 and exact
+generation parity gates remain mandatory; a backend change is not a parity pass.

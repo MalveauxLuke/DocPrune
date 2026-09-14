@@ -61,3 +61,52 @@ the combined grouping/acquisition policy, not grouping in isolation.
 - Local ignored delivery: `outputs/stage0-adaptive-acquisition-2026-09-14/`.
   It contains the sealed inputs, portable bundle/archive, verification records and
   synthetic output journals. The archive contains no weights or Python environment.
+
+
+## SOL smoke memory diagnosis — 2026-09-14
+
+This later update supersedes the earlier "Next gate" execution status above.
+SOL job 63235689 at code b60e78b2c334a6e1088c7d0d91d8905ce81c8df6
+started 14:08:03 MST and failed after 2m53s on an A100 80GB. Host MaxRSS
+was 18,139,692 K (about 17.3 GiB). The vision SDPA operation failed requesting
+47.99 GiB, with process GPU memory already 70.04 GiB. Log:
+`/scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01/smoke-63235689.log`.
+No successful teacher measurements or parity receipt were produced.
+
+Read-only diagnosis verified the installed Transformers 4.49.0
+Qwen2_5_VLVisionSdpaAttention.forward constructs a boolean
+[1, seq_length, seq_length] mask, marks cu_seqlens blocks, and calls SDPA with
+rank-three [heads, seq_length, head_dim] q/k/v tensors. The installed Torch
+header sdp_utils_cpp.h rejects non-rank-four inputs for fused kernels.
+Thus the frozen vision SDPA path falls back to dense math attention; selecting
+"sdpa" alone does not guarantee a memory-efficient kernel. See also the exact
+[PyTorch 2.4.1 source](https://github.com/pytorch/pytorch/blob/v2.4.1/aten/src/ATen/native/transformers/sdp_utils_cpp.h).
+
+The local compact vision adapter passes all four pages through each block
+together. Q12 has 4 x 10,032 = 40,128 fine patches before vision merging,
+not merely the 10,032 merged decoder visual tokens. Its dense mask has
+1,610,256,384 elements (about 1.50 GiB as bool); a hypothetical BF16 attention
+matrix across its 16 heads is 47.99 GiB. This size matches the failed allocation,
+but the exact internal temporary responsible was not profiled. Window/page
+masking prevents cross-boundary information flow but does not remove the dense
+allocation. Even window-attention layers receive the full concatenated sequence.
+
+Historical evidence supports smaller-GPU feasibility for related work:
+archived SOL input diagnostic job 62424211 completed 320 masks on an L40S
+in 4m23s with 24 GiB host RAM. That older experiment used a 3,586-token
+post-BTP/QTP mapping and a different historical runtime; it is not proof that
+the current Q12 full-vision configuration already passed on L40S. The historical
+fair CTP baseline also specifies FlashAttention-2, unlike the current frozen SDPA
+runtime. See the archived INPUT_256_DIAGNOSTIC and FAIR_CTP_BASELINE documents.
+
+Proposed repair: execute attention independently within the existing
+cu_seqlens windows/pages, using an explicit batch dimension for efficient SDPA.
+Preserve the exact attention boundaries, patch order, rotary positions, weights,
+precision, images and masks. Mathematical independence supports this change,
+but floating-point parity still requires testing against the original path on
+small tensors and the unchanged Q12 1e-4/generation gates. Full-page splitting
+alone reduces a dense per-call square by 16x for four equal pages; splitting
+actual windows avoids still more wasted work. This is an analytical allocation
+comparison, not a measured whole-model speedup or memory-fit guarantee.
+No implementation change, package change, or new GPU submission was made during
+this diagnosis. Do not infer that requesting a larger GPU is necessary.
