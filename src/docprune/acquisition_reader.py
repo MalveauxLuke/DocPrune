@@ -200,7 +200,10 @@ class QuestionCheckpoint:
         started = time.perf_counter()
         all_ids = list(range(self.population))
         actual = self._measure(all_ids)['likelihoods']
-        historical_error = validate_parity(actual, self.case['reader']['reference_likelihoods'])
+        # This execution is the baseline; historical values are provenance only.
+        scores(actual)
+        self.baseline_likelihoods = list(actual)
+        historical_error = float(np.max(np.abs(np.asarray(actual) - self.case['reader']['reference_likelihoods'])))
         # One masked comparison tests deletion and the persistent-checkpoint path.
         _, selected = token_identity(self.case['public'], self.case['public']['banks']['A'][0])
         selected_actual = self._measure(selected)['likelihoods']
@@ -212,7 +215,9 @@ class QuestionCheckpoint:
         eos = response.pop() if response and response[-1] in self.teacher.runtime['eos_ids'] else None
         validate_generation(response, eos, self.case['reader'])
         torch.cuda.synchronize()
-        self.guard = {'historical_all_keep_error': historical_error, 'persistent_vs_legacy_mask_error': adapter_error,
+        self.guard = {'baseline_policy': 'current-execution-v1',
+                      'baseline_likelihoods': self.baseline_likelihoods,
+                      'historical_all_keep_error': historical_error, 'persistent_vs_legacy_mask_error': adapter_error,
                       'all_keep_generated_ids_match': True, 'reference_targets': len(self.targets),
                       'preparation_seconds': self.preparation_seconds, 'guard_seconds': time.perf_counter()-started,
                       'extra_likelihood_evaluations': 3, 'extra_generations': 1,

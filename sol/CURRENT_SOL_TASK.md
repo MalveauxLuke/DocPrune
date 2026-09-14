@@ -1,23 +1,20 @@
-# Active — one-question adaptive acquisition smoke on SOL
+# Active — 17-question, three-arm acquisition on SOL
 
-Owner authorized 2026-09-14. Binding handoff:
-[adaptive-acquisition/HANDOFF.md](adaptive-acquisition/HANDOFF.md).
+Owner authorized 2026-09-14: sharded scoring on SOL and current-execution
+baselines instead of historical likelihood equality. Binding handoff:
+[adaptive-acquisition/SCORING.md](adaptive-acquisition/SCORING.md).
 
-Checkout /home/lmalveau/DocPrune, main. The submitted ACQUISITION_CODE_COMMIT
-pins the exact tested commit; smoke.sbatch verifies it and a clean tracked tree.
-Environment: /home/lmalveau/mamba-envs/docprune-acquisition-sol/bin/python.
-Inputs: /scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01/inputs.
-Scratch/output root: /scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01.
-Resources/command: one compatible GPU, 2 CPUs, 24000 MiB, 20 min, htc/public;
-sbatch --export=ALL,ACQUISITION_CODE_COMMIT=<verified-commit> sol/adaptive-acquisition/smoke.sbatch.
-Reuse browser lightwork for setup; stage only the sealed input package and exact
-model snapshot. Scope ends after Q12 smoke and receipt review. No full scoring.
-Preserve failed outputs; only narrow contract-preserving fixes/retries permitted.
-
-The prior Colfeatures17 task is complete. Its historical handoff remains in
-Git history and docs/experiments/corrective-selection/COLFEATURES17.md.
-
-Additional active owner approval: Q12 parity diagnostic in the handoff above,
-using parity-diagnostic.sbatch at its pinned commit. One >=40GB compatible GPU,
-24000 MiB host RAM, two CPUs, 20 minutes. Four predetermined masks; incremental
-scratch records; no successful smoke claim or expanded scoring authority.
+Checkout /home/lmalveau/DocPrune, main at submitted ACQUISITION_CODE_COMMIT.
+The launcher enforces the exact commit and a clean tracked checkout.
+Environment /home/lmalveau/mamba-envs/docprune-acquisition-sol/bin/python.
+Inputs /scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01/inputs.
+Model and caches remain in that existing scratch root; source environment.sh.
+Outputs /scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01/score-ARRAY_ID/shard-N.
+Command: sbatch --export=ALL,ACQUISITION_CODE_COMMIT=<tested-commit> sol/adaptive-acquisition/score.sbatch.
+Array 1-17%4: Q01-Q17, all three arms per shard, 32 observations per arm.
+Each shard: one compatible whole GPU >=23000 MiB, 2 CPUs, 24000 MiB RAM,
+20 minutes, htc/public. No new lightwork allocation or model download needed.
+Preserve partial outputs. Retry only failed/incomplete shards at the same code,
+runtime and baseline identity. No changed tolerances or silent hardware resume.
+Scope: likelihood acquisition and per-question summaries, not selector training
+or a claim that decoded-candidate assessment is complete.

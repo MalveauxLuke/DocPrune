@@ -7,8 +7,8 @@ import subprocess
 
 
 def sol_preflight(args, *, check_occupancy=True):
-    if args.command != 'smoke':
-        raise ValueError('SOL admission is limited to the one-question smoke')
+    if args.command not in ('smoke', 'score'):
+        raise ValueError('SOL admission requires an acquisition smoke or score job')
     if args.physical_gpu is not None:
         raise ValueError('SOL uses the Slurm-assigned device; do not override it')
     job = os.environ.get('SLURM_JOB_ID', '')

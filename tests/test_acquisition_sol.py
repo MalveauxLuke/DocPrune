@@ -26,13 +26,13 @@ class SOLTests(unittest.TestCase):
   for responses in [[valid.replace('htc','lightwork')],[valid,'othernode'],[valid,'gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','1234']]:
    with patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
     with self.assertRaises((ValueError,RuntimeError)): sol_preflight(self.args)
- def test_preserves_slurm_device_and_rejects_full_scoring(self):
+ def test_preserves_slurm_device_and_admits_authorized_scoring(self):
   responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','']
   torch=self.fake_torch()
-  with patch.dict(sys.modules,{'torch':torch}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
+  with patch.dict(sys.modules,{'torch':torch}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses*2):
    result=sol_preflight(self.args); self.assertEqual(result['assigned_device'],'2'); self.assertEqual(os.environ['CUDA_VISIBLE_DEVICES'],'2')
    self.args.command='score'
-   with self.assertRaisesRegex(ValueError,'one-question'): sol_preflight(self.args)
+   self.assertEqual(sol_preflight(self.args)['assigned_device'], '2')
  def test_device_mapping_own_context_and_small_gpu(self):
   responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA A30, 800, 24258, 12',str(os.getpid())]
   with patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses) as query:

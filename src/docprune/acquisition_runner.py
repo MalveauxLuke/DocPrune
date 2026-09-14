@@ -55,7 +55,7 @@ def summarize(history, reference):
 
 
 def run_case(case, output, backend_factory, backend_identity, *, max_new_observations=None):
-    """Caller holds run_lock. Factory builds one persistent question checkpoint lazily.
+    """Caller holds run_lock. The first run prepares a baseline before any controller decision.
 
     max_new_observations provides a controlled interruption for tests/CPU previews.
     A score cached by another arm is invisible until this arm asks for that mask.
@@ -64,16 +64,32 @@ def run_case(case, output, backend_factory, backend_identity, *, max_new_observa
     output = Path(output)
     public = case['public']
     name = public['case']
-    reference = scores(case['reader']['reference_likelihoods'])
-    identity = {'schema': 'stage0-acquisition-run-v1', 'case_sha256': digest(case),
+    identity = {'schema': 'stage0-acquisition-run-v2', 'case_sha256': digest(case),
                 'controller': asdict(CONFIG), 'code_sha256': tree_identity(), 'backend': backend_identity}
     write_new(output/name/'identity.json', identity)
+    runtime_identity = digest(identity)
+    baseline_path = output/name/'baseline.json'
+    backend = None
+    if baseline_path.exists():
+        baseline = read_record(baseline_path)
+        if baseline['identity_sha256'] != runtime_identity:
+            raise ValueError('Baseline runtime identity mismatch')
+    else:
+        backend = backend_factory(case)
+        baseline = {'identity_sha256': runtime_identity,
+                    'policy': 'current-execution-v1',
+                    'likelihoods': list(backend.baseline_likelihoods),
+                    'historical_likelihoods': case['reader']['reference_likelihoods']}
+        if len(baseline['likelihoods']) != len(case['reader']['targets']):
+            raise ValueError('Baseline target count mismatch')
+        scores(baseline['likelihoods'])
+        write_new(baseline_path, baseline)
+    reference = scores(baseline['likelihoods'])
     controller = Controller(public, reference)
     streams = {'R': static_stream(public, 'R'), 'A': static_stream(public, 'A'), 'adaptive': controller.stream()}
     pending = {arm: next(stream) for arm, stream in streams.items()}
     histories = {arm: [] for arm in streams}
-    backend, added, physical = None, 0, 0
-    runtime_identity = digest(identity)
+    added, physical = 0, 0
     arm_order = ['R', 'A', 'adaptive'] if int(name[1:]) % 2 else ['A', 'R', 'adaptive']
     try:
         for slot in range(32):
@@ -104,6 +120,8 @@ def run_case(case, output, backend_factory, backend_identity, *, max_new_observa
                     else:
                         if backend is None:
                             backend = backend_factory(case)
+                            from .acquisition_reader import validate_parity
+                            validate_parity(backend.baseline_likelihoods, baseline['likelihoods'])
                         started = time.perf_counter()
                         measured = backend.score(retained_ids)
                         g, s = scores(measured['likelihoods'])
@@ -133,6 +151,7 @@ def run_case(case, output, backend_factory, backend_identity, *, max_new_observa
                     pending[arm] = None
         result = {'case': name, 'complete': True, 'identity_sha256': runtime_identity,
                   'synthetic': backend_identity.get('synthetic', False),
+                  'baseline_record_sha256': sha(baseline_path), 'baseline_G_S': list(reference),
                   'arms': {arm: summarize(rows, reference) for arm, rows in histories.items()},
                   'adaptive_quartets': controller.diagnostics, 'adaptive_scale': controller.scale.tolist(),
                   'logical_observations': {arm: len(rows) for arm, rows in histories.items()},
@@ -155,7 +174,8 @@ class SyntheticReader:
         n = len(case['public']['costs'])
         rng = rng_for(case['public']['case'], 'synthetic-reader')
         self.weights = rng.normal(0, .2, (2, n))
-        self.reference = np.asarray(scores(case['reader']['reference_likelihoods']))
+        self.baseline_likelihoods = list(case['reader']['reference_likelihoods'])
+        self.reference = np.asarray(scores(self.baseline_likelihoods))
 
     def score(self, ids):
         self.calls += 1

@@ -110,3 +110,27 @@ actual windows avoids still more wasted work. This is an analytical allocation
 comparison, not a measured whole-model speedup or memory-fit guarantee.
 No implementation change, package change, or new GPU submission was made during
 this diagnosis. Do not infer that requesting a larger GPU is necessary.
+
+
+## SOL efficient-attention diagnostic and authorized full scoring
+
+Q12 diagnostic 63238904 completed in 2m47s on A10080. Efficient peak GPU
+allocation was 19.4 GiB, segmented math 22.7 GiB, and job host MaxRSS 10.9 GiB.
+Both generated Adele exactly and ranked A0/A16/R8/R24 identically for G, S, C.
+Cached-versus-legacy masked likelihoods matched exactly within each backend.
+Effect differences were not a constant offset: max absolute difference in delta C
+was about 0.441. This is four-mask one-question evidence, not historical parity.
+
+The owner accepted current-execution baselines and removing historical score
+equality / separate smoke receipt as launch blockers. Current guards still
+check original generated answer, fixed identities, and cached-versus-legacy
+parity at 1e-4. Historical likelihoods remain immutable provenance. The runner
+saves a new baseline before any adaptive decision and reuses it for all arms.
+
+The owner then authorized SOL execution sharded by question, 17 questions and
+three arms, because all CoRAL GPUs were occupied. Binding updated instructions:
+[SCORING.md](../../sol/adaptive-acquisition/SCORING.md), with array 1-17%4 and
+one compatible GPU / 2 CPUs / 24000 MiB RAM / 20 minutes per shard. All three
+arms run together with 32 observations each. Existing scratch inputs/model/env
+are reused; no new retrieval or data downloads. Submission is pending until
+Git transfer, live scheduler check, and exact commit pin are complete.

@@ -1,3 +1,7 @@
+> Superseded for current execution by [SCORING.md](SCORING.md): the owner has
+> authorized 17-question scoring and current-execution baselines. The smoke
+> and diagnostic history below is retained as provenance.
+
 # SOL one-question adaptive acquisition smoke
 
 Owner authorized on 2026-09-14: run the existing Q12 smoke on SOL instead of the

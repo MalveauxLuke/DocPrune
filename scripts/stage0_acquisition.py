@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 # Support both repository and self-contained portable package execution.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'src'))
@@ -75,7 +76,7 @@ def main():
             p.add_argument('--platform', choices=('h200', 'sol'), default='h200')
             p.add_argument('--coral-channel-or-relay', action='store_true')
         if command == 'score':
-            p.add_argument('--smoke-receipt', required=True, type=Path)
+            p.add_argument('--smoke-receipt', type=Path, help='Optional additional matching smoke provenance; each question still runs its integration guard')
     args = parser.parse_args()
     if args.command == 'prepare':
         print(json.dumps(prepare(args.receipt, args.banks, args.owned, args.output), indent=2))
@@ -110,13 +111,17 @@ def main():
     with run_lock(args.output):
         # No Torch/model imports occur before the explicit execution and occupancy gate.
         preflight = gpu_preflight(args)
-        if args.command == 'score':
+        if args.command == 'score' and args.smoke_receipt is not None:
             smoke = read_record(args.smoke_receipt)
             expected = {'package_sha256': validated['manifest_sha256'], 'code_sha256': tree_identity()}
             if any(smoke.get(k) != v for k, v in expected.items()) or smoke.get('passed') is not True:
                 raise ValueError('An intact matching successful smoke receipt is required')
         from docprune.acquisition_reader import QwenTeacher
         teacher = QwenTeacher(runtime, snapshot)
+        write_new(args.output/'execution.json', {'package_sha256': validated['manifest_sha256'],
+                  'environment': teacher.identity,
+                  'cases': selected, 'baseline_policy': 'current-execution-v1'})
+        write_new(args.output/f'execution-attempt-{time.time_ns()}.json', {'preflight': preflight})
         if args.command == 'smoke':
             checkpoint = teacher.question(cases[0], args.package)
             from docprune.acquisition_io import token_identity
@@ -133,7 +138,7 @@ def main():
             checkpoint.close()
             print(json.dumps({'passed': True, 'receipt': str(args.output/'smoke.json')}, indent=2))
         else:
-            if smoke['environment'] != teacher.identity:
+            if args.smoke_receipt is not None and smoke['environment'] != teacher.identity:
                 raise ValueError('Smoke and scoring runtime identities differ')
             results = [run_case(c, args.output, lambda c: teacher.question(c, args.package), teacher.identity) for c in cases]
             print(json.dumps({'completed_cases': len(results), 'masked_scoring_complete': True,
