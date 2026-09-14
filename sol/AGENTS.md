@@ -10,11 +10,11 @@ authority.
 - Use login nodes only for light inspection, editing, and submission.
 - Use a compute allocation for installation, downloads, hashing, extraction,
   preprocessing, inference, and training.
-- When speed is important and work can be safely sharded, request as many
-  concurrent GPUs as the account/QOS and workload permit. Use job arrays with
-  the broadest compatible GPU constraints; do not request unnecessary GPU
-  models or memory. Limit parallelism only to avoid duplicate writes, invalid
-  comparisons, or resource-policy violations.
+- Request the minimum necessary GPUs, GPU memory, CPU cores, host RAM, and
+  wall time. Prefer any compatible GPU, not a specific model. Verify scheduler
+  minima; use measured peaks/failures to justify increases. Do not maximize
+  parallel GPU reservations merely to reduce elapsed time unless the owner
+  explicitly prioritizes that tradeoff.
 - Keep code and small provenance in Git; keep large runtime material on
   `/scratch/$USER`.
 - For replays or controlled diagnostics with sealed retrieval artifacts, use

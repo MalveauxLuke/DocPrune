@@ -54,3 +54,12 @@ work or supply default model settings and GPU assignments.
   generated-artifact prohibition above. It excludes model weights, credentials,
   caches and unrelated datasets. Remove from tracking only after verified local
   receipt, following `docs/experiments/corrective-selection/COLFEATURES17.md`.
+
+## Resource requests
+
+- Default to the minimum hardware needed for the task: GPU count and memory,
+  CPU cores, host RAM, and wall time. Use any compatible GPU rather than
+  restricting the model unnecessarily. Respect the scheduler minimums; verify
+  them live rather than treating an old number as universal. For an unmeasured
+  smoke, start with a justified minimal request and record actual peaks. Increase
+  resources only for a measured failure/requirement or an explicit owner request.
