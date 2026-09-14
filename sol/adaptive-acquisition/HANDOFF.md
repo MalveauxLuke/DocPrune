@@ -49,3 +49,11 @@ to compact and stock-generation vision paths; decoder attention is unchanged.
 No package upgrade is required. Run tests/test_acquisition_attention.py on the
 existing setup allocation before submission. Existing all-keep 1e-4 and exact
 generation parity gates remain mandatory; a backend change is not a parity pass.
+
+Owner-approved allocation repair: constrain the generic one-GPU request to the
+live SOL whole-GPU feature families a30, a100_40, a100_80, l40, l40s, h100.
+The a100_20 nodes and mixed H200/MIG nodes are excluded from this bounded smoke.
+Runtime admission checks CUDA-visible capacity and BF16, resolves CUDA ordinal
+zero to its PCI bus ID through libcudart, and queries nvidia-smi by PCI/UUID.
+It rejects other processes on that device, while allowing its own initialized
+CUDA context. Sampled utilization alone is not evidence of a conflicting job.

@@ -37,21 +37,50 @@ def sol_preflight(args, *, check_occupancy=True):
     nodes = subprocess.check_output(['scontrol', 'show', 'hostnames', fields['NodeList']], text=True).split()
     if socket.gethostname().split('.')[0] not in nodes:
         raise ValueError('Process is outside the allocated compute node')
-    query = subprocess.check_output(['nvidia-smi', '-i', visible,
+    # Resolve CUDA ordinal zero through the loaded CUDA runtime. Slurm/cgroups
+    # may renumber ordinals; nvidia-smi numeric indexes need not match them.
+    import torch
+    if torch.cuda.device_count() != 1 or torch.cuda.get_device_capability(0)[0] < 8:
+        raise ValueError('The assigned GPU must support native BF16 (compute capability 8+)')
+    capacity = torch.cuda.get_device_properties(0).total_memory / (1024**2)
+    if capacity < 23000:
+        raise ValueError(f'Assigned CUDA device has {capacity:.0f} MiB; need at least 23000 MiB')
+    if visible.startswith('MIG-') or any('.20gb' in key or '.35gb' in key or '.71gb' in key for key in allocated):
+        raise ValueError('This smoke requires a whole GPU; MIG allocation is not admitted')
+    pci = cuda_pci_bus_id()
+    query = subprocess.check_output(['nvidia-smi', '-i', pci,
         '--query-gpu=uuid,name,memory.used,memory.total,utilization.gpu',
         '--format=csv,noheader,nounits'], text=True).strip()
     if len(query.splitlines()) != 1:
         raise ValueError('Expected one assigned physical GPU')
     uuid, name, used, total, util = [part.strip() for part in query.split(',')]
-    processes = subprocess.check_output(['nvidia-smi', '-i', visible,
+    if abs(float(total) - capacity) > 1024:
+        raise ValueError('CUDA and physical GPU capacities disagree; refusing ambiguous device')
+    processes = subprocess.check_output(['nvidia-smi', '-i', uuid,
         '--query-compute-apps=pid', '--format=csv,noheader,nounits'], text=True).strip()
-    if processes or float(used) > 512 or float(util) > 5:
-        raise RuntimeError('Assigned GPU is occupied; no model loaded')
-    if float(total) < 23000:
-        raise ValueError('This BF16 smoke requires at least 23000 MiB of GPU memory')
-    import torch
-    if torch.cuda.device_count() != 1 or torch.cuda.get_device_capability(0)[0] < 8:
-        raise ValueError('The assigned GPU must support native BF16 (compute capability 8+)')
+    foreign = [pid.strip() for pid in processes.splitlines() if pid.strip() != str(os.getpid())]
+    if foreign:
+        raise RuntimeError(f'Assigned GPU {uuid} at {pci} has other process IDs {foreign}; no model loaded')
+    # CUDA initialization can itself consume memory and cause transient activity.
+    # Do not mistake our own context or a sampled utilization value for another job.
     return {'platform': 'sol', 'job_id': job, 'node': socket.gethostname(),
-            'assigned_device': visible, 'uuid': uuid, 'name': name,
+            'assigned_device': visible, 'pci_bus_id': pci, 'uuid': uuid, 'name': name,
             'memory_used_mb': used, 'memory_total_mb': total, 'utilization_percent': util}
+
+
+def cuda_pci_bus_id():
+    """Ask the already-loaded CUDA runtime for visible ordinal zero's PCI ID."""
+    import ctypes
+    paths = {line.split()[-1] for line in Path('/proc/self/maps').read_text().splitlines()
+             if '/libcudart.so' in line}
+    if len(paths) != 1:
+        raise RuntimeError(f'Expected one loaded CUDA runtime, found {len(paths)}')
+    runtime = ctypes.CDLL(paths.pop())
+    query = runtime.cudaDeviceGetPCIBusId
+    query.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    query.restype = ctypes.c_int
+    buffer = ctypes.create_string_buffer(32)
+    status = query(buffer, len(buffer), 0)
+    if status:
+        raise RuntimeError(f'CUDA PCI identity query failed with status {status}')
+    return buffer.value.decode('ascii')

@@ -6,7 +6,11 @@ import unittest
 from unittest.mock import patch
 from docprune.acquisition_sol import sol_preflight
 class SOLTests(unittest.TestCase):
+ def fake_torch(self, memory=24258):
+  return SimpleNamespace(cuda=SimpleNamespace(device_count=lambda:1,get_device_capability=lambda i:(8,0),get_device_properties=lambda i:SimpleNamespace(total_memory=memory*1024**2)))
  def setUp(self):
+  resolver=patch('docprune.acquisition_sol.cuda_pci_bus_id',return_value='0000:81:00.0'); resolver.start(); self.addCleanup(resolver.stop)
+  self.torchpatch=patch.dict(sys.modules,{'torch':self.fake_torch()}); self.torchpatch.start(); self.addCleanup(self.torchpatch.stop)
   self.args=SimpleNamespace(command='smoke',physical_gpu=None,package=Path('/scratch/test/inputs'),output=Path('/scratch/test/output'))
   self.env={k:'/scratch/test/cache' for k in ('HF_HOME','TRANSFORMERS_CACHE','PIP_CACHE_DIR','UV_CACHE_DIR','TORCH_HOME','XDG_CACHE_HOME','CONDA_PKGS_DIRS','TMPDIR')}
   self.env.update(SLURM_JOB_ID='123',CUDA_VISIBLE_DEVICES='2')
@@ -24,9 +28,18 @@ class SOLTests(unittest.TestCase):
     with self.assertRaises((ValueError,RuntimeError)): sol_preflight(self.args)
  def test_preserves_slurm_device_and_rejects_full_scoring(self):
   responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','']
-  torch=SimpleNamespace(cuda=SimpleNamespace(device_count=lambda:1,get_device_capability=lambda i:(8,0)))
+  torch=self.fake_torch()
   with patch.dict(sys.modules,{'torch':torch}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
    result=sol_preflight(self.args); self.assertEqual(result['assigned_device'],'2'); self.assertEqual(os.environ['CUDA_VISIBLE_DEVICES'],'2')
    self.args.command='score'
    with self.assertRaisesRegex(ValueError,'one-question'): sol_preflight(self.args)
+ def test_device_mapping_own_context_and_small_gpu(self):
+  responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA A30, 800, 24258, 12',str(os.getpid())]
+  with patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses) as query:
+   result=sol_preflight(self.args)
+   self.assertEqual(result['pci_bus_id'],'0000:81:00.0')
+   self.assertEqual(query.call_args_list[2].args[0][2],'0000:81:00.0')
+   self.assertEqual(query.call_args_list[3].args[0][2],'GPU-abc')
+  with patch.dict(sys.modules,{'torch':self.fake_torch(20000)}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses[:2]):
+   with self.assertRaisesRegex(ValueError,'need at least'): sol_preflight(self.args)
 if __name__=='__main__': unittest.main()

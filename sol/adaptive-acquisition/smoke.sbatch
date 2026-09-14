@@ -3,6 +3,7 @@
 #SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --gres=gpu:1
+#SBATCH --constraint="a30|a100_40|a100_80|l40|l40s|h100"
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=24000M
 #SBATCH --time=00:20:00
