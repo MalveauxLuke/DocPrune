@@ -2,9 +2,9 @@
 #SBATCH --job-name=docprune-acq-smoke
 #SBATCH --partition=htc
 #SBATCH --qos=public
-#SBATCH --gres=gpu:h100:1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=48G
+#SBATCH --mem=24000M
 #SBATCH --time=00:20:00
 #SBATCH --output=/scratch/lmalveau/docprune-adaptive-acquisition/20260914-smoke01/smoke-%j.log
 set -euo pipefail

@@ -25,7 +25,7 @@ the local model path using --snapshot. Download Qwen/Qwen2.5-VL-7B-Instruct at
 cc594898137f460bfe9f0759e9844b3ce807cfb5 into the task HF cache on scratch.
 Model execution is offline. No fresh retrieval, rerendering, or feature extraction.
 
-Submit smoke.sbatch: one H100 (Hopper, >=70 GiB), two CPUs, 48 GiB RAM, 20 minutes
+Submit smoke.sbatch: one compatible GPU (native BF16, >=23000 MiB VRAM), two CPUs, 24000 MiB RAM, 20 minutes
 on htc/public. Slurm owns GPU assignment; never use CoRAL IDs on SOL. The runner
 checks allocation ownership, node membership, a single assigned idle GPU and
 scratch paths. Preserve all scientific settings, G/S targets, 50% token mask,
@@ -36,3 +36,7 @@ this contract may be committed and retried in a new job output directory. Do
 not relax parity, change the checkpoint or expand to full scoring. A passed
 SOL smoke is hardware-specific integration evidence, not an H200 validation or
 a comparison of the three acquisition policies. Return the log and receipt.
+
+Owner resource update: use any compatible GPU and the admitted 24000 MiB host
+RAM minimum. This is a bounded memory-fit trial; actual peak RAM/VRAM will be
+measured. Never relax scientific parity checks for a different GPU.

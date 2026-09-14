@@ -47,8 +47,11 @@ def sol_preflight(args, *, check_occupancy=True):
         '--query-compute-apps=pid', '--format=csv,noheader,nounits'], text=True).strip()
     if processes or float(used) > 512 or float(util) > 5:
         raise RuntimeError('Assigned GPU is occupied; no model loaded')
-    if not any(model in name for model in ('H100', 'H200')) or float(total) < 70000:
-        raise ValueError('This smoke requires a Hopper GPU with at least 70 GiB')
+    if float(total) < 23000:
+        raise ValueError('This BF16 smoke requires at least 23000 MiB of GPU memory')
+    import torch
+    if torch.cuda.device_count() != 1 or torch.cuda.get_device_capability(0)[0] < 8:
+        raise ValueError('The assigned GPU must support native BF16 (compute capability 8+)')
     return {'platform': 'sol', 'job_id': job, 'node': socket.gethostname(),
             'assigned_device': visible, 'uuid': uuid, 'name': name,
             'memory_used_mb': used, 'memory_total_mb': total, 'utilization_percent': util}

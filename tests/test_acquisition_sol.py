@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -18,12 +19,13 @@ class SOLTests(unittest.TestCase):
    with self.assertRaisesRegex(ValueError,'scratch'): sol_preflight(self.args)
  def test_rejects_lightwork_wrong_node_and_occupied(self):
   valid='JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01'
-  for responses in [[valid.replace('htc','lightwork')],[valid,'othernode'],[valid,'gpu01','GPU-abc, NVIDIA H100, 0, 81000, 0','1234']]:
+  for responses in [[valid.replace('htc','lightwork')],[valid,'othernode'],[valid,'gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','1234']]:
    with patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
     with self.assertRaises((ValueError,RuntimeError)): sol_preflight(self.args)
  def test_preserves_slurm_device_and_rejects_full_scoring(self):
-  responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA H100, 0, 81000, 0','']
-  with patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
+  responses=['JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01','gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','']
+  torch=SimpleNamespace(cuda=SimpleNamespace(device_count=lambda:1,get_device_capability=lambda i:(8,0)))
+  with patch.dict(sys.modules,{'torch':torch}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses):
    result=sol_preflight(self.args); self.assertEqual(result['assigned_device'],'2'); self.assertEqual(os.environ['CUDA_VISIBLE_DEVICES'],'2')
    self.args.command='score'
    with self.assertRaisesRegex(ValueError,'one-question'): sol_preflight(self.args)
