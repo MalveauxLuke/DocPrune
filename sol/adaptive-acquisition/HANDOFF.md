@@ -57,3 +57,21 @@ Runtime admission checks CUDA-visible capacity and BF16, resolves CUDA ordinal
 zero to its PCI bus ID through libcudart, and queries nvidia-smi by PCI/UUID.
 It rejects other processes on that device, while allowing its own initialized
 CUDA context. Sampled utilization alone is not evidence of a conflicting job.
+
+## Owner-approved Q12 parity diagnostic
+
+Following smoke 63237841 (historical likelihood error 0.0440483093), the owner
+explicitly approved the Q12 diagnostic, including four fixed masks, one
+40GB-or-larger compatible whole GPU, 24000 MiB host RAM, two CPUs and 20 minutes.
+Submit parity-diagnostic.sbatch with the exact committed code pin. It compares
+current efficient vision SDPA with sequential segmented math SDPA, keeping the
+same model, images, tokens, decoder and answer targets. The fixed mask slots
+are A[0], A[16], R[8], R[24] (zero-based). Record baseline G/S/C, mask effects,
+rankings, one masked legacy-path comparison per backend, exact generated-answer
+identity, timings and peak GPU memory. Save each check atomically to scratch.
+The math path needs larger temporary tensors, motivating the 40GB floor; fit
+and completion within 20 minutes are estimates, not guarantees. Sequential math
+preserves attention boundaries but is not a bitwise historical-kernel replay.
+All diagnostic records say passed=false and diagnostic_only=true. They cannot
+serve as a smoke receipt or authorize full scoring; production parity gates
+remain unchanged. No new package installation, retrieval or full experiment.

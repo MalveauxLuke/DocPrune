@@ -16,3 +16,8 @@ Preserve failed outputs; only narrow contract-preserving fixes/retries permitted
 
 The prior Colfeatures17 task is complete. Its historical handoff remains in
 Git history and docs/experiments/corrective-selection/COLFEATURES17.md.
+
+Additional active owner approval: Q12 parity diagnostic in the handoff above,
+using parity-diagnostic.sbatch at its pinned commit. One >=40GB compatible GPU,
+24000 MiB host RAM, two CPUs, 20 minutes. Four predetermined masks; incremental
+scratch records; no successful smoke claim or expanded scoring authority.
