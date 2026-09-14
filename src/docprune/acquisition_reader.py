@@ -145,8 +145,9 @@ class QuestionCheckpoint:
         with torch.inference_mode():
             positions, _ = self.model.get_rope_index(self.batch['input_ids'], image_grid_thw=self.grid,
                                                     attention_mask=self.batch['attention_mask'])
+            vision_parameter = next(self.model.visual.parameters())
             vision = compact_vision_batch(self.model.visual,
-                       self.batch['pixel_values'].to(device=self.model.visual.get_device(), dtype=self.model.visual.get_dtype()),
+                       self.batch['pixel_values'].to(device=vision_parameter.device, dtype=vision_parameter.dtype),
                        self.grid, keep)
             compact = compact_multimodal_sequence(input_ids=self.batch['input_ids'],
                        attention_mask=self.batch['attention_mask'], position_ids=positions,
