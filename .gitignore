@@ -63,3 +63,7 @@ slurm-*.err
 # Local receipt verified 2026-09-11; preserve archives locally.
 /transfer/colfeatures17/input/
 /transfer/colfeatures17/result/
+
+# Local cross-machine connection and transfer guide.
+/H200_SOL_MAC_RUNBOOK.md
+/h200-operations/H200_SOL_MAC_RUNBOOK.md

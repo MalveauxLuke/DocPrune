@@ -1,0 +1,90 @@
+{
+  "scope": "Visual review of all 68 pages and selected informative sections. Region roles are hypotheses from page content, not independently adjudicated causal labels. Every region has scores in the atlas; unannotated regions remain unclassified. Page ranks and region indices are zero-based.",
+  "cases": {
+    "Q01": {
+      "summary": "Separate the queried driver from a former-driver name in team navigation and from a literal hand-gesture page.",
+      "pages": ["Gustavo Yacaman photograph, biography and Indy Lights narrative support the requested driver identity.", "Team Moore navigation and former-driver table surface Dillon Battistini, a competing person associated with the same team.", "Indy Lights results table supplies season context; 2010 and 2011 rows require temporal binding.", "Little-finger anatomy, pinky promise and shaka discussion match the gesture but supply no driver identity."],
+      "regions": {"24": "Competing-person table: Dillon Battistini. Strong fixed-self support in the historical fit; raw MaxSim ranks it only 41/119.", "40": "Results table: plausible season context, with multiple years. Check year-person binding."}
+    },
+    "Q02": {
+      "summary": "The snow photograph and its adjacent canopy caption can pull the answer in opposite directions; the distant-mountain cue also matches a wrong location.",
+      "pages": ["Seasonal snow prose provides supporting context; flora details and the remaining table concern other properties.", "References provide background, with no direct replacement for judging the photograph.", "Area 51 mountain photograph is visually similar but belongs to a different entity.", "Namdapha snow photograph supports the visual answer; the nearby 'Canopy cover' caption is a competing textual cue."],
+      "regions": {"75": "Snow photograph: supporting visual evidence.", "76": "Canopy caption: harmful candidate adjacent to the helpful photograph. Hand-focused mountain words miss it; the original-question score surfaces it."}
+    },
+    "Q03": {
+      "summary": "Attractive award and filmography tables mix years and works. A negative answer still requires preserving the year-work-category relationships.",
+      "pages": ["Biography and other awards supply entity context, with many nearby but unmatched facts.", "References include other years, including 2004 and 2006.", "Filmography contains 2007 for a different program; an award table associates This Hour with 2004.", "The 2007 award entry concerns Comedy Inc., creating a work mismatch for the question."],
+      "regions": {"21": "Filmography: matching year can belong to a different program.", "22": "Award table: requested work but mismatched year.", "23": "Award table: requested year but mismatched work. Strong negative-G and negative-C fit; retain the distinction between a misleading match and evidence for 'No'."}
+    },
+    "Q04": {
+      "summary": "A completeness case: the screenplay prose and infobox contain the full answer, while the fixed self-answer can reuse part of it.",
+      "pages": ["Cultural-reception commentary contains writers and opinions but is peripheral to screenplay credits.", "Citations and marketing material are background.", "Release and box-office material is peripheral.", "Lead and infobox explicitly name Ryan Coogler and Joe Robert Cole as screenplay writers."],
+      "regions": {"24": "Screenplay prose: useful, partly redundant with the infobox. Negative C does not make this false evidence.", "27": "Screenplay infobox: useful complete credit. Both gold and a partial self-answer can receive support."}
+    },
+    "Q05": {
+      "summary": "LPGA Rookie of the Year and Golf Digest awards are distinct relations that occur near each other.",
+      "pages": ["Footer and external links provide background.", "Biography mentions LPGA rookie 1969, Golf Digest comeback 1985 and an award infobox; proximity can mix award sponsors and categories.", "Awards table puts LPGA rookie, Golf Digest most-improved and comeback awards in one region.", "Professional-career prose separates the relevant awards; amateur-career sections concern different achievements."],
+      "regions": {"26": "Compact award infobox: negative-C candidate missed by broad raw score.", "28": "Mixed awards table: correct distinctions and plausible wrong association share one deletion unit.", "37": "Professional-career prose: supports the distinction between awards."}
+    },
+    "Q06": {
+      "summary": "Near-identical singer categories and wrong-entity award pages create candidate confusions; category granularity is partly inside one table.",
+      "pages": ["Female-singer navigation includes Nancy and 2015, a competing entity-year cue.", "Biography, photograph and discography provide identity context but weak support for the exact award category.", "Palak Muchhal awards concern another singer and include a tempting 2016 date.", "Awards table distinguishes Best Singer (Female), 2014, from Best Female Playback Singer, 2015; both are in the same coarse region."],
+      "regions": {"4": "Navigation: competing singer and year.", "36": "Useful awards table with internal category distinctions. Existing region masks cannot isolate its rows."}
+    },
+    "Q07": {
+      "summary": "A clear species-versus-species-and-subspecies conflict: 49 is directly supported, while 66 is a strong competing count.",
+      "pages": ["Snakes paragraph reports 66 species AND subspecies, plus a nonvenomous count; this can answer the wrong counting unit.", "Reptile references and turtle material are peripheral.", "Lead explicitly gives 49 snake species excluding subspecies, supporting the requested counting unit.", "Alabama museum navigation matches the location but supplies no snake count."],
+      "regions": {"2": "66-species-and-subspecies paragraph: strong harmful candidate under the species-only question.", "24": "49-species lead: useful evidence to preserve while probing the competing paragraph."}
+    },
+    "Q08": {
+      "summary": "The relevant points table contains the correct comparison. The fixed self-answer's incompleteness complicates interpreting contrast coefficients.",
+      "pages": ["Norra table shows Hammarby 36 versus Atvidaberg 17 points; a separate Sodra table concerns another division.", "Champion and promotion discussion provides Hammarby context.", "Relegation material supplies an Atvidaberg ordering but does not replace the requested points comparison.", "Navigation and references are background."],
+      "regions": {"0": "Norra points table: essential team-points binding despite its negative-C coefficient. Do not label the whole table a distractor."}
+    },
+    "Q09": {
+      "summary": "A list-completeness case: a narrative supports one season; the table supplies both requested season-position pairs.",
+      "pages": ["Club lead and history identify the team and league.", "Narrative supplies the 2000-01 nineteenth-place result, only one part of the requested answer.", "Later season material and references provide background.", "Recent-seasons table supplies 1999-2000 eleventh and 2000-01 nineteenth in Bayernliga, alongside later divisions."],
+      "regions": {"58": "Complete two-season table: a large positive-S and negative-C fit can reflect an incomplete self-answer using correct content. Existing masks cannot delete individual rows."}
+    },
+    "Q10": {
+      "summary": "Album membership depends on a table's album row span; nearby singles and later releases offer plausible wrong entries.",
+      "pages": ["Singles table binds Don't Talk, Peace Train, Like the Weather and What's the Matter Here to In My Tribe; other album blocks share the table.", "Because the Night and MTV Unplugged material offers a highly matching single from another album.", "Band biography and album list provide general context.", "Prose distinguishes the original In My Tribe Peace Train release from later removal, with other albums nearby."],
+      "regions": {"0": "Singles table: strongly supports G and S; album headings and row spans are necessary for membership."}
+    },
+    "Q11": {
+      "summary": "Championship, Series, driver identity and the same car must remain bound; keyword matches can promote the wrong competition.",
+      "pages": ["1976-95 Championship table includes Tony Edmondson in the same car, a competing driver. Photograph/caption about Ricciardello's wins can bridge context.", "Series 2012+ table includes Tony Ricciardello and the car but concerns the wrong competition category.", "1998, 1999, 2001 and 2002 Championship entries support the answer; a separate Series table supplies competing years.", "References and footer are background."],
+      "regions": {"4": "Earlier Championship table: same car, different Tony.", "7": "Series 2012+ table: strong wrong-competition candidate.", "11": "Relevant Championship table. Hand-focused token scores miss it because useful context is elsewhere."}
+    },
+    "Q12": {
+      "summary": "An unrelated Adele reference page matches 'chasing' and strongly competes with the football photograph.",
+      "pages": ["Career statistics and references supply football context but weak direct visual evidence.", "Zeneli football photograph supplies the relevant visual evidence.", "Biography footer and aliases provide background.", "Adele references include 'Chasing Adele': a lexical match on an unrelated entity and page."],
+      "regions": {"22": "Football photograph: strong positive-G region in the historical fit.", "59": "Adele references: strong harmful candidate. Raw augmented score rank 37/111 becomes question-only rank 5 and automatic query-peak rank 1. Its 2394-token size exceeds a 20% nomination-token cap."}
+    },
+    "Q13": {
+      "summary": "The Paramore-to-Decode bridge is needed to find the performance, but Decode also competes as an answer to the requested theme field.",
+      "pages": ["Punk Goes Pop covers table contains Paramore with different performers and can distract.", "Colton biography mentions Paramore as an influence, providing entity context.", "References supply background.", "Paragraph maps Paramore to Decode; the performance table maps Decode to the theme Personal Choice. The answer requires both relations."],
+      "regions": {"28": "Bridge paragraph: useful for the join but strongly supports the competing short answer Decode. This is not simply false content.", "29": "Performance/theme table: supports the requested field Personal Choice."}
+    },
+    "Q14": {
+      "summary": "The historical ten-state table is split across pages; modern maps and area tables offer numbers for a different administrative period.",
+      "pages": ["Historical table continuation gives Upper Nile area 77283.42; SPLM 21-state map is a different scheme.", "Modern map and administrative table use a different period.", "Modern Eastern Equatoria 73472 and Upper Nile 77283 preserve the numerical ordering but belong to another period; 32-state map is also mismatched.", "Historical 2011-2015 ten-state table gives Eastern Equatoria 73471.51; it must be joined to the continuation on rank 0."],
+      "regions": {"25": "Historical table: contains an essential half of the comparison despite negative C. Preserve the cross-page continuation. Original question typo '2105' is unchanged."}
+    },
+    "Q15": {
+      "summary": "Two separate sources support that both cocktails are highballs; glass appearance and an unrelated song can be competing cues.",
+      "pages": ["Rickey lead explicitly classifies it as a highball.", "Greyhound infobox says Type: Highball; the photograph uses martini-style glasses, a possible visual classification distractor.", "Rickey history and variations provide partly redundant context.", "University 'Highball' song is a literal keyword match unrelated to cocktail type."],
+      "regions": {"6": "Rickey lead: useful part of a two-cocktail answer.", "37": "Greyhound photograph: possible glass-shape distractor; causal interpretation remains provisional.", "38": "Greyhound Type: Highball field: complementary to the Rickey lead."}
+    },
+    "Q16": {
+      "summary": "Order-of-Merit finishing position differs from event wins. The wrong-field match is a useful automatic nomination target.",
+      "pages": ["Order-of-Merit table gives Terry fifth and Simon third, supporting the requested ranking comparison; awards concern different quantities.", "Season infobox Most Wins: Terry 2 is a competing metric.", "Women's Order of Merit 2017-24 concerns another population and years.", "Event-winners list includes Simon and Terry but does not provide annual finishing positions."],
+      "regions": {"19": "Most-wins infobox: harmful candidate from a different field.", "26": "Event-winners table: very high matching score but weak measured negative-C coefficient."}
+    },
+    "Q17": {
+      "summary": "The cloze can elicit a software type or license description, both factually present; treat this as an answer-contract ambiguity case.",
+      "pages": ["Video-editing navigation mixes freeware and free/open-source software, creating a category cue.", "Infobox says Type: video editing software and License: Freeware; history discusses Vista and Live releases.", "References and Windows component navigation are background.", "References to other releases are background."],
+      "regions": {"2": "Navigation: mixed software-type and license cues.", "5": "Infobox: both the gold software type and the fixed self-answer license can be true. Interpret teacher differences with the cloze contract in view."}
+    }
+  }
+}

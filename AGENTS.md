@@ -9,6 +9,16 @@ agent to them.
 
 This repository concerns token compression for document QA.
 
+## H200 operations
+
+Before doing anything involving H200s, read
+[`h200-operations/README.md`](h200-operations/README.md) and
+[`h200-operations/CORAL_POLICY.md`](h200-operations/CORAL_POLICY.md).
+For connections, transfers or shared-account sessions, also read the local,
+Git-ignored `h200-operations/H200_SOL_MAC_RUNBOOK.md`. Read the selected task's
+scoped instructions when applicable; archived handoffs do not authorize new
+work or supply default model settings and GPU assignments.
+
 ## Working rules
 
 - Preserve immutable sources and keep generated or large artifacts outside Git.

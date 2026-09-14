@@ -1,0 +1,8 @@
+# Observed frozen-reader versions. Compatibility inventory, not a full installer.
+# Python 3.10; do not apply to a shared environment without authorization.
+torch==2.4.1
+transformers==4.49.0
+numpy==1.26.4
+Pillow==10.4.0
+qwen-vl-utils==0.0.8
+accelerate==1.1.0
