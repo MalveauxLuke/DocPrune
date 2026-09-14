@@ -18,6 +18,9 @@ from docprune.adaptive_acquisition import digest
 def gpu_preflight(args, *, check_occupancy=True):
     if not args.execute_gpu:
         raise ValueError('GPU execution requires --execute-gpu; preparation never runs a model')
+    if getattr(args, 'platform', 'h200') == 'sol':
+        from docprune.acquisition_sol import sol_preflight
+        return sol_preflight(args, check_occupancy=check_occupancy)
     if args.physical_gpu not in range(4, 8):
         raise ValueError('This experiment permits only CoRAL physical GPUs 4–7')
     if not args.coral_channel_or_relay:
@@ -68,7 +71,8 @@ def main():
             p.add_argument('--snapshot', type=Path)
         if command in ('smoke', 'score'):
             p.add_argument('--execute-gpu', action='store_true')
-            p.add_argument('--physical-gpu', type=int, required=True)
+            p.add_argument('--physical-gpu', type=int)
+            p.add_argument('--platform', choices=('h200', 'sol'), default='h200')
             p.add_argument('--coral-channel-or-relay', action='store_true')
         if command == 'score':
             p.add_argument('--smoke-receipt', required=True, type=Path)

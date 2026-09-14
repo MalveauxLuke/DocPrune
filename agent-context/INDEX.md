@@ -32,3 +32,5 @@ Archived task files are nonbinding. Open historical evidence only as needed.
 - [Stage 0 adaptive acquisition, frozen v1](../docs/experiments/corrective-selection/STAGE0_ADAPTIVE_ACQUISITION.md) — three-arm controller and scoring integration prepared; GPU execution pending.
 - [Adaptive acquisition implementation and verification](findings/2026-09-14-stage0-adaptive-acquisition.md)
 - [Adaptive acquisition H200 handoff](../h200/adaptive-acquisition/README.md) — environment contract and separately gated smoke/scoring commands.
+
+- [SOL Q12 acquisition smoke](../sol/adaptive-acquisition/HANDOFF.md) — current bounded GPU smoke; scratch-only runtime paths.
