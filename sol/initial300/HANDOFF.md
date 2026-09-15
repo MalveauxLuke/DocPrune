@@ -138,3 +138,16 @@ returns failure if either process errors. ColQwen diagnostic success only
 means measurements were collected, not that batching was approved. Preserve
 all previous failed evidence and do not create a production admission from
 this job's exit status alone. No full production arrays or teacher runs.
+
+## Approved four-page region-ranking check
+
+Owner approved 2026-09-15: run `region-diagnostic.sbatch`, at the tested
+DP300_COMMIT. Same four smoke pages, same batch/singleton encodings and
+associated questions. Reuse measured MinerU boxes; positive-area patch overlap
+and summed regional per-query-token MaxSim match the existing combine profiles.
+Save full region scores/order, top-1/3/5 overlap, strict pair reversals, rank
+shifts, and embeddings under diagnostics/regions-JOB_ID. No additional variants
+or MinerU inference. One generic GPU, 2 CPUs, 24000M RAM, 10 minutes based on
+the measured 101-second ColQwen stage. No production admission is created.
+Render existing ten MinerU outputs and transfer review images using rsync.
+A 1-CPU/2GB lightwork allocation may be used for rendering and transfers.

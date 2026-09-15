@@ -26,3 +26,6 @@ Current approved next job: `sol/initial300/diagnose.sbatch` — minimal four-pag
 ColQwen batch/singleton measurement followed by the original MinerU smoke.
 See the handoff's final section. Passing this diagnostic job is not production
 admission; report the unchanged ColQwen threshold separately.
+
+Latest approved diagnostic: `sol/initial300/region-diagnostic.sbatch`; see
+Handoff four-page region-ranking section. Inspect existing MinerU overlays.
