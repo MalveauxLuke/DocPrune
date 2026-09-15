@@ -19,8 +19,8 @@ def run(a):
  executor=ThreadPoolExecutor(max_workers=2)
  client=MinerUClient(backend='transformers',model=model,processor=processor,batch_size=a.batch,executor=executor,use_tqdm=False,abandon_list=False,abandon_paratext=False)
  contract={'schema':'docprune-mineru-layout-v1','catalog_sha256':digest,'model':MINER,'mineru':version('mineru'),'mineru-vl-utils':version('mineru-vl-utils'),'torch':torch.__version__,'transformers':version('transformers'),'backend':'transformers','dtype':'bfloat16','attention':'sdpa','layout_image_size':[1036,1036],'stage':'batch_layout_detect','content_transcription':False,'retain_paratext':True,'batch_size':a.batch,'code_sha256':sha(__file__),'common_sha256':sha(Path(__file__).with_name('common.py'))}
- identity=fingerprint(contract);target=root/'mineru-batch8';publish(target/'contract.json',dict(contract,sha256=identity))
- assert a.batch==8 and not a.smoke and a.shards==8 and a.shard in (4,5,6,7)
+ identity=fingerprint(contract);target=root/'mineru-batch16';publish(target/'contract.json',dict(contract,sha256=identity))
+ assert a.batch==16 and not a.smoke and a.shards==8 and a.shard in (4,5,6,7)
  from layout_sources import contracts,page
  sources=contracts(root)
  todo=[]

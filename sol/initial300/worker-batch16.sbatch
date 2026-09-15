@@ -18,4 +18,4 @@ source sol/initial300/environment.sh
 (cd "$DP300_CODE" && sha256sum -c CODE_SHA256SUMS)
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 test "$DP300_ENGINE" = mineru
-exec /usr/bin/time -v "$DP300_MINER_PY" "$DP300_CODE/extract_layout_batch8.py" --root "$DP300_ROOT" --model "$DP300_MINER_MODEL" --batch 8 --shard "$SLURM_ARRAY_TASK_ID" --shards 8
+exec /usr/bin/time -v "$DP300_MINER_PY" "$DP300_CODE/extract_layout_batch16.py" --root "$DP300_ROOT" --model "$DP300_MINER_MODEL" --batch 16 --shard "$SLURM_ARRAY_TASK_ID" --shards 8
