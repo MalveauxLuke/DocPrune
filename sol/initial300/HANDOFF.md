@@ -151,3 +151,24 @@ or MinerU inference. One generic GPU, 2 CPUs, 24000M RAM, 10 minutes based on
 the measured 101-second ColQwen stage. No production admission is created.
 Render existing ten MinerU outputs and transfer review images using rsync.
 A 1-CPU/2GB lightwork allocation may be used for rendering and transfers.
+
+## Approved production launch after region diagnostic
+
+Owner approved full frozen-corpus preprocessing after visual inspection and
+region check 63326631. Create `region-admission.json` via `admit.py --job
+63325393 --region-job 63326631 --visual-review passed` on allocated CPU.
+This new gate verifies sealed diagnostic/catalog/model-code/layout identities,
+adapter checks, stable ordered top five and maximum rank shift one; it records
+the explicit owner acceptance. It does not claim token-level equivalence or
+fabricate a successful legacy ColQwen smoke. Original smoke gate is preserved.
+
+Use worker.sbatch with DP300_SMOKE_RECEIPT set to this receipt. Initial
+configuration: ColQwen 4 shards / 60 minutes, MinerU 8 shards / 135 minutes,
+max two active each. All htc/public, generic GPU:1, 2 CPUs, 24000M RAM, batch 4.
+Check scheduler estimates against shorter 30/60-minute requests before choosing.
+If shorter jobs start materially sooner, increase shard counts proportionally
+(e.g. ColQwen 8/30min; MinerU 20/60min or 40/30min). Do not run overlapping
+array configurations concurrently. Only cancel pending jobs from this launch.
+Then submit combine.sbatch afterok both arrays (2 CPUs/4GB/20min). Model code,
+caches, frozen question/document scope and per-page identities stay unchanged.
+Record selected resources, estimates, commit and actual job IDs in findings.

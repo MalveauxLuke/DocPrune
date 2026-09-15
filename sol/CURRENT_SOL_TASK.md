@@ -29,3 +29,7 @@ admission; report the unchanged ColQwen threshold separately.
 
 Latest approved diagnostic: `sol/initial300/region-diagnostic.sbatch`; see
 Handoff four-page region-ranking section. Inspect existing MinerU overlays.
+
+Owner-approved next action: full production preprocessing via the region-based
+admission in HANDOFF.md final section. Compare htc start estimates before
+choosing shard sizes. No teacher or selector training runs.
