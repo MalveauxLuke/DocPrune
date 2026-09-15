@@ -33,3 +33,16 @@ change the S target or ignore real answer changes. Q17 executes full scoring if
 its normal question guard succeeds. Resources remain one compatible GPU,
 24000 MiB RAM, two CPUs, 20 minutes per shard; up to three simultaneous retries.
 The production code pin remains unchanged for the 14 completed questions.
+
+
+## Approved surface variants and final two questions
+
+Owner approved finishing Q03/Q15 after diagnostic 63249536 established:
+Q03 Nomination -> nomination; Q15 A Rickey. -> Rickey; identical EOS and zero
+cached-versus-legacy error for both. Admission now accepts only these exact
+case-specific old/new token pairs, retaining exact EOS and all G/S targets.
+Records distinguish exact generation from owner-approved surface variants.
+Retry tasks 3,15 only in fresh output at the tested commit, up to two GPUs.
+Q17 completed all 96 observations in 63249536; preserve it and the 14 completed
+questions from 63243809. Do not resume or overwrite the failed older folders.
+Resources and all remaining scientific checks are unchanged.

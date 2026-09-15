@@ -67,3 +67,17 @@ class BaselineTests(TestCase):
             with self.assertRaisesRegex(ValueError,'parity failed'):
                 q._guard()
             self.assertFalse(q.guarded)
+
+
+class ApprovedGenerationTests(TestCase):
+    def test_only_reviewed_case_tokens_are_accepted_and_targets_unchanged(self):
+        from docprune.acquisition_reader import validate_generation
+        import copy
+        for case, old, new in [('Q03',[36312,2554],[16687,2554]), ('Q15',[32,32552,792,13],[49,74939])]:
+            reader={'expected_generated_ids':old,'expected_terminal_eos':151645,'targets':[[1],old]}
+            before=copy.deepcopy(reader)
+            self.assertEqual(validate_generation(new,151645,reader,case=case),'owner-approved-surface-variant')
+            self.assertEqual(validate_generation(old,151645,reader,case=case),'exact')
+            self.assertEqual(reader,before)
+            for ids,eos,q in [(new,151643,case),(new,151645,'Q01'),(new+[13],151645,case)]:
+                with self.assertRaises(ValueError): validate_generation(ids,eos,reader,case=q)

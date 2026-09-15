@@ -48,9 +48,23 @@ def validate_parity(actual, expected, *, tolerance=1e-4):
     return error
 
 
-def validate_generation(ids, eos, reader):
-    if list(ids) != reader['expected_generated_ids'] or eos != reader['expected_terminal_eos']:
+# Owner-approved exact variants observed in diagnostic array 63249536.
+# These affect admission only, never the fixed teacher-forced G/S targets.
+APPROVED_GENERATION_VARIANTS = {
+    'Q03': ((36312, 2554), (16687, 2554)),  # Nomination -> nomination
+    'Q15': ((32, 32552, 792, 13), (49, 74939)),  # A Rickey. -> Rickey
+}
+
+
+def validate_generation(ids, eos, reader, *, case=None):
+    if eos != reader['expected_terminal_eos']:
         raise ValueError('All-keep generated answer or terminal EOS changed')
+    if list(ids) == reader['expected_generated_ids']:
+        return 'exact'
+    approved = APPROVED_GENERATION_VARIANTS.get(case)
+    if approved == (tuple(reader['expected_generated_ids']), tuple(ids)):
+        return 'owner-approved-surface-variant'
+    raise ValueError('All-keep generated answer or terminal EOS changed')
 
 
 def validate_retained(ids, population, budget):
@@ -222,12 +236,14 @@ class QuestionCheckpoint:
                       'cached_vs_legacy_error': adapter_error,
                       'baseline_likelihoods': self.baseline_likelihoods}
         print('ACQUISITION_GENERATION ' + json.dumps(generation), flush=True)
-        validate_generation(response, eos, self.case['reader'])
+        generation_admission = validate_generation(response, eos, self.case['reader'], case=self.case['public']['case'])
         torch.cuda.synchronize()
         self.guard = {'baseline_policy': 'current-execution-v1',
                       'baseline_likelihoods': self.baseline_likelihoods,
                       'historical_all_keep_error': historical_error, 'persistent_vs_legacy_mask_error': adapter_error,
-                      'all_keep_generated_ids_match': True, 'reference_targets': len(self.targets),
+                      'all_keep_generated_ids_match': generation_admission == 'exact',
+                      'generation_admission': generation_admission, 'generation': generation,
+                      'reference_targets': len(self.targets),
                       'preparation_seconds': self.preparation_seconds, 'guard_seconds': time.perf_counter()-started,
                       'extra_likelihood_evaluations': 3, 'extra_generations': 1,
                       'boundary': 'input', 'mode': 'physical_delete'}
