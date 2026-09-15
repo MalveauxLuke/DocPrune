@@ -118,19 +118,23 @@ and retried with a new pin; preserve incompatible earlier outputs separately.
 Do not modify other running jobs or their environments. The historical
 17-question acquisition record is retained in `PRIOR_SOL_TASK_20260915.md`.
 
-## Owner-authorized batch diagnostic — 2026-09-15
+## Owner-approved minimal diagnostic plus MinerU smoke — 2026-09-15
 
-Smoke 63323579 failed the unchanged 0.995 batch/singleton cosine check before
-saving page outputs. Owner requested diagnosis. Run `diagnose.sbatch` with
-the tested `DP300_COMMIT`: generic GPU 1, CPUs 2, memory 24000M, ten minutes.
-The diagnostic reuses the first four original smoke pages and exact models.
-It compares native mixed/identical/reordered batches, repeated singleton and
-batch runs, explicit positions, and matched math-SDPA singleton/batch runs.
-It records pixels, IDs and position equality; vision/projection/final embedding
-differences; worst-token identities; and retrieval-score changes with fixed
-query embeddings. Results are flushed per variant to
-`diagnostics/batch-JOB_ID/`, separate from production caches.
+Run `diagnose.sbatch` with the tested `DP300_COMMIT`: one generic GPU,
+2 CPUs, 24000M host memory, 20 minutes. The owner explicitly narrowed the
+investigation to the original four pages, exact embedding differences and
+associated-question retrieval-score differences, followed by MinerU smoke.
 
-This diagnosis does not relax the threshold, authorize production admission,
-change model weights/backends for production, or score teacher answers.
-Recover only diagnosed failures; preserve the original failed smoke evidence.
+ColQwen executes one four-page batch, four singleton page encodings, and one
+associated-question encoding per page. It saves per-page measurements before
+proceeding, in `diagnostics/batch-JOB_ID/`. No repeated, reordered, identical-
+image, alternative-attention, or explicit-position experimental arms run.
+
+The original 0.995 threshold is reported unchanged. Its failure does not stop
+this diagnostic from reaching MinerU; this is not production admission. The
+launcher executes MinerU's original 10-page smoke after the ColQwen process
+exits, releasing its GPU memory first. It records both process exit codes and
+returns failure if either process errors. ColQwen diagnostic success only
+means measurements were collected, not that batching was approved. Preserve
+all previous failed evidence and do not create a production admission from
+this job's exit status alone. No full production arrays or teacher runs.

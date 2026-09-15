@@ -21,3 +21,8 @@ failed/incomplete shards; preserve original data and outputs.
 
 Historical acquisition task retained in
 [initial300/PRIOR_SOL_TASK_20260915.md](initial300/PRIOR_SOL_TASK_20260915.md).
+
+Current approved next job: `sol/initial300/diagnose.sbatch` — minimal four-page
+ColQwen batch/singleton measurement followed by the original MinerU smoke.
+See the handoff's final section. Passing this diagnostic job is not production
+admission; report the unchanged ColQwen threshold separately.
