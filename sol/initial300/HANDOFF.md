@@ -172,3 +172,22 @@ array configurations concurrently. Only cancel pending jobs from this launch.
 Then submit combine.sbatch afterok both arrays (2 CPUs/4GB/20min). Model code,
 caches, frozen question/document scope and per-page identities stay unchanged.
 Record selected resources, estimates, commit and actual job IDs in findings.
+
+## Owner-approved batch-eight continuation
+
+Cancel only pending original MinerU tasks 4-7 (63328652), leaving running
+tasks 2/3 and all completed artifacts untouched. Replace 4-7 with
+worker-batch8.sbatch: original eight-way page assignment, batch eight, one
+generic GPU, two CPUs, 24000M RAM, htc/public, 75 minutes, max two active.
+Check estimated starts at 60/75 minutes before submission. Each new task
+waits for its corresponding running predecessor (4/6 wait for old task 2;
+5/7 wait for old task 3), retaining the prior max-two MinerU concurrency.
+No comparative throughput improvement is claimed before measurement.
+
+New layout contract and pages are saved under mineru-batch8; existing mineru
+outputs remain unchanged. Existing compatible pages in the shard are reused.
+Combine validates both contracts, requires equal model/configuration except
+batch size/code hash, rejects duplicate or missing pages and records both
+contract identities. No mixing is hidden or labeled batch-invariant.
+Cancel obsolete pending combine 63328653; submit replacement afterok original
+surviving tasks and new array. Model code for existing running tasks untouched.

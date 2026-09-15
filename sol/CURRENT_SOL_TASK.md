@@ -33,3 +33,7 @@ Handoff four-page region-ranking section. Inspect existing MinerU overlays.
 Owner-approved next action: full production preprocessing via the region-based
 admission in HANDOFF.md final section. Compare htc start estimates before
 choosing shard sizes. No teacher or selector training runs.
+
+Latest owner request: batch-eight continuation for only pending MinerU shards
+4-7; leave running shards 2/3 untouched. Binding details in HANDOFF.md final
+section. Preserve both contracts and replace obsolete combine dependency.
