@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import importlib.metadata
+import json
 import os
 from pathlib import Path
 import platform
@@ -213,6 +214,14 @@ class QuestionCheckpoint:
                  do_sample=False, num_beams=1, eos_token_id=self.teacher.runtime['eos_ids'], repetition_penalty=1.05)
         response = generated[0, self.batch['input_ids'].shape[1]:].tolist()
         eos = response.pop() if response and response[-1] in self.teacher.runtime['eos_ids'] else None
+        generation = {'case': self.case['public']['case'], 'generated_ids': response,
+                      'terminal_eos': eos, 'text': self.teacher.processor.decode(response, skip_special_tokens=True),
+                      'historical_ids': self.case['reader']['expected_generated_ids'],
+                      'historical_eos': self.case['reader']['expected_terminal_eos'],
+                      'historical_text': self.teacher.processor.decode(self.case['reader']['expected_generated_ids'], skip_special_tokens=True),
+                      'cached_vs_legacy_error': adapter_error,
+                      'baseline_likelihoods': self.baseline_likelihoods}
+        print('ACQUISITION_GENERATION ' + json.dumps(generation), flush=True)
         validate_generation(response, eos, self.case['reader'])
         torch.cuda.synchronize()
         self.guard = {'baseline_policy': 'current-execution-v1',

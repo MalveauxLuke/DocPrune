@@ -25,10 +25,24 @@ def sol_preflight(args, *, check_occupancy=True):
             raise ValueError(f'{name} must be pinned to SOL user scratch')
     if not check_occupancy:
         return None
-    record = subprocess.check_output(['scontrol', 'show', 'job', job, '-o'], text=True)
-    fields = dict(word.split('=', 1) for word in record.split() if '=' in word)
+    # The placeholder shard can have SLURM_JOB_ID equal to the array ID.
+    # Querying that number returns multiple sibling records, not one allocation.
+    array_job = os.environ.get('SLURM_ARRAY_JOB_ID')
+    array_task = os.environ.get('SLURM_ARRAY_TASK_ID')
+    selector = job
+    if array_job is not None or array_task is not None:
+        if not (array_job and array_job.isdigit() and array_task and array_task.isdigit()):
+            raise ValueError('Invalid Slurm array identity')
+        selector = f'{array_job}_{array_task}'
+    record = subprocess.check_output(['scontrol', 'show', 'job', selector, '-o'], text=True)
+    rows = [line for line in record.splitlines() if line.strip()]
+    if len(rows) != 1:
+        raise ValueError(f'Expected exactly one Slurm record for {selector}, received {len(rows)}')
+    fields = dict(word.split('=', 1) for word in rows[0].split() if '=' in word)
+    if array_job is not None and (fields.get('ArrayJobId') != array_job or fields.get('ArrayTaskId') != array_task):
+        raise ValueError('Slurm returned a different array task')
     if fields.get('JobState') != 'RUNNING' or fields.get('Partition') == 'lightwork':
-        raise ValueError('Smoke requires a running GPU compute job, not lightwork')
+        raise ValueError(f'GPU compute allocation required: selector={selector}, state={fields.get("JobState")}, partition={fields.get("Partition")}')
     if fields.get('UserId', '').split('(')[0] != scratch.name:
         raise ValueError('Slurm allocation owner mismatch')
     allocated = dict(item.split('=', 1) for item in fields.get('AllocTRES', '').split(',') if '=' in item)
@@ -63,7 +77,7 @@ def sol_preflight(args, *, check_occupancy=True):
         raise RuntimeError(f'Assigned GPU {uuid} at {pci} has other process IDs {foreign}; no model loaded')
     # CUDA initialization can itself consume memory and cause transient activity.
     # Do not mistake our own context or a sampled utilization value for another job.
-    return {'platform': 'sol', 'job_id': job, 'node': socket.gethostname(),
+    return {'platform': 'sol', 'job_id': job, 'job_selector': selector, 'node': socket.gethostname(),
             'assigned_device': visible, 'pci_bus_id': pci, 'uuid': uuid, 'name': name,
             'memory_used_mb': used, 'memory_total_mb': total, 'utilization_percent': util}
 

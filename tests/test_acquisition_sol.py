@@ -42,4 +42,15 @@ class SOLTests(unittest.TestCase):
    self.assertEqual(query.call_args_list[3].args[0][2],'GPU-abc')
   with patch.dict(sys.modules,{'torch':self.fake_torch(20000)}),patch.dict(os.environ,self.env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses[:2]):
    with self.assertRaisesRegex(ValueError,'need at least'): sol_preflight(self.args)
+ def test_array_placeholder_queries_exact_task_and_rejects_siblings(self):
+  env={**self.env,'SLURM_JOB_ID':'123','SLURM_ARRAY_JOB_ID':'123','SLURM_ARRAY_TASK_ID':'17'}
+  valid='JobId=123 ArrayJobId=123 ArrayTaskId=17 JobState=RUNNING Partition=htc UserId=test(123) AllocTRES=cpu=2,gres/gpu=1 NodeList=gpu01'
+  responses=[valid,'gpu01','GPU-abc, NVIDIA A30, 0, 24258, 0','']
+  with patch.dict(os.environ,env,clear=True),patch('docprune.acquisition_sol.socket.gethostname',return_value='gpu01'),patch('docprune.acquisition_sol.subprocess.check_output',side_effect=responses) as query:
+   result=sol_preflight(self.args)
+   self.assertEqual(result['job_selector'],'123_17')
+   self.assertEqual(query.call_args_list[0].args[0],['scontrol','show','job','123_17','-o'])
+  for record in (valid+'\n'+valid.replace('RUNNING','COMPLETED'), valid.replace('ArrayTaskId=17','ArrayTaskId=1')):
+   with patch.dict(os.environ,env,clear=True),patch('docprune.acquisition_sol.subprocess.check_output',return_value=record):
+    with self.assertRaises(ValueError): sol_preflight(self.args)
 if __name__=='__main__': unittest.main()

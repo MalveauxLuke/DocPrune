@@ -18,3 +18,18 @@ Preserve partial outputs. Retry only failed/incomplete shards at the same code,
 runtime and baseline identity. No changed tolerances or silent hardware resume.
 Scope: likelihood acquisition and per-question summaries, not selector training
 or a claim that decoded-candidate assessment is complete.
+
+
+## Failure reconciliation authorized 2026-09-14
+
+Array 63243809 completed 14 questions; Q03/Q15 stopped on historical generation
+identity and Q17 stopped before loading the reader. Preserve all original outputs.
+Retry only array tasks 3,15,17 in fresh output directories at the newly tested
+commit. The scheduler check now explicitly selects ARRAY_ID_TASK_ID and rejects
+ambiguous/mismatched records. Generation text, tokens, EOS and cached parity
+are printed before the existing generation gate. Q03/Q15 may stop again; those
+replays recover evidence missing from the first logs, not permission to silently
+change the S target or ignore real answer changes. Q17 executes full scoring if
+its normal question guard succeeds. Resources remain one compatible GPU,
+24000 MiB RAM, two CPUs, 20 minutes per shard; up to three simultaneous retries.
+The production code pin remains unchanged for the 14 completed questions.

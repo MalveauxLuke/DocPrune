@@ -52,7 +52,7 @@ class BaselineTests(TestCase):
         q.preparation_seconds=0
         q.guarded=False
         q.batch={'input_ids': np.zeros((1,2),dtype=int)}
-        q.teacher=SimpleNamespace(runtime={'max_new_tokens':4, 'eos_ids':[9]})
+        q.teacher=SimpleNamespace(runtime={'max_new_tokens':4, 'eos_ids':[9]}, processor=SimpleNamespace(decode=lambda ids, **kw: str(ids)))
         q.model=SimpleNamespace(generate=lambda **kw: np.array([[0,0,2,9]]))
         q._measure=lambda ids: {'likelihoods': [-4., -5.]}
         q._legacy_measure=lambda ids: [-4., -5.]
