@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 from inventory import sha
 
-SEED='docprune-m3doc-singlehop-600-v1-20260915'
+SEED='docprune-m3doc-singlehop-600-v2-20260915'
 def rank(qid):return hashlib.sha256((SEED+'\0'+qid).encode()).hexdigest()
 def family(url):
     u=urlsplit(url)
@@ -21,21 +21,37 @@ def run(inventory,out):
     byid={q['qid']:q for q in d['questions']}
     def families(q):
         return {family(urls[s['doc_id']]) for s in q['supporting_context']}
-    excluded=set(d['exposure']['older600'])
-    eligible=[byid[k] for k in d['eligible_qids'] if k not in excluded]
-    counts=collections.Counter(q['metadata']['type'] for q in eligible);allocation=quotas(counts,600)
-    chosen=[];seen=set()
-    for t in sorted(allocation):
-        candidates=sorted((q for q in eligible if q['metadata']['type']==t),key=lambda q:rank(q['qid']))
-        selected=[]
-        for q in candidates:
-            fs=families(q)
-            if not fs&seen and len(selected)<allocation[t]:selected.append(q);seen.update(fs)
-        ids={q['qid'] for q in selected}
-        for q in candidates:
-            if len(selected)==allocation[t]:break
-            if q['qid'] not in ids:selected.append(q);ids.add(q['qid']);seen.update(families(q))
-        chosen.extend(selected)
+    # TextQ is a modality label and includes HotpotQA-style multi-hop rows.
+    # A single supporting paragraph is a conservative eligibility screen;
+    # page-level sufficiency still needs its independent evidence audit.
+    eligible=[byid[k] for k in d['eligible_qids'] if byid[k]['metadata']['type']!='TextQ'
+              or len(byid[k]['supporting_context'])==1]
+    old=set(d['exposure']['older600'])
+    fresh=[q for q in eligible if q['qid'] not in old]
+    prior_candidates=[q for q in eligible if q['qid'] in old]
+    if len(fresh)>=600:
+        counts=collections.Counter(q['metadata']['type'] for q in fresh)
+        allocation=quotas(counts,600);chosen=[];seen=set()
+        for t in sorted(allocation):
+            candidates=sorted((q for q in fresh if q['metadata']['type']==t),key=lambda q:rank(q['qid']))
+            selected=[]
+            for q in candidates:
+                fs=families(q)
+                if not fs&seen and len(selected)<allocation[t]:selected.append(q);seen.update(fs)
+            ids={q['qid'] for q in selected}
+            for q in candidates:
+                if len(selected)==allocation[t]:break
+                if q['qid'] not in ids:selected.append(q);ids.add(q['qid']);seen.update(families(q))
+            chosen.extend(selected)
+    else:
+        # Owner requires 600 and tracking prior use, not zero historical overlap.
+        # Minimize reused QIDs; never admit development/pilot/confirmation rows.
+        chosen=sorted(fresh,key=lambda q:rank(q['qid']))
+        seen=set().union(*(families(q) for q in chosen)) if chosen else set()
+        candidates=sorted(prior_candidates,key=lambda q:(bool(families(q)&seen),rank(q['qid'])))
+        chosen.extend(candidates[:600-len(chosen)])
+    counts=collections.Counter(q['metadata']['type'] for q in eligible)
+    allocation=dict(collections.Counter(q['metadata']['type'] for q in chosen))
     assert len(chosen)==600 and len({q['qid'] for q in chosen})==600
     prior=set().union(*(set(v) for v in d['exposure'].values()))
     prior_families=set().union(*(families(byid[k]) for k in prior))
@@ -50,9 +66,11 @@ def run(inventory,out):
             'prior_support_family_overlap':sorted(sf&prior_families)})
     fc=collections.Counter(f for r in records for f in r['support_families'])
     bc=collections.Counter(f for r in records for f in r['original_top4_families'])
-    result={'schema':'m3docvqa-singlehop-600-pool-v1','seed':SEED,'inventory_sha256':sha(inventory),
-        'selection':'proportional question-type quotas; prefer unused support families within each type; SHA256 seeded order; no correctness or evidence-coverage filtering',
-        'excluded_prior_qids':sorted(prior),'eligible_count':len(eligible),'eligible_types':dict(counts),
+    result={'schema':'m3docvqa-singlehop-600-pool-v2','seed':SEED,'inventory_sha256':sha(inventory),
+        'selection':'exclude multi-paragraph TextQ; minimize older600 reuse; preserve development/pilot/confirmation exclusions; seeded order; no correctness or coverage filtering',
+        'eligibility':'non-composed modality types; TextQ requires exactly one annotated support; ImageListQ retains one visual predicate over a list; evidence sufficiency remains pending',
+        'fresh_eligible_count':len(fresh),'older600_reused_qids':sorted(q['qid'] for q in chosen if q['qid'] in old),
+        'excluded_prior_qids':sorted(set().union(*(set(v) for k,v in d['exposure'].items() if k!='older600'))),'eligible_count':len(eligible),'eligible_types':dict(counts),
         'type_quotas':allocation,'questions':records,'summary':{'questions':len(records),
         'support_families':len(fc),'repeated_support_families':sum(v>1 for v in fc.values()),
         'retrieved_background_families':len(bc),'repeated_background_families':sum(v>1 for v in bc.values()),
