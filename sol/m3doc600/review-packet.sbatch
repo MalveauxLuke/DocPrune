@@ -11,4 +11,6 @@ set -euo pipefail
 cd /home/lmalveau/DocPrune
 source sol/m3doc600/environment.sh
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-exec /usr/bin/python3 experiments/m3doc600/build_review_packets.py --root "$DP600_ROOT" --corpus /scratch/lmalveau/docprune/datasets/m3docvqa
+args=()
+if [[ "${DP600_PACKET_SCOPE:-calibration}" == all ]]; then args+=(--all); fi
+exec /usr/bin/python3 experiments/m3doc600/build_review_packets.py --root "$DP600_ROOT" --corpus /scratch/lmalveau/docprune/datasets/m3docvqa "${args[@]}"

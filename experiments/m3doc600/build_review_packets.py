@@ -16,11 +16,11 @@ def select(pool):
   if q['qid'] not in seen:selected.append(q);seen.add(q['qid'])
  return selected
 
-def run(root,corpus):
+def run(root,corpus,all_cases=False):
  assert os.environ.get('SLURM_JOB_ID'),'Compute allocation required'
  root=Path(root);corpus=Path(corpus);pool=read(root/'cohort/pool.json');poolsha=sha(root/'cohort/pool.json')
  assert poolsha=='caabb62c3c0e875f58ceadd86c8b09a4364a57617edd01782503e215cceff452'
- selected=select(pool);out=root/'review-packets/calibration-v1';out.mkdir(parents=True,exist_ok=True)
+ selected=pool['questions'] if all_cases else select(pool);out=root/'review-packets'/('all-v2' if all_cases else 'calibration-v1');out.mkdir(parents=True,exist_ok=True)
  docs={s['doc_id'] for q in selected for s in q['supporting_context']}|{p['doc_id'] for q in selected for p in q['original_top4']}
  files=[]
  def include(src,relative):
@@ -49,8 +49,8 @@ def run(root,corpus):
   data={'qid':q['qid'],'question':q['question'],'type':q['metadata']['type'],'pool_sha256':poolsha,'original_top4':q['original_top4'],'supporting_context':q['supporting_context'],'metadata':{k:v for k,v in q['metadata'].items() if k!='intermediate_answers'},'pdfs':{d:pdfs[d] for d in sorted(ids)},'original_images':{d:images[d] for d in sorted(ids&set(images))},'additional_candidate_contexts_in_source_contexts':True,'warning':'Support annotations are localization clues, not proof of sufficient or exhaustive evidence. Negative/list candidates may need additional PDFs; report missing assets explicitly.'}
   publish(out/'cases'/(q['qid']+'.json'),data)
  publish(out/'gold.json',{q['qid']:q['answers'] for q in selected})
- manifest={'schema':'m3doc600-review-packet-v1','pool_sha256':poolsha,'selection':'Two seeded cases per type, four deliberate changed/equivalent-photo challenges, deterministic fill to12; no reader outcomes','qids':[q['qid'] for q in selected],'files':files,'source_contexts_sha256':sha(out/'source_contexts.json'),'gold_sha256':sha(out/'gold.json'),'case_hashes':{q['qid']:sha(out/'cases'/(q['qid']+'.json')) for q in selected},'unique_pdfs':len(pdfs),'total_linked_bytes':sum(f['bytes'] for f in files),'validated_questions':0}
+ manifest={'schema':'m3doc600-review-packet-v1','pool_sha256':poolsha,'selection':'All frozen V2 cases; no reader outcome filtering' if all_cases else 'Two seeded cases per type, four deliberate changed/equivalent-photo challenges, deterministic fill to12; no reader outcomes','qids':[q['qid'] for q in selected],'files':files,'source_contexts_sha256':sha(out/'source_contexts.json'),'gold_sha256':sha(out/'gold.json'),'case_hashes':{q['qid']:sha(out/'cases'/(q['qid']+'.json')) for q in selected},'unique_pdfs':len(pdfs),'total_linked_bytes':sum(f['bytes'] for f in files),'validated_questions':0}
  publish(out/'manifest.json',manifest)
  print(json.dumps({'packet':str(out),'questions':len(selected),'unique_pdfs':len(pdfs),'linked_bytes':manifest['total_linked_bytes'],'manifest_sha256':sha(out/'manifest.json')}),flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--corpus',required=True);a=p.parse_args();run(a.root,a.corpus)
+ p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--corpus',required=True);p.add_argument('--all',action='store_true');a=p.parse_args();run(a.root,a.corpus,a.all)
