@@ -34,3 +34,6 @@ Archived task files are nonbinding. Open historical evidence only as needed.
 - [Adaptive acquisition H200 handoff](../h200/adaptive-acquisition/README.md) — environment contract and separately gated smoke/scoring commands.
 
 - [SOL Q12 acquisition smoke](../sol/adaptive-acquisition/HANDOFF.md) — current bounded GPU smoke; scratch-only runtime paths.
+
+- [Initial 600 single-hop M3DocVQA preparation](../docs/datasets/m3docvqa-singlehop-600-v1/README.md) — corrected V2 QIDs frozen; final evidence admission pending changed-photo policy.
+- [M3Doc600 preprocessing audit](findings/2026-09-15-m3doc600-preprocessing.md) — rejected V1, corrected V2 exposure ledger, measured ColQwen/MinerU smokes, and changed-photo evidence blocker.
