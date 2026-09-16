@@ -3,13 +3,14 @@ import argparse, collections, hashlib, json, os
 from pathlib import Path
 from common import publish, sha, fingerprint
 
-def run(pool,corpus,out):
+def run(pool,corpus,out,all_retrieved=False):
  import pypdfium2 as pdfium
  assert os.environ.get('SLURM_JOB_ID')
  pool=Path(pool);root=Path(out);d=json.loads(pool.read_text());qs=[]
  for t in sorted(d['type_quotas']):
   rows=sorted((q for q in d['questions'] if q['metadata']['type']==t),key=lambda q:(len(q['question']),q['qid']))
   qs.extend([rows[0],rows[-1]])
+ if all_retrieved:qs=d['questions']
  pages={};questions=[];pdf_hash={}
  for q in qs:
   links=[]
@@ -26,10 +27,10 @@ def run(pool,corpus,out):
     links.append({'key':key,'page_id':f'{doc}:{idx}','page_number':idx+1})
     im.close();bitmap.close();page.close()
   questions.append({'question_key':q['qid'],'question':q['question'],'source':'m3docvqa','pages':links})
- c={'schema':'docprune-m3doc600-pages-v1','manifest_sha256':sha(pool),'pool_path':str(pool.resolve()),'stage':'resource_smoke_original_top4_only','pages':list(pages.values()),'questions':questions,'smoke_keys':sorted(pages),'smoke_questions':[q['question_key'] for q in questions]}
+ c={'schema':'docprune-m3doc600-pages-v1','manifest_sha256':sha(pool),'pool_path':str(pool.resolve()),'stage':'original_top4_pending_gold' if all_retrieved else 'resource_smoke_original_top4_only','pages':list(pages.values()),'questions':questions,'smoke_keys':sorted(pages),'smoke_questions':[q['question_key'] for q in questions]}
  c['sha256']=fingerprint(c);publish(root/'catalog.json',c)
- for engine,batches in [('colqwen',[4,8,16]),('mineru',[8,16])]:
+ for engine,batches in ([] if all_retrieved else [('colqwen',[4,8,16]),('mineru',[8,16])]):
   for batch in batches:publish(root/f'{engine}-b{batch}'/'catalog.json',c)
  print(json.dumps({'pages':len(pages),'questions':len(questions),'catalog_sha256':c['sha256']}),flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--pool',required=True);p.add_argument('--corpus',required=True);p.add_argument('--out',required=True);a=p.parse_args();run(a.pool,a.corpus,a.out)
+ p=argparse.ArgumentParser();p.add_argument('--pool',required=True);p.add_argument('--corpus',required=True);p.add_argument('--out',required=True);p.add_argument('--all-retrieved',action='store_true');a=p.parse_args();run(a.pool,a.corpus,a.out,a.all_retrieved)
