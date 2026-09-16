@@ -6,14 +6,16 @@ from common import read,publish,sha
 def run(root,corpus):
  import numpy as np
  import pypdfium2 as pdfium
- from PIL import Image
+ from PIL import Image,ImageOps
  assert os.environ.get('SLURM_JOB_ID')
- root=Path(root);manifest=read(root/'original-images/manifest.json');out=root/'evidence/image-matches';rows=[]
+ root=Path(root);manifest=read(root/'original-images/manifest.json');out=root/'evidence/image-matches-v2';rows=[]
  for ix,ref in enumerate(manifest['images']):
   target=out/(ref['doc_id']+'.json')
   if target.exists():rows.append(read(target));continue
   path=Path(corpus)/'pdfs_dev'/(ref['doc_id']+'.pdf')
-  with Image.open(ref['file']) as im:source=im.convert('RGB')
+  def canonical(im):
+  im=ImageOps.exif_transpose(im).convert('RGBA');bg=Image.new('RGBA',im.size,'white');return Image.alpha_composite(bg,im).convert('RGB')
+ with Image.open(ref['file']) as im:source=canonical(im)
   sw,sh=source.size;original=np.asarray(source.resize((64,64),Image.Resampling.LANCZOS),dtype=np.float32)/255
   candidates=[]
   with pdfium.PdfDocument(str(path)) as pdf:
@@ -21,7 +23,7 @@ def run(root,corpus):
     page=pdf[pi]
     for oi,obj in enumerate(page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_IMAGE])):
      try:
-      bm=obj.get_bitmap();im=bm.to_pil().convert('RGB');w,h=im.size
+      bm=obj.get_bitmap(render=True);im=canonical(bm.to_pil());w,h=im.size
       if min(w,h)<24 or abs((w/h)/(sw/sh)-1)>.03:im.close();bm.close();continue
       arr=np.asarray(im.resize((64,64),Image.Resampling.LANCZOS),dtype=np.float32)/255
       diff=np.abs(arr-original);mae=float(diff.mean());p99=float(np.quantile(diff,.99))
@@ -35,7 +37,7 @@ def run(root,corpus):
   source.close();valid=sorted((c for c in candidates if 'mae_rgb64' in c),key=lambda c:c['mae_rgb64'])
   exact=[c for c in valid if c['exact_rgb_identity']]
   near=[c for c in valid if c['mae_rgb64']<=.01 and c['p99_error']<=.08]
-  r={'doc_id':ref['doc_id'],'pdf_sha256':sha(path),'source_image_sha256':ref['sha256'],'source_size':[sw,sh],
+  r={'doc_id':ref['doc_id'],'pdf_sha256':sha(path),'source_image_sha256':ref['sha256'],'source_size':[sw,sh],'canonicalization':'EXIF orientation and white alpha compositing; PDF rendered image object with masks',
      'status':'exact_pixel_identity' if exact else 'near_pixel_identity_requires_visual_review' if near else 'no_strict_match',
      'exact_matches':exact,'near_matches':near,'best_candidates':valid[:5],'extraction_errors':[c for c in candidates if 'error' in c]}
   publish(target,r);rows.append(r)
