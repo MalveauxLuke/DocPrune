@@ -57,14 +57,14 @@ def main(args):
     else:
         assert 0 <= args.shard < args.shards
         selected = all_q[args.shard::args.shards]
-    out = root/'baseline-qwen3-8b-admitted-v1'
+    out = root/'baseline-qwen3-8b-admitted-v2'
     contract = dict(model='Qwen/Qwen3-VL-8B-Instruct', revision=REVISION,
                     catalog_sha256=digest, rankings_sha256=sha(root/'combined/rankings.json'),
                     code_sha256=sha(__file__), common_sha256=sha(Path(__file__).with_name('common.py')),
                     top_k=None, page_order='frozen gold-independent presentation_order', prompt=PROMPT,
                     max_pixels=2560*32*32, min_pixels=256*32*32,
                     dtype='bfloat16', attention='sdpa', max_new_tokens=256,
-                    do_sample=False, repetition_penalty=1.0, retention='all',
+                    do_sample=False, use_model_defaults=False, repetition_penalty=1.0, retention='all',
                     packages={k: metadata.version(k) for k in ['torch','transformers','torchvision','Pillow','accelerate']})
     identity = fingerprint(contract)
     publish(out/'contract.json', dict(contract, sha256=identity))
@@ -112,7 +112,7 @@ def main(args):
         torch.cuda.reset_peak_memory_stats()
         begin = time.monotonic()
         with torch.inference_mode():
-            generated = model.generate(**inputs, generation_config=generation)
+            generated = model.generate(**inputs, generation_config=generation, use_model_defaults=False, do_sample=False)
         torch.cuda.synchronize()
         answer_ids = generated[0, inputs['input_ids'].shape[1]:].tolist()
         eos = generation.eos_token_id

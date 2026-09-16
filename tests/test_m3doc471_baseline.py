@@ -21,3 +21,11 @@ def test_smoke_strata_no_answers():
     pool[key]={'metadata':{'type':kind},'operational_coverage':{'within_original_top4':covered}}
  selected=m.smoke_questions(qs,pool)
  assert len(selected)==6 and all(len(q['pages'])==5 for q in selected)
+
+def test_model_defaults_cannot_enable_sampling():
+ from transformers import GenerationConfig
+ from transformers.generation.utils import GenerationMixin
+ class Dummy(GenerationMixin):
+  generation_config=GenerationConfig(do_sample=True,temperature=0.7,top_p=0.8,top_k=20,transformers_version='4.57.3')
+ config,_=Dummy()._prepare_generation_config(GenerationConfig(do_sample=False,max_new_tokens=256),use_model_defaults=False,do_sample=False)
+ assert config.do_sample is False and config.max_new_tokens==256

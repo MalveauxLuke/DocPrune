@@ -6,7 +6,7 @@ from answer_metrics import list_em,list_f1
 
 def run(root):
  root=Path(root); c,d=load_catalog(root)
- out=root/'baseline-qwen3-8b-admitted-v1'; contract=read(out/'contract.json')
+ out=root/'baseline-qwen3-8b-admitted-v2'; contract=read(out/'contract.json')
  pool={q['qid']:q for q in read(c['pool_path'])['questions']}; rows=[]
  assert len(pool)==471 and contract['catalog_sha256']==d
  for q in c['questions']:

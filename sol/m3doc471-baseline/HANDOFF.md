@@ -6,7 +6,7 @@ Checkout /home/lmalveau/DocPrune. Exact submitted Git revision is supplied as
 DP_BASELINE_COMMIT and recorded in the launch log; launcher rejects drift.
 Inputs /scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/stage,
 verified catalog bf220ddb7c0b67b58a992292108e9ec386b8694d3b33f542c71dd5d35f0b4d08.
-Outputs stage/baseline-qwen3-8b-admitted-v1, immutable per-question resume.
+Outputs stage/baseline-qwen3-8b-admitted-v2, immutable per-question resume.
 Reuse initial300-baseline environment and pinned Qwen3-VL-8B snapshot;
 add torchvision0.23.0 for torch2.8.0 and word2number1.1 on a compute node.
 
