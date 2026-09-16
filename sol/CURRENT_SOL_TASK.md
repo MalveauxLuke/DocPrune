@@ -1,12 +1,5 @@
-# Active — initial 300 Qwen3-VL-8B unpruned baseline
+# Active — initial 600 single-hop M3DocVQA preprocessing
 
-Owner selected the 8B reader and authorized baseline execution.
-Binding handoff: [initial300-baseline/HANDOFF.md](initial300-baseline/HANDOFF.md).
-Exact checkout `/home/lmalveau/DocPrune`, commit supplied as
-`DP_BASELINE_COMMIT`; runtime root `/scratch/lmalveau/docprune-initial300/20260915-v1`.
-Setup only on CPU allocation; smoke only on GPU allocation. No computation on
-login. Read handoff for pinned checkpoint, environment, cached page admission,
-resource limits, outputs, smoke gate and resume policy. No masking or training.
+Owner approved assembly, evidence-page verification/augmentation, ColQwen and MinerU smokes, then production preprocessing. Binding handoff: [m3doc600/HANDOFF.md](m3doc600/HANDOFF.md). Current stage: CPU inventory and evidence preparation. GPU stages require measured smoke admission and exact launch pins recorded in the handoff. No reader scoring or training.
 
-Prior preprocessing [handoff](initial300/HANDOFF.md) is completed, including
-combine 63333385; all 300 questions/3,710 unique images covered.
+Previous task retained in [m3doc600/PRIOR_SOL_TASK.md](m3doc600/PRIOR_SOL_TASK.md). Leave its existing jobs and environments untouched.
