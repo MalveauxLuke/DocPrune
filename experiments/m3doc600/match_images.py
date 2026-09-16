@@ -14,8 +14,8 @@ def run(root,corpus):
   if target.exists():rows.append(read(target));continue
   path=Path(corpus)/'pdfs_dev'/(ref['doc_id']+'.pdf')
   def canonical(im):
-  im=ImageOps.exif_transpose(im).convert('RGBA');bg=Image.new('RGBA',im.size,'white');return Image.alpha_composite(bg,im).convert('RGB')
- with Image.open(ref['file']) as im:source=canonical(im)
+   im=ImageOps.exif_transpose(im).convert('RGBA');bg=Image.new('RGBA',im.size,'white');return Image.alpha_composite(bg,im).convert('RGB')
+  with Image.open(ref['file']) as im:source=canonical(im)
   sw,sh=source.size;original=np.asarray(source.resize((64,64),Image.Resampling.LANCZOS),dtype=np.float32)/255
   candidates=[]
   with pdfium.PdfDocument(str(path)) as pdf:
