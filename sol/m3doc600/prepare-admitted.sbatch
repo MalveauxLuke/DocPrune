@@ -13,4 +13,4 @@ exec "$DP600_MINER_PY" experiments/m3doc600/prepare_admitted.py \
   --pool "$root/pool.json" \
   --corpus /scratch/lmalveau/docprune/datasets/m3docvqa \
   --out "$root/stage" \
-  --reuse-catalog "$DP600_ROOT/retrieved-stage/catalog.json"
+  --reuse-catalog /scratch/lmalveau/docprune-m3doc600/20260915-v1/retrieved-stage/catalog.json
