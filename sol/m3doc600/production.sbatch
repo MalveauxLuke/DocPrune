@@ -10,7 +10,7 @@
 # Submission example (the log directory must already exist):
 #   export DP600_LOG_ROOT=/scratch/lmalveau/docprune-m3doc600/20260915-v2/logs/production
 #   export DP600_COMMIT="$(git rev-parse HEAD)"
-#   export DP600_STAGE=/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v1/stage
+#   export DP600_STAGE=/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/stage
 #   export DP600_ENGINE=colqwen
 #   export DP600_SHARDS=8
 #   mkdir -p "$DP600_LOG_ROOT"

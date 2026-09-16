@@ -9,4 +9,4 @@ set -euo pipefail
 cd /home/lmalveau/DocPrune
 source sol/m3doc600/environment.sh
 exec "$DP600_COL_PY" experiments/m3doc600/combine.py \
-  --root "$DP600_ROOT/admitted471-v1/stage"
+  --root "$DP600_ROOT/admitted471-v2/stage"
