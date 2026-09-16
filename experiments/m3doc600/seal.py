@@ -5,6 +5,9 @@ from urllib.parse import unquote, urlsplit
 from inventory import sha
 
 SEED='docprune-m3doc-singlehop-600-v2-20260915'
+def single_hop_candidate(q):
+    t=q['metadata']['type']
+    return t in {'TextQ','TableQ','ImageQ','ImageListQ'} and (t!='TextQ' or len(q['supporting_context'])==1)
 def rank(qid):return hashlib.sha256((SEED+'\0'+qid).encode()).hexdigest()
 def family(url):
     u=urlsplit(url)
@@ -24,8 +27,7 @@ def run(inventory,out):
     # TextQ is a modality label and includes HotpotQA-style multi-hop rows.
     # A single supporting paragraph is a conservative eligibility screen;
     # page-level sufficiency still needs its independent evidence audit.
-    eligible=[byid[k] for k in d['eligible_qids'] if byid[k]['metadata']['type']!='TextQ'
-              or len(byid[k]['supporting_context'])==1]
+    eligible=[byid[k] for k in d['eligible_qids'] if single_hop_candidate(byid[k])]
     old=set(d['exposure']['older600'])
     fresh=[q for q in eligible if q['qid'] not in old]
     prior_candidates=[q for q in eligible if q['qid'] in old]
