@@ -26,18 +26,17 @@ def run(base,out):
         r=json.loads(line); k=r['question_id'];assert k not in retrieved
         retrieved[k]=r['retrieved_pages'];assert len(retrieved[k])==4
     hp=base/'task6-holdout-primary-1213-v1/sealed-holdout/manifest.json';hold=read(hp)
-    files={'historical_development_registry':hold['development_registry_path'],
-           'pilot48':str(base/'task9-preliminary-random48-v1/cohort.json'),
+    files={'pilot48':str(base/'task9-preliminary-random48-v1/cohort.json'),
            'confirmation100':str(base/'task9-baseline-wrong100-inputs-c0c9bee-v1/reference.json'),
            'older600':str(base/'task9-shared-probe-random600-v1/cohort.json')}
-    exposure={};provenance={str(p):sha(p) for p in [qp,rp,hp]}
+    exposure={'historical_development_registry':sorted(qids(hold['development_registry'],known))};provenance={str(p):sha(p) for p in [qp,rp,hp]}
     for label,path in files.items():
         p=Path(path)
         if not p.exists(): raise FileNotFoundError(p)
         exposure[label]=sorted(qids(read(p),known));provenance[str(p)]=sha(p)
     excluded=set(exposure['historical_development_registry'])|set(exposure['pilot48'])|set(exposure['confirmation100'])
     eligible=[q for q in questions if q['metadata']['type'] in TYPES and q['qid'] in retrieved and q['qid'] not in excluded]
-    support_ids={x['doc_id'] for q in eligible for x in q['supporting_context']}
+    support_ids={x['doc_id'] for q in questions for x in q['supporting_context']}
     sources={}
     for name in ['MMQA_texts.jsonl','MMQA_tables.jsonl','MMQA_images.jsonl']:
         p=raw/name;provenance[str(p)]=sha(p)
@@ -45,7 +44,9 @@ def run(base,out):
         for line in p.open():
             r=json.loads(line)
             if r['id'] in support_ids:sources[name][r['id']]=r
-    result={'schema':'m3doc600-inventory-v1','source_hashes':provenance,'questions':questions,
+    mp=base/'datasets/m3docvqa/id_url_mapping.jsonl';provenance[str(mp)]=sha(mp)
+    mapping=[json.loads(x) for x in mp.open()]
+    result={'id_url_mapping':mapping,'embedded_registry_source':str(hp),'schema':'m3doc600-inventory-v1','source_hashes':provenance,'questions':questions,
             'retrieved_pages':retrieved,'exposure':exposure,'eligible_qids':[q['qid'] for q in eligible],
             'sources':sources,'historical_baseline_scored_qids':sorted(retrieved),
             'summary':{'total_questions':len(questions),'cached_questions':len(retrieved),
