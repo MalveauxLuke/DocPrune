@@ -8,7 +8,7 @@ def run(root,corpus):
  import pypdfium2 as pdfium
  from PIL import Image,ImageOps
  assert os.environ.get('SLURM_JOB_ID')
- root=Path(root);manifest=read(root/'original-images/manifest.json');out=root/'evidence/image-matches-v2';rows=[]
+ root=Path(root);manifest=read(root/'original-images/manifest.json');out=root/'evidence/image-matches-v3';rows=[]
  for ix,ref in enumerate(manifest['images']):
   target=out/(ref['doc_id']+'.json')
   if target.exists():rows.append(read(target));continue
@@ -24,11 +24,16 @@ def run(root,corpus):
     for oi,obj in enumerate(page.get_objects(filter=[pdfium.raw.FPDF_PAGEOBJ_IMAGE])):
      try:
       bm=obj.get_bitmap(render=True);im=canonical(bm.to_pil());w,h=im.size
-      if min(w,h)<24 or abs((w/h)/(sw/sh)-1)>.03:im.close();bm.close();continue
-      arr=np.asarray(im.resize((64,64),Image.Resampling.LANCZOS),dtype=np.float32)/255
-      diff=np.abs(arr-original);mae=float(diff.mean());p99=float(np.quantile(diff,.99))
-      exact=im.size==source.size and im.tobytes()==source.tobytes()
-      candidates.append({'page_index':pi,'object_index':oi,'width':w,'height':h,'mae_rgb64':mae,'p99_error':p99,'exact_rgb_identity':exact})
+      if min(w,h)<24:im.close();bm.close();continue
+      for rotation in (0,90,180,270):
+       view=im.rotate(rotation,expand=True)
+       vw,vh=view.size
+       if abs((vw/vh)/(sw/sh)-1)>.03:view.close();continue
+       arr=np.asarray(view.resize((64,64),Image.Resampling.LANCZOS),dtype=np.float32)/255
+       diff=np.abs(arr-original);mae=float(diff.mean());p99=float(np.quantile(diff,.99))
+       exact=view.size==source.size and view.tobytes()==source.tobytes()
+       candidates.append({'page_index':pi,'object_index':oi,'width':w,'height':h,'rotation_to_source':rotation,'mae_rgb64':mae,'p99_error':p99,'exact_rgb_identity':exact})
+       view.close()
       im.close();bm.close()
      except Exception as e:
       # Extraction failures remain explicit and never count as a match.
@@ -37,7 +42,7 @@ def run(root,corpus):
   source.close();valid=sorted((c for c in candidates if 'mae_rgb64' in c),key=lambda c:c['mae_rgb64'])
   exact=[c for c in valid if c['exact_rgb_identity']]
   near=[c for c in valid if c['mae_rgb64']<=.01 and c['p99_error']<=.08]
-  r={'doc_id':ref['doc_id'],'pdf_sha256':sha(path),'source_image_sha256':ref['sha256'],'source_size':[sw,sh],'canonicalization':'EXIF orientation and white alpha compositing; PDF rendered image object with masks',
+  r={'doc_id':ref['doc_id'],'pdf_sha256':sha(path),'source_image_sha256':ref['sha256'],'source_size':[sw,sh],'canonicalization':'EXIF orientation and white alpha compositing; PDF rendered image object with masks; all right-angle rotations',
      'status':'exact_pixel_identity' if exact else 'near_pixel_identity_requires_visual_review' if near else 'no_strict_match',
      'exact_matches':exact,'near_matches':near,'best_candidates':valid[:5],'extraction_errors':[c for c in candidates if 'error' in c]}
   publish(target,r);rows.append(r)
