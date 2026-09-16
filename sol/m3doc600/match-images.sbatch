@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --time=00:30:00
-#SBATCH --output=/scratch/lmalveau/docprune-m3doc600/20260915-v1/logs/%x-%j.out
-#SBATCH --error=/scratch/lmalveau/docprune-m3doc600/20260915-v1/logs/%x-%j.err
+#SBATCH --output=/scratch/lmalveau/docprune-m3doc600/20260915-v2/logs/%x-%j.out
+#SBATCH --error=/scratch/lmalveau/docprune-m3doc600/20260915-v2/logs/%x-%j.err
 set -euo pipefail
 cd /home/lmalveau/DocPrune
 source sol/m3doc600/environment.sh

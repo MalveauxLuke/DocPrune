@@ -5,7 +5,7 @@ set -euo pipefail
 case "$(hostname -s)" in *login*) exit 2;; esac
 test "$(git rev-parse HEAD)" = "$DP600_COMMIT"
 git diff --exit-code HEAD -- experiments/m3doc600 sol/m3doc600 scripts/extract_colfeatures17.py
-export DP600_ROOT=/scratch/lmalveau/docprune-m3doc600/20260915-v1
+export DP600_ROOT=/scratch/lmalveau/docprune-m3doc600/20260915-v2
 export DP600_COL_PY=/home/lmalveau/.conda/envs/docprune-colfeatures17/bin/python
 export DP600_MINER_PY=/scratch/lmalveau/docprune/tool-envs/random-coverage-attribution-v2/mineru/bin/python
 export DP600_BASE=/scratch/lmalveau/docprune-colfeatures17/20260911-run01/hf-cache/hub/models--vidore--colqwen2.5-base/snapshots/92908120384b7a2110c5beda3ab29cbdb2c08e49

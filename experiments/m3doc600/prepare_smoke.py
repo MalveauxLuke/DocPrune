@@ -3,7 +3,7 @@ import argparse, collections, hashlib, json, os
 from pathlib import Path
 from common import publish, sha, fingerprint
 
-def run(pool,corpus,out,all_retrieved=False):
+def run(pool,corpus,out,all_retrieved=False,reuse_catalog=None):
  import pypdfium2 as pdfium
  assert os.environ.get('SLURM_JOB_ID')
  pool=Path(pool);root=Path(out);d=json.loads(pool.read_text());qs=[]
@@ -11,12 +11,24 @@ def run(pool,corpus,out,all_retrieved=False):
   rows=sorted((q for q in d['questions'] if q['metadata']['type']==t),key=lambda q:(len(q['question']),q['qid']))
   qs.extend([rows[0],rows[-1]])
  if all_retrieved:qs=d['questions']
- pages={};questions=[];pdf_hash={}
+ pages={};questions=[];pdf_hash={};reuse={}
+ if reuse_catalog:
+  old=json.loads(Path(reuse_catalog).read_text());digest=old.pop('sha256');assert fingerprint(old)==digest
+  for entry in old['pages']:
+   for a in entry['aliases']:reuse[(a['document_id'],a['page_number']-1)]=(entry,a)
  for q in qs:
   links=[]
   for p in q['original_top4']:
    doc=p['doc_id'];idx=p['page_index'];path=Path(corpus)/'pdfs_dev'/f'{doc}.pdf'
    if doc not in pdf_hash:pdf_hash[doc]=sha(path)
+   cached=reuse.get((doc,idx))
+   if cached and cached[1]['pdf_sha256']==pdf_hash[doc]:
+    entry,alias=cached;key=entry['key']
+    assert sha(entry['image'])==entry['image_sha256']
+    record=pages.setdefault(key,dict(entry,aliases=[]))
+    record['aliases'].append(alias)
+    links.append({'key':key,'page_id':f'{doc}:{idx}','page_number':idx+1})
+    continue
    with pdfium.PdfDocument(str(path)) as pdf:
     page=pdf[idx];bitmap=page.render(scale=2);im=bitmap.to_pil().convert('RGB');w,h=im.size
     pixel=hashlib.sha256(im.tobytes()).hexdigest();key=fingerprint([w,h,pixel]);f=root/'images'/f'{key}.png'
@@ -33,4 +45,4 @@ def run(pool,corpus,out,all_retrieved=False):
   for batch in batches:publish(root/f'{engine}-b{batch}'/'catalog.json',c)
  print(json.dumps({'pages':len(pages),'questions':len(questions),'catalog_sha256':c['sha256']}),flush=True)
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--pool',required=True);p.add_argument('--corpus',required=True);p.add_argument('--out',required=True);p.add_argument('--all-retrieved',action='store_true');a=p.parse_args();run(a.pool,a.corpus,a.out,a.all_retrieved)
+ p=argparse.ArgumentParser();p.add_argument('--pool',required=True);p.add_argument('--corpus',required=True);p.add_argument('--out',required=True);p.add_argument('--all-retrieved',action='store_true');p.add_argument('--reuse-catalog');a=p.parse_args();run(a.pool,a.corpus,a.out,a.all_retrieved,a.reuse_catalog)
