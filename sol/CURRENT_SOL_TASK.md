@@ -12,3 +12,5 @@ supplemented results. Binding handoff: [m3doc471-baseline/HANDOFF.md](m3doc471-b
 Use minimum measured resources, any compatible GPU, tight resumable jobs.
 Prior ColQwen/MinerU preprocessing is complete; preserve its outputs. No mask
 teacher collection or training is authorized by this baseline stage.
+
+Current additional approved diagnostic: one five-minute padding/batching profile via sol/omp10/profile.sbatch; exact scope and output isolation in omp10/HANDOFF.md final section. Ten-question production is complete. No production rerun.
