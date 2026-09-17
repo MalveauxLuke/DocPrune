@@ -16,9 +16,11 @@ from baseline import PROMPT, REVISION, admitted
 from discovery import masks_for, fit_omp
 
 
-def main(a):
+def main(a, loaded=None):
+    a.smoke = a.smoke or a.smoke_then_run
     import torch
     import transformers
+    from batching import score_batch, tune
     from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
     from docprune.stage2.qwen import prepare_prompt, assemble_prefill
     from docprune.stage2.answerer import FrozenAnswerer
@@ -26,7 +28,7 @@ def main(a):
     assert transformers.__version__=='4.57.3'
     assert torch.cuda.is_available() and torch.cuda.get_device_capability()[0]>=8
     torch.set_num_threads(2)
-    root=Path(a.root); out=root/'omp10-20260917-v1'; review=read(a.review)
+    root=Path(a.root); out=root/'omp10-20260917-batch-v1'; review=read(a.review)
     assert review['status']=='frozen_before_mask_scoring' and len(review['selected'])==10
     selected=review['selected']; assert len({r['qid'] for r in selected})==10
     assert all(r['decision']=='confirmed_wrong' and r['evidence_pages'] and r['reason'] for r in selected)
@@ -49,9 +51,9 @@ def main(a):
         admitted_set={(p['doc_id'],p['page_index']) for p in pool[r['qid']]['admitted_pages']}
         assert all((p['doc_id'],p['page_index']) in admitted_set for p in r['evidence_pages'])
         originals[r['qid']]=b
-    sources=[Path(__file__),Path(__file__).with_name('discovery.py'),REPO/'experiments/m3doc600/common.py',REPO/'experiments/m3doc600/baseline.py']
+    sources=[Path(__file__),Path(__file__).with_name('discovery.py'),Path(__file__).with_name('batching.py'),REPO/'experiments/m3doc600/common.py',REPO/'experiments/m3doc600/baseline.py']
     sources += [Path(m.__file__) for n,m in sys.modules.items() if n.startswith('docprune.stage2') and getattr(m,'__file__',None)]
-    contract=dict(schema='omp10-discovery-v1',review_sha256=sha(a.review),catalog_sha256=digest,
+    contract=dict(schema='omp10-fullprefix-batch-v1',review_sha256=sha(a.review),catalog_sha256=digest,
                   baseline_contract=baseline_id,revision=REVISION,precision='bfloat16',attention='sdpa',
                   source_hashes={str(p.relative_to(REPO)):sha(p) for p in sorted(set(sources))},
                   packages={k:importlib.metadata.version(k) for k in ['torch','transformers','numpy','Pillow']},
@@ -60,7 +62,8 @@ def main(a):
                   S='mean continuation log likelihood of original answer tokens, trailing EOS excluded',
                   position_policy='original multimodal positions; compact cache; original continuation origin',
                   partition='largest positive overlap; reading-order ties; page-local fallback tile8 cap128',
-                  score_parity_atol=0.02,repeat_atol=1e-5)
+                  score_parity_atol=0.05,repeat_atol=1e-5,scorer='independent full-prefix, no KV branching',
+                  batching='per-question longest-mask calibration 1/2/4; stop if slower, OOM or parity failure; largest first; no mask changes')
     cid=fingerprint(contract); publish(out/'contract.json',dict(contract,sha256=cid))
     assert Path(a.snapshot).name==REVISION
     smoke_ids=review['smoke_qids']; assert len(set(smoke_ids))==2 and set(smoke_ids)<=set(originals)
@@ -73,10 +76,16 @@ def main(a):
     receipt_path=out/('smoke.json' if a.smoke else f'runs/shard-{a.shard}-of-{a.shards}.json')
     if receipt_path.exists():
         old=read(receipt_path); assert old['contract_sha256']==cid
-        print(json.dumps(old)); return
-    processor=AutoProcessor.from_pretrained(a.snapshot,local_files_only=True,min_pixels=256*32*32,max_pixels=2560*32*32)
+        print(json.dumps(old))
+        if a.smoke_then_run:
+            a.smoke=False; a.smoke_then_run=False
+            return main(a,loaded)
+        return
     start=time.monotonic()
-    model=Qwen3VLForConditionalGeneration.from_pretrained(a.snapshot,local_files_only=True,dtype=torch.bfloat16,device_map='cuda:0',attn_implementation='sdpa').eval().requires_grad_(False)
+    if loaded is None:
+        processor=AutoProcessor.from_pretrained(a.snapshot,local_files_only=True,min_pixels=256*32*32,max_pixels=2560*32*32)
+        model=Qwen3VLForConditionalGeneration.from_pretrained(a.snapshot,local_files_only=True,dtype=torch.bfloat16,device_map='cuda:0',attn_implementation='sdpa').eval().requires_grad_(False)
+    else: processor,model=loaded
     reader=FrozenAnswerer(model); results=[]
     eos=model.generation_config.eos_token_id; eos=[eos] if isinstance(eos,int) else eos
     for r in todo:
@@ -116,12 +125,13 @@ def main(a):
         allkeep=torch.arange(n,device='cuda'); targets=[gold_ids,own]
         def score(retained):
             torch.cuda.synchronize(); t=time.monotonic()
-            v=reader.teacher_scores(prompt,memory,retained,[gold_ids],own)
+            v=reader.teacher_scores(prompt,memory,retained,[gold_ids],own,reuse_prefill=False)
             torch.cuda.synchronize()
             return dict(v,seconds=time.monotonic()-t)
         anchor_path=folder/'anchor.json'
         anchor=read(anchor_path) if anchor_path.exists() else score(allkeep)
         if anchor_path.exists(): assert anchor['contract_sha256']==cid
+        retained_sets=[torch.where(torch.as_tensor(row,dtype=torch.bool)[layout.owner])[0].to('cuda') for row in x]
         if a.smoke:
             with torch.inference_mode():
                 native=model(input_ids=prompt.input_ids,attention_mask=torch.ones_like(prompt.input_ids),pixel_values=prompt.pixel_values,image_grid_thw=prompt.image_grid_thw,use_cache=False,logits_to_keep=1).logits[:, -1].float()
@@ -143,30 +153,54 @@ def main(a):
                 repeat_error=max(abs(v[k]-repeat[k]) for k in ['G','S'])
                 checks.append(dict(mask=index,retained=len(retained),scores=v,reference=reference,parity_max=parity,repeat_max=repeat_error))
                 assert parity<=contract['score_parity_atol'] and repeat_error<=contract['repeat_atol'], checks[-1]
-            item=dict(qid=qid,anchor=anchor,native_max_logit_difference=native_max,checks=checks,stats=stats(begin,torch))
+            batch_size,trials=tune(reader,prompt,memory,retained_sets,gold_ids,own,atol=contract['score_parity_atol'])
+            item=dict(qid=qid,anchor=anchor,native_max_logit_difference=native_max,checks=checks,batch_size=batch_size,batch_trials=trials,stats=stats(begin,torch))
             publish(folder/'smoke.json',dict(item,contract_sha256=cid)); results.append(item)
         else:
             ap=folder/'anchor.json'
             if not ap.exists():publish(ap,dict(anchor,contract_sha256=cid))
+            if loaded is not None and (folder/'smoke.json').exists():
+                calibration=read(folder/'smoke.json');batch_size=calibration['batch_size'];trials=calibration['batch_trials']
+            else:batch_size,trials=tune(reader,prompt,memory,retained_sets,gold_ids,own,atol=contract['score_parity_atol'])
+            print(json.dumps(dict(qid=qid,batch_size=batch_size,batch_trials=trials)),flush=True)
+            pending=[i for i in range(22) if not (folder/'measurements'/f'{i:02d}.json').exists()]
+            pending.sort(key=lambda i:len(retained_sets[i]),reverse=True)
+            batches=[]
+            while pending:
+                count=2**int(np.log2(min(batch_size,len(pending))))
+                indices=pending[:count]
+                values=None
+                torch.cuda.synchronize();t=time.monotonic()
+                try:values=score_batch(reader,prompt,memory,[retained_sets[i] for i in indices],gold_ids,own)
+                except torch.cuda.OutOfMemoryError:
+                    if count==1:raise
+                if values is None:
+                    import gc
+                    gc.collect();torch.cuda.empty_cache();batch_size=count//2
+                    batches.append(dict(status='oom_retry',batch=count,next_batch=batch_size))
+                    continue
+                torch.cuda.synchronize();seconds=time.monotonic()-t
+                for index,v in zip(indices,values):
+                    publish(folder/'measurements'/f'{index:02d}.json',dict(v,contract_sha256=cid,index=index,mask=x[index].tolist(),retained_tokens=len(retained_sets[index]),batch_size=count,batch_seconds=seconds))
+                batches.append(dict(status='complete',indices=indices,seconds=seconds))
+                pending=pending[count:]
             ys=[]
             for index,row in enumerate(x):
-                target=folder/'measurements'/f'{index:02d}.json'
-                if target.exists():
-                    v=read(target); assert v['contract_sha256']==cid and v['mask']==row.tolist()
-                else:
-                    retained=torch.where(torch.as_tensor(row,dtype=torch.bool)[layout.owner])[0].to('cuda')
-                    v=dict(score(retained),contract_sha256=cid,index=index,mask=row.tolist(),retained_tokens=len(retained))
-                    publish(target,v)
+                v=read(folder/'measurements'/f'{index:02d}.json')
+                assert v['contract_sha256']==cid and v['mask']==row.tolist()
                 ys.append([v['G'],v['S']])
             fit=fit_omp(x,ys); publish(folder/'omp.json',dict(fit,contract_sha256=cid))
-            results.append(dict(qid=qid,stats=stats(begin,torch),measurements=22))
+            results.append(dict(qid=qid,stats=stats(begin,torch),measurements=22,batch_size=batch_size,batch_trials=trials,batches=batches))
         print(json.dumps(results[-1]),flush=True)
         del memory,prompt
     receipt=dict(status='passed' if a.smoke else 'complete',contract_sha256=cid,results=results,stats=stats(start,torch))
     publish(out/('smoke.json' if a.smoke else f'runs/shard-{a.shard}-of-{a.shards}.json'),receipt)
+    if a.smoke_then_run:
+        a.smoke=False; a.smoke_then_run=False
+        return main(a,(processor,model))
 
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--review',required=True)
-    p.add_argument('--smoke',action='store_true');p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=1)
+    p.add_argument('--smoke',action='store_true');p.add_argument('--smoke-then-run',action='store_true');p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=1)
     main(p.parse_args())

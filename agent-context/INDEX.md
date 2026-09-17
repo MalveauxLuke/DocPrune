@@ -1,5 +1,7 @@
 # Agent context index
 
+- [SOL fairshare, queue-time and adaptive batching](modules/sol-fairshare-batching.md) — measured billing, bounded batch tuning and resumable one-load execution.
+
 - [Current task](CURRENT_TASK.md)
 - [Start SOL in the ASU browser](modules/sol-browser-startup.md)
 - [H200 operations and CoRAL rules](../h200-operations/README.md) — required before any H200 work.

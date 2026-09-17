@@ -97,3 +97,19 @@ def test_shared_prefix_scores_match_independent_and_do_not_leak_targets():
     expected=[reader.likelihood(p,memory,retained,t) for t in targets]
     np.testing.assert_allclose([x['mean'] for x in actual],[x['mean'] for x in expected],atol=1e-6)
     assert actual[0]==actual[2]
+
+
+@pytest.mark.parametrize("lengths", [[0,2,8],[1,7],[8,8],[2,2,2,2]])
+def test_padded_mask_batch_matches_independent_full_prefix(lengths):
+    import sys
+    sys.path.insert(0,str(Path(__file__).parents[1]/'experiments/omp10'))
+    from batching import score_batch
+    from docprune.stage2.answerer import FrozenAnswerer
+    torch.set_num_threads(1);torch.manual_seed(51)
+    model=tiny_model();p=prompt();reader=FrozenAnswerer(model)
+    memory=reader.vision(p,'batch-test')
+    kept=[torch.arange(n) for n in lengths]
+    actual=score_batch(reader,p,memory,kept,[7,8,9,10],[11,12])
+    reference=[reader.teacher_scores(p,memory,r,[[7,8,9,10]],[11,12],reuse_prefill=False) for r in kept]
+    for a,b in zip(actual,reference):
+        np.testing.assert_allclose([a['G'],a['S']],[b['G'],b['S']],atol=1e-6)
