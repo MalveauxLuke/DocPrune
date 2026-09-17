@@ -94,6 +94,12 @@ def main(a):
       'equal_batch':(lambda:padded_score(reader,prompt,memory,[long,long],gold,own),[reference[0],reference[0]]),
       'unequal_batch':(lambda:padded_score(reader,prompt,memory,[long,short],gold,own),reference),
       'padded_single':(lambda:padded_score(reader,prompt,memory,[short],gold,own,pad_to=width),[reference[1]])}
+    if getattr(a,'varlen',False):
+        from varlen_diagnostic import varlen_score
+        cases={
+          'sequential':cases['sequential'],
+          'padded_batch':cases['unequal_batch'],
+          'varlen_batch':(lambda:varlen_score(reader,prompt,memory,[long,short],gold,own),reference)}
     publish(out/'design.json',dict(qid=qid,bank_sha256=sha(bankpath),mask_indices=ids,retained_lengths=[len(long),len(short)],prefix_width=width,commit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),gpu=torch.cuda.get_device_name(),torch=torch.__version__,purpose='diagnostic only; never teacher bank'))
     records={name:[] for name in cases}
     for fn,_ in cases.values():fn();torch.cuda.synchronize()
@@ -115,4 +121,4 @@ def main(a):
 
 if __name__=='__main__':
     import argparse
-    p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--out',required=True);main(p.parse_args())
+    p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--snapshot',required=True);p.add_argument('--out',required=True);p.add_argument('--varlen',action='store_true');main(p.parse_args())

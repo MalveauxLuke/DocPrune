@@ -14,3 +14,5 @@ Prior ColQwen/MinerU preprocessing is complete; preserve its outputs. No mask
 teacher collection or training is authorized by this baseline stage.
 
 Current additional approved diagnostic: one five-minute padding/batching profile via sol/omp10/profile.sbatch; exact scope and output isolation in omp10/HANDOFF.md final section. Ten-question production is complete. No production rerun.
+
+Owner-approved follow-up after padding diagnosis: one bounded variable-length attention diagnostic via sol/omp10/varlen.sbatch, as specified in omp10/HANDOFF.md. No dependency installation or production-backend change.
