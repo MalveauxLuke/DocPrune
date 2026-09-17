@@ -113,3 +113,21 @@ def test_padded_mask_batch_matches_independent_full_prefix(lengths):
     reference=[reader.teacher_scores(p,memory,r,[[7,8,9,10]],[11,12],reuse_prefill=False) for r in kept]
     for a,b in zip(actual,reference):
         np.testing.assert_allclose([a['G'],a['S']],[b['G'],b['S']],atol=1e-6)
+
+
+
+def test_repeated_pixel_pages_have_distinct_occurrences_without_changing_unique_pages():
+    import sys
+    from types import SimpleNamespace
+    sys.path.insert(0,str(Path(__file__).parents[1]/'experiments/omp10'))
+    from run import occurrence_assets
+    from docprune.stage2.documents import PageAsset, region_layout
+    a=PageAsset('same-pixels','image','hash','layout','hash','render')
+    other=PageAsset('unique','other','hash','layout','hash','render')
+    assets=occurrence_assets([a,other,a])
+    assert assets[1] is other and a.page_id=='same-pixels'
+    regions=[[dict(id='region0',bbox=[0,0,1,1])]]*3
+    layout,_,_=region_layout(torch.tensor([[1,4,4]]*3),2,assets,regions,SimpleNamespace(fallback_tile_size=8,max_fallback_tokens=128,budget=6))
+    assert len(set(layout.region_ids))==3
+    assert layout.costs.tolist()==[4,4,4]
+    assert layout.owner.tolist()==[0]*4+[1]*4+[2]*4

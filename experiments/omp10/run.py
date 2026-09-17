@@ -1,6 +1,7 @@
 """Bounded Qwen3 scoring audit. Frozen review required; no retrieval or training."""
 import argparse
-from dataclasses import fields
+from dataclasses import fields, replace
+from collections import Counter
 import importlib.metadata
 import json
 from pathlib import Path
@@ -16,6 +17,12 @@ from baseline import PROMPT, REVISION, admitted
 from discovery import masks_for, fit_omp
 
 
+def occurrence_assets(assets):
+    """Pixel cache identity is not a unique occurrence identity in a prompt."""
+    counts=Counter(v.page_id for v in assets)
+    return [replace(v,page_id=f'{v.page_id}#occurrence:{i}') if counts[v.page_id]>1 else v for i,v in enumerate(assets)]
+
+
 def main(a, loaded=None):
     a.smoke = a.smoke or a.smoke_then_run
     import torch
@@ -28,7 +35,7 @@ def main(a, loaded=None):
     assert transformers.__version__=='4.57.3'
     assert torch.cuda.is_available() and torch.cuda.get_device_capability()[0]>=8
     torch.set_num_threads(2)
-    root=Path(a.root); out=root/'omp10-20260917-batch-v1'; review=read(a.review)
+    root=Path(a.root); out=root/'omp10-20260917-batch-v2'; review=read(a.review)
     assert review['status']=='frozen_before_mask_scoring' and len(review['selected'])==10
     selected=review['selected']; assert len({r['qid'] for r in selected})==10
     assert all(r['decision']=='confirmed_wrong' and r['evidence_pages'] and r['reason'] for r in selected)
@@ -64,7 +71,21 @@ def main(a, loaded=None):
                   partition='largest positive overlap; reading-order ties; page-local fallback tile8 cap128',
                   score_parity_atol=0.05,repeat_atol=1e-5,scorer='independent full-prefix, no KV branching',
                   batching='per-question longest-mask calibration 1/2/4; stop if slower, OOM or parity failure; largest first; no mask changes')
+    parent_root=root/'omp10-20260917-batch-v1'
+    parent=read(parent_root/'contract.json'); parent_id=parent.pop('sha256')
+    assert fingerprint(parent)==parent_id
+    for k,value in contract.items():
+        if k=='source_hashes':
+            assert {n:h for n,h in value.items() if n!='experiments/omp10/run.py'}=={n:h for n,h in parent[k].items() if n!='experiments/omp10/run.py'}
+        else: assert value==parent[k],k
+    contract.update(parent_contract=parent_id,layout_page_identity='qualify repeated pixel keys by frozen presentation occurrence; unique keys unchanged')
     cid=fingerprint(contract); publish(out/'contract.json',dict(contract,sha256=cid))
+    parent_smoke=read(parent_root/'smoke.json')
+    assert parent_smoke['status']=='passed' and parent_smoke['contract_sha256']==parent_id
+    for qid in review['smoke_qids']:
+        keys=[p['key'] for p in admitted(qs[qid])]
+        assert len(keys)==len(set(keys)), 'Changed layout requires a fresh smoke'
+    publish(out/'smoke.json',dict(parent_smoke,contract_sha256=cid,reused_from=str(parent_root/'smoke.json'),parent_contract=parent_id))
     assert Path(a.snapshot).name==REVISION
     smoke_ids=review['smoke_qids']; assert len(set(smoke_ids))==2 and set(smoke_ids)<=set(originals)
     if a.smoke:
@@ -93,6 +114,21 @@ def main(a, loaded=None):
         if a.smoke and (folder/'smoke.json').exists():
             prior=read(folder/'smoke.json'); assert prior['contract_sha256']==cid
             results.append(prior); continue
+        previous=parent_root/'questions'/qid
+        if not a.smoke and (previous/'omp.json').exists():
+            bank=read(previous/'bank.json')
+            assert bank['contract_sha256']==parent_id and len(bank['page_keys'])==len(set(bank['page_keys']))
+            expected=masks_for(qid,bank['region_ids'])
+            assert expected.tolist()==bank['masks'] and bank['ordered_pages']==b['ordered_pages']
+            files=[previous/'bank.json',previous/'omp.json']
+            assert read(files[1])['contract_sha256']==parent_id
+            for i,row in enumerate(expected):
+                path=previous/'measurements'/f'{i:02d}.json';v=read(path)
+                assert v['contract_sha256']==parent_id and v['mask']==row.tolist() and np.isfinite([v['G'],v['S']]).all()
+                files.append(path)
+            item=dict(qid=qid,measurements=22,reused_from=str(previous),parent_contract=parent_id,files_sha256={str(p.relative_to(previous)):sha(p) for p in files})
+            publish(folder/'reused.json',item);results.append(item);print(json.dumps(dict(qid=qid,reused_measurements=22)),flush=True)
+            continue
         keep=admitted(q)
         assert b['ordered_pages']==[p['page_id'] for p in keep]
         assets=[]; images=[]; regions=[]
@@ -105,7 +141,7 @@ def main(a, loaded=None):
         assert prompt.input_ids[0].tolist()==b['input_token_ids']
         assert prompt.image_grid_thw.tolist()==b['image_grid_thw']
         n=int(prompt.image_grid_thw.prod(1).sum()//4)
-        layout,boxes,audit=region_layout(prompt.image_grid_thw,2,assets,regions,SimpleNamespace(fallback_tile_size=8,max_fallback_tokens=128,budget=max(1,n//2)))
+        layout,boxes,audit=region_layout(prompt.image_grid_thw,2,occurrence_assets(assets),regions,SimpleNamespace(fallback_tile_size=8,max_fallback_tokens=128,budget=max(1,n//2)))
         x=masks_for(qid,layout.region_ids)
         gold=r['gold_items']; gold_text=str(gold[0]) if len(gold)==1 else json.dumps(gold,ensure_ascii=False)
         gold_ids=processor.tokenizer.encode(gold_text,add_special_tokens=False)
