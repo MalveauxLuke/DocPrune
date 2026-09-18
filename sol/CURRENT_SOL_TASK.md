@@ -1,4 +1,12 @@
-# Active — ten-error Qwen3 masking and OMP audit
+# Active — native 2B selector end-to-end smoke
+
+Owner approved two verified-incorrect questions from filtered training463,32 masks
+each, native selector vision, language LoRA, rich readout, Head1 and Head2.
+Binding handoff: [selector-smoke/HANDOFF.md](selector-smoke/HANDOFF.md).
+This supersedes earlier prohibitions on training only for this bounded smoke.
+No full-cohort training. Browser shell; Git code and rsync inputs; minimum resources.
+
+# Completed — ten-error Qwen3 masking and OMP audit
 
 Owner explicitly approved steps 1–3: semantic review/freeze ten actual errors, two-case masking/scoring smoke, 22 independent masks per question, G/S OMP and visual inspection. Use the SOL browser shell, allocations for computation, and minimum measured resources. Binding handoff: [omp10/HANDOFF.md](omp10/HANDOFF.md). The reviewed metadata freeze and two-case smoke are active once the exact tested Git pin and launch receipt are recorded. Production is gated on the matching passed smoke; the newly authorized combined full-prefix/batching run performs both smoke cases then all ten in the same process to amortize loading. See the superseding execution policy in the handoff. No later follow-up masks or selector training.
 
