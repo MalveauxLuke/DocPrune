@@ -258,13 +258,17 @@ def question_metrics(scores, manifest):
     ), result
 
 
-def result_from_mask_scores(saved, manifest):
+def result_from_mask_scores(saved, manifest, *, device=None):
     """Rebuild metrics from immutable per-mask scores without another selector forward."""
     masks = saved["masks"]
-    head1, head1_pairs = question_metrics(torch.tensor([row["head1"] for row in masks], dtype=torch.float32), manifest)
-    combined, combined_pairs = question_metrics(torch.tensor([row["combined"] for row in masks], dtype=torch.float32), manifest)
+    head1, head1_pairs = question_metrics(
+        torch.tensor([row["head1"] for row in masks], dtype=torch.float32, device=device), manifest
+    )
+    combined, combined_pairs = question_metrics(
+        torch.tensor([row["combined"] for row in masks], dtype=torch.float32, device=device), manifest
+    )
     retention, retention_pairs = question_metrics(
-        torch.tensor([row["retained_tokens"] for row in masks], dtype=torch.float32), manifest
+        torch.tensor([row["retained_tokens"] for row in masks], dtype=torch.float32, device=device), manifest
     )
     return dict(
         qid=saved["qid"],
@@ -365,6 +369,7 @@ def run(args):
     )
     cache = TensorCache(training / "cache", cache_identity)
     model = CachedPilotSelector(build_selector(config, answerer_config=backbone.config, selector_model=backbone), disk_cache=cache)
+    evaluation_device = next(model.parameters()).device
     stream = Stream(root, audit["rows"], processor, cache)
     identity = fingerprint(contract)
     checkpoints = [
@@ -397,7 +402,7 @@ def run(args):
                 qid = audit_row["qid"]
                 score_path = output / "scores" / name / f"{qid}.json"
                 if score_path.exists():
-                    rows.append(result_from_mask_scores(read_record(score_path), manifests[qid]))
+                    rows.append(result_from_mask_scores(read_record(score_path), manifests[qid], device=evaluation_device))
                     continue
                 batch = stream.batch(qid); example, bank = batch["examples"][0], batch["banks"][0]
                 encoding = model(example, batch["proxy_prompts"][0], native_layout=batch["native_layouts"][0], return_encoding=True)
