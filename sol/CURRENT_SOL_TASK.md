@@ -1,3 +1,10 @@
+# Active — audited64-question selector training
+
+Owner resumed and authorized final audit/checks then training submission. Binding
+[training handoff](training-pilot/TRAINING_HANDOFF.md). Run CPU bank audit first;
+submit one minimal, resumable training job only after it passes. Collection
+63544061 completed; no further acquisition authorized by this handoff.
+
 # Active — frozen train64/dev24 collection
 
 Owner approved quality-first splits and next collection/training launch; stop after

@@ -106,17 +106,24 @@ def next_probe(rows, costs, qid, correct, reference, *, count=32, random_only=Fa
     if p:p['fallback_from']=kind
     return p
 
+def encoding_cache_key(inputs,prompt,native_layout=None):
+    layout=native_layout if native_layout is not None else inputs.layout
+    return fingerprint((inputs.identity.key,prompt.input_ids.cpu().tolist(),prompt.image_grid_thw.cpu().tolist(),layout.owner.cpu().tolist()))
+
+
 class CachedPilotSelector(nn.Module):
     """Cache frozen vision across phases; language memories only while LoRA is identity."""
-    def __init__(self, base, cache_entries=2):
+    def __init__(self, base, cache_entries=2, disk_cache=None):
         super().__init__();self.base=base;self.phase='lora'
-        self.cache_entries=cache_entries;self.vision_cache=OrderedDict();self.hidden_cache=OrderedDict()
+        self.cache_entries=cache_entries;self.disk_cache=disk_cache;self.vision_cache=OrderedDict();self.hidden_cache=OrderedDict()
         self.calls={'vision':0,'language':0,'vision_hits':0,'hidden_hits':0}
     @property
     def correction(self):return self.base.correction
     def set_phase(self,phase):
         if phase not in ('warmup','frozen','lora'):raise ValueError('Unknown training phase')
         if phase != self.phase:self.hidden_cache.clear()
+        if phase!='lora' and any(torch.count_nonzero(p).item() for n,p in self.base.backbone.named_parameters() if 'lora_B' in n):
+            raise ValueError('Frozen hidden cache requires restored identity LoRA')
         self.phase=phase
         for n,p in self.base.backbone.named_parameters():p.requires_grad_('lora_' in n and phase=='lora')
         if phase=='lora':self.hidden_cache.clear()
@@ -126,8 +133,15 @@ class CachedPilotSelector(nn.Module):
         if inputs.budget!=inputs.layout.owner.numel():raise ValueError('Pilot utility capacity must be full')
         layout=replace(native_layout,metadata=inputs.layout.metadata) if native_layout is not None else inputs.layout
         if layout.region_ids!=inputs.layout.region_ids:raise ValueError("Native action identity differs")
-        key=fingerprint((inputs.identity.key,prompt.input_ids.cpu().tolist(),prompt.image_grid_thw.cpu().tolist(),layout.owner.cpu().tolist()))
+        key=encoding_cache_key(inputs,prompt,layout)
         device=prompt.input_ids.device
+        if self.disk_cache is not None and not bypass_cache:
+            if self.phase!='lora' and key not in self.hidden_cache:
+                saved=self.disk_cache.get('identity-language',key)
+                if saved is not None:self.hidden_cache[key]=(saved['visual'],saved['question'])
+            if key not in self.vision_cache and key not in self.hidden_cache:
+                saved=self.disk_cache.get('native-vision',key)
+                if saved is not None:self.vision_cache[key]=VisualMemory(saved['merged'],tuple(saved[k] for k in sorted(saved) if k.startswith('deepstack_')),saved['grid'],key)
         if self.phase!='lora' and key in self.hidden_cache and not bypass_cache:
             visual,question=(v.to(device) for v in self.hidden_cache[key]);self.calls['hidden_hits']+=1
         else:
@@ -137,11 +151,14 @@ class CachedPilotSelector(nn.Module):
                 else:
                     vision=extract_vision(self.base.backbone,prompt,provenance=key);self.calls['vision']+=1
                     self.vision_cache[key]=VisualMemory(vision.merged.cpu(),tuple(v.cpu() for v in vision.deepstack),vision.grid_thw.cpu(),key)
+                    if self.disk_cache is not None:self.disk_cache.put('native-vision',key,dict(merged=vision.merged,grid=vision.grid_thw,**{f'deepstack_{i}':v for i,v in enumerate(vision.deepstack)}))
                 packed,_,_=assemble_prefill(self.base.backbone,prompt,vision,question_first=True)
                 output=self.base.backbone.model.language_model(**packed,use_cache=False,output_hidden_states=False,return_dict=True)
                 hidden=output.last_hidden_state[0];self.calls['language']+=1
                 visual=hidden[prompt.input_ids[0]==self.base.backbone.config.image_token_id];question=hidden[prompt.question_positions]
-                if self.phase!='lora':self.hidden_cache[key]=(visual.detach().cpu(),question.detach().cpu())
+                if self.phase!='lora':
+                    self.hidden_cache[key]=(visual.detach().cpu(),question.detach().cpu())
+                    if self.disk_cache is not None:self.disk_cache.put('identity-language',key,dict(visual=visual,question=question))
         for cache in (self.vision_cache,self.hidden_cache):
             if key in cache:cache.move_to_end(key)
             while len(cache)>self.cache_entries:cache.popitem(last=False)

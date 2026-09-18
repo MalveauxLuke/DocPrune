@@ -92,3 +92,98 @@ anddevselectiondamage mustbereported, nothiddenbycombined-headtrainingfit.
 
 Owner subsequently approved75%retention asprimarydevelopment operatingpoint;
 50%secondary stresstest. Frozen variable-size acquisition/splits unchanged.
+
+## Collection submission receipt
+
+Submitted **63544061** through SOL browser shell at pinned code
+927f6b2f868d74c538a146279610b9e7f0132209. User rsynced split package and its five
+files were visibly present. Local29focused tests passed beforefinal extra
+wrong-channel/dev-independence test; all5pilot tests thenpassed. Codepushed/pulled.
+45min test-only estimated19:34:16,30min estimated19:35:16 onsg027; shorterrequest
+providednoqueueadvantage, so retained45min,1genericGPU,2CPU,24000M hostRAM.
+Actualsubmissionconfirmed; running/completion notyetchecked. Logs
+stage/training-pilot-v1/collect-63544061.{out,err}. Outputtraining-pilot-quality-v1.
+Stopafter submission asownerrequested. No64questiontrainingjobsubmitted.
+
+## Owner-requested pause: training preparation checkpoint
+
+Owner approved bank validation, streamed64-question training, fixed development
+comparison at75% primary/50% secondary retention, and resumable checkpoints.
+Then requested: "pause at a good point". Paused after focused CPU tests; do not
+resume implementation/submission until the owner resumes. Existing collection
+job63544061 remains queued; no cancellation or new training submission.
+Last browser-shell observation: PENDING, estimated2026-09-18T01:30:00; scheduler
+estimate is provisional. No production banks exist yet to validate.
+
+Local, UNCOMMITTED preparation (not deployed to SOL):
+- `experiments/training_pilot/audit_banks.py`: completion/provenance, exact64/24
+  identities, frozen API channel routing, pair yield and threshold sensitivity.
+  Audit records failures; trainer requires passed audit and nonempty train/dev pairs.
+- `experiments/training_pilot/train64.py`: one-question stream, disk prompt/native
+  vision/frozen-language caches, fixed dev ranking, untrained baseline,2 warm-up
+  epochs then up to4 frozen/LoRA epochs with patience2, same warm-up weights and
+  fresh optimizers, fixed seed/order, accumulation4. Emits75%/50% selected masks.
+- `src/docprune/stage2/pilot_runtime.py`: sealed tensor cache, atomic epoch-boundary
+  checkpoint with optimizer/scheduler/RNG, identity LoRA included for transitions.
+- `src/docprune/stage2/pilot.py`: optional disk cache; identity-language caches
+  prohibited after LoRA updates unless identity adapters are restored.
+- `experiments/training_pilot/evaluate64.py`: separate reader process for selected
+  dev masks, likelihood plus optional decoding, ColQwen and three Bernoulli.5
+  controls. New-answer grading remains a separate frozen-evaluator step.
+- `tests/test_stage2_pilot_runtime.py`: disk parity/corruption, LoRA invalidation,
+  exact epoch resume, routing rejection, dev no-update/capacities, synthetic
+  end-to-end three-phase runner and completed-run no-op.
+
+Verification: original5 pilot tests passed after cache changes; runtime5 tests
+passed (6.18s) including synthetic complete runner. This is CPU validation, not
+production-model validation. Evaluator compiled but still needs dedicated tests
+and review. No full64 training or real bank audit has run.
+
+Resume work: inspect/review these changes; add evaluator and fail-closed audit
+integration coverage; finish resource-sized SOL training launcher/handoff; audit
+actual banks only after collection completion; then decide/submit training under
+existing owner authority. Smoke training peak6.97GB/device and host6.0GiB;
+training resource estimate must account for longer five-page cases. A20-minute,
+1 genericGPU/2CPU/24000M starting request is a proposal, not submitted or measured
+on64. Reader evaluation stays separate and uses reader memory requirements.
+
+CRITICAL: remote `/home/lmalveau/DocPrune` remains pinned at
+927f6b2f868d74c538a146279610b9e7f0132209 for queued collection63544061.
+Do not pull the new training changes into that checkout while collection is
+pending/running: its launcher and contract require the old exact code. Use a
+separate pinned training checkout if overlap becomes necessary, or wait until
+collection is finished. Preserve unrelated dirty local files. No commit/push of
+this preparation has occurred yet.
+
+## Resumed: bank audit and production trainer preparation
+
+Owner explicitly resumed, requested a gpt-5.6-sol subagent for the audit and
+submission once gates pass. Collection63544061 verified COMPLETED0:0 in38m38s
+onA10080/sg046, MaxRSS10480468KiB (~10GiB); receipt64train/24dev,86new+2reuse.
+Teacher reserved20,812,136,448bytes, allocated20,534,333,440bytes; collection
+elapsed2148.23s excludes setup. All collector checks passed; independent bank
+audit still required before training.
+
+Sol subagent audited/improved the bank-audit script and its tests. It verifies
+sealed inputs, exact64/24 and completion counts, API routing, acquisition mode,
+raw measurements/reference/design versus banks, and frozen pair-family yield.
+Primary epsilon0.1/margin0.05 unchanged; reports sensitivity without retuning.
+
+Production trainer uses disk-backed prompt/nativevision/frozenlanguage caches,
+loading pixels only before nativevision is cached. One question per microbatch,
+accumulation4; two warm-up epochs then fresh frozen/LoRA branches (up to4epochs,
+patience2). Epoch checkpoints include adapters, heads, optimizers, schedulers,
+RNG. Native frozen-cache parity is checked on the largest training context before
+updates in the same job. Fixed independent development masks choose checkpoints;
+75%/50% selections computed only for untrained/shortlisted phase outputs.
+
+Review corrected the reader-evaluation ColQwen control to use feature channel0
+(MaxSim), not the last query-vector channel. Dedicated test locks this mapping.
+Reader evaluation is wired separately, not submitted with selector training.
+
+Live scheduler test rejected8000M forGPU: minimum24000MB remains enforced.
+CPU audit2CPU/4000M/5min is accepted; training planned genericGPU1/2CPU/24000M,
+20min resumable, including20GBGPU slices because selector smoke peak6.97GB.
+No GPU model restriction. Existing models/environments reused. Binding handoff:
+`sol/training-pilot/TRAINING_HANDOFF.md`. Exact code/job pins recorded below
+once submission is verified.
