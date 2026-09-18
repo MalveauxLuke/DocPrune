@@ -43,6 +43,12 @@ treated as question tokens.
 
 `sol/training-pilot/train-task-prompt-frozen.sbatch`
 
+When the real job has a long estimated start, first use the five-minute
+`sol/training-pilot/smoke-task-prompt-frozen.sbatch`. It loads the actual pinned
+processor and 2B model, runs the largest-context task-prompt audit and exact
+direct-versus-cached parity check, writes `preflight-complete.json`, performs no
+optimizer update and exits.
+
 After its successful completion, the separately resumable fixed-checkpoint
 diagnostic is `sol/training-pilot/evaluate-task-prompt-frozen.sbatch`. It scores
 untrained, warm-up, frozen-best and frozen-final on the exact train/dev pair

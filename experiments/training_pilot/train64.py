@@ -145,6 +145,7 @@ def run(a):
     out=Path(a.output);audit=read_record(a.audit)
     prompt_condition=getattr(a,'prompt_condition','current')
     branches=getattr(a,'branches','all')
+    preflight_only=getattr(a,'preflight_only',False)
     prompt=prompt_spec(prompt_condition);phases=phase_plan(branches)
     if (out/'training-complete.json').exists():
         assert read_record(out/'contract.json')['audit_sha256']==sha(a.audit)
@@ -163,7 +164,7 @@ def run(a):
     processor,backbone=load_model(a.selector)
     code=[Path(__file__),Path(__file__).with_name('run.py'),Path(__file__).parents[1]/'selector_smoke/run.py',*sorted((Path(__file__).parents[2]/'src/docprune/stage2').glob('*.py'))]
     contract=dict(schema='pilot64-trainer-v2',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
-        prompt=prompt,branches=branches,phases=list(phases),
+        prompt=prompt,branches=branches,phases=list(phases),preflight_only=preflight_only,
         retention=[.75,.5],sources={str(p.relative_to(Path(__file__).parents[2])):sha(p) for p in code},runtime=runtime_identity(backbone))
     publish(out/'contract.json',contract)
     cache=TensorCache(out/'cache',dict(selector=SELECTOR_REV,runtime=contract['runtime'],processor=processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)),sources=contract['sources'],audit=contract['audit_sha256'],gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else 'cpu'))
@@ -187,6 +188,11 @@ def run(a):
             torch.testing.assert_close(direct,cached,rtol=0,atol=0)
         publish(out/'cache-preflight.json',dict(qid=largest['qid'],exact=True,resources=stats(started,torch),disk_bytes=cache.written_bytes))
         del args,batch,direct,cached,cached_prompt
+    if preflight_only:
+        publish(out/'preflight-complete.json',dict(status='passed',contract=identity,
+            prompt_audit_sha256=sha(out/'prompt-audit.json'),cache_preflight_sha256=sha(out/'cache-preflight.json'),
+            resources=stats(started,torch)))
+        return
 
     for phase,epochs in phases:
         latest=out/(phase+'-latest.pt');done=out/(phase+'-complete.json')
@@ -235,5 +241,6 @@ if __name__=='__main__':
     p.add_argument('--seed',type=int,default=0)
     p.add_argument('--prompt-condition',choices=('current','evidence-v1'),default='current')
     p.add_argument('--branches',choices=('all','frozen-only'),default='all')
+    p.add_argument('--preflight-only',action='store_true')
     a=p.parse_args()
     with run_lock(a.output):run(a)
