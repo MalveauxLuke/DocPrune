@@ -341,6 +341,23 @@ def proposals(folder, count):
     return result
 
 
+def checkpoint_plan(training, branches):
+    plan = [
+        ("untrained", None, "warmup", training / "untrained.json", 0),
+        ("warmup", training / "warmup-best.pt", "warmup", training / "warmup-complete.json", 2),
+        ("frozen_best", training / "frozen-best.pt", "frozen", training / "frozen-complete.json", 3),
+        ("frozen_final", training / "frozen-latest.pt", "frozen", None, 5),
+    ]
+    if branches == "all":
+        plan.extend([
+            ("lora_best", training / "lora-best.pt", "lora", training / "lora-complete.json", 3),
+            ("lora_final", training / "lora-latest.pt", "lora", None, 5),
+        ])
+    elif branches != "frozen-only":
+        raise ValueError(f"Unknown training branch contract: {branches}")
+    return plan
+
+
 def run(args):
     root, training, output = Path(args.root), Path(args.training), Path(args.output)
     audit = read_record(args.audit)
@@ -370,16 +387,11 @@ def run(args):
     cache = TensorCache(training / "cache", cache_identity)
     model = CachedPilotSelector(build_selector(config, answerer_config=backbone.config, selector_model=backbone), disk_cache=cache)
     evaluation_device = next(model.parameters()).device
-    stream = Stream(root, audit["rows"], processor, cache)
+    prompt_condition = contract.get("prompt", {}).get("condition", "current")
+    branches = contract.get("branches", "all")
+    stream = Stream(root, audit["rows"], processor, cache, prompt_condition=prompt_condition)
     identity = fingerprint(contract)
-    checkpoints = [
-        ("untrained", None, "warmup", training / "untrained.json", 0),
-        ("warmup", training / "warmup-best.pt", "warmup", training / "warmup-complete.json", 2),
-        ("frozen_best", training / "frozen-best.pt", "frozen", training / "frozen-complete.json", 3),
-        ("frozen_final", training / "frozen-latest.pt", "frozen", None, 5),
-        ("lora_best", training / "lora-best.pt", "lora", training / "lora-complete.json", 3),
-        ("lora_final", training / "lora-latest.pt", "lora", None, 5),
-    ]
+    checkpoints = checkpoint_plan(training, branches)
     manifests = {}
     for row in audit["rows"]:
         manifest_path = output / "pairs" / f'{row["qid"]}.json'
@@ -423,7 +435,8 @@ def run(args):
         if saved is not None:
             gates[name] = reproduction([row for row in rows if row["split"] == "dev"], saved_rows(saved), args.tolerance)
         publish(output / "checkpoint-summaries" / f"{name}.json", dict(checkpoint=name, phase=phase, path=None if path is None else str(path), exposures_in_branch_path=exposures, summary=summaries[name], content_analysis=content[name], reproduction=gates.get(name)))
-    publish(output / "summary.json", dict(schema="pilot-fixed-checkpoint-evaluation-v1", exact_seen_training_pairs=True,
+    publish(output / "summary.json", dict(schema="pilot-fixed-checkpoint-evaluation-v2", exact_seen_training_pairs=True,
+        prompt_condition=prompt_condition,branches=branches,
         note="All strict training-bank pairs were consumed once per active question per epoch; no pair subsampling occurred.",
         checkpoints=[name for name, *_ in checkpoints], summaries=summaries, content_analysis=content, reproduction=gates))
     publish(output / "complete.json", dict(status="passed", summary_sha256=sha(output / "summary.json"), audit_sha256=sha(args.audit),

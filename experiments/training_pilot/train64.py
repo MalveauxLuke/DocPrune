@@ -21,6 +21,36 @@ from docprune.stage2.pilot_runtime import TensorCache,checkpoint,restore_paramet
 from docprune.stage2.policy import score_candidate_masks,allocate
 
 
+TASK_PROMPT_SYSTEM = (
+    'Judge whether the Document meets the requirements based on the Query and the '
+    'Instruct provided. Note that the answer can only be "yes" or "no".'
+)
+TASK_PROMPT_INSTRUCTION = (
+    'Assess the document for evidence needed to answer the query accurately. '
+    'Distinguish evidence matching the requested entity, role, attribute, conditions, '
+    'and time period from content that is only superficially related. Consider headers, '
+    'captions, identity cues, and combinations needed to interpret the evidence. A '
+    'region may contain both useful and confusing information. Do not assume a '
+    'distractor exists.'
+)
+
+
+def prompt_spec(condition):
+    if condition == 'current':
+        return dict(condition='current', schema='raw-question-before-document-v1',
+                    system=None, instruction=None)
+    if condition == 'evidence-v1':
+        return dict(condition='evidence-v1', schema='qwen-reranker-instruction-v1',
+                    system=TASK_PROMPT_SYSTEM, instruction=TASK_PROMPT_INSTRUCTION)
+    raise ValueError(f'Unknown prompt condition: {condition}')
+
+
+def phase_plan(branches):
+    if branches == 'all':return (('warmup',2),('frozen',4),('lora',4))
+    if branches == 'frozen-only':return (('warmup',2),('frozen',4))
+    raise ValueError(f'Unknown branch selection: {branches}')
+
+
 def ranking_metrics(values,bank):
     pairs=bank.pairs('gold_aware',.1,.05)
     if not pairs:return None
@@ -34,18 +64,44 @@ def ranking_metrics(values,bank):
 
 
 class Stream:
-    def __init__(self,root,rows,processor,cache,device='cuda'):
+    def __init__(self,root,rows,processor,cache,device='cuda',prompt_condition='current'):
         self.root=Path(root);self.rows={r['qid']:r for r in rows};self.processor=processor;self.cache=cache;self.device=device
+        self.prompt_spec=prompt_spec(prompt_condition)
         self.catalog,_=load_catalog(self.root)
+    def _prepare(self,question,images,spec=None):
+        spec=self.prompt_spec if spec is None else spec
+        return prepare_prompt(self.processor,question,images,
+            instruction=spec['instruction'],system=spec['system'])
+    def prompt_audit(self,qid,model_config):
+        q,assets,images,regions=pages(self.root,self.catalog,qid)
+        try:
+            current=self._prepare(q['question'],images,prompt_spec('current'))
+            proposed=self._prepare(q['question'],images)
+        finally:
+            for im in images:im.close()
+        if not torch.equal(current.image_grid_thw,proposed.image_grid_thw):
+            raise ValueError('Prompt condition changed admitted image grids')
+        if not torch.equal(current.pixel_values,proposed.pixel_values):
+            raise ValueError('Prompt condition changed admitted page pixels')
+        text=getattr(model_config,'text_config',model_config)
+        limit=getattr(text,'max_position_embeddings',None)
+        length=int(proposed.input_ids.shape[1])
+        if limit is not None and length>limit:
+            raise ValueError(f'Task prompt exceeds model context: {length}>{limit}')
+        return dict(qid=qid,pages=len(images),current_input_tokens=int(current.input_ids.shape[1]),
+            proposed_input_tokens=length,context_limit=limit,
+            image_grid_thw=proposed.image_grid_thw.tolist(),image_grid_equal=True,
+            pixel_values_equal=True,question_tokens=int(proposed.question_positions.numel()),
+            question_positions=proposed.question_positions.tolist())
     def batch(self,qid):
         row=self.rows[qid];folder=Path(row['directory'])
         assert sha(folder/'example/manifest.json')==row['manifest_sha256']
         if 'design_sha256' in row:assert sha(folder/'design.json')==row['design_sha256']
         ex,bank=load_example(folder/'example')
-        key=fingerprint([qid,row['manifest_sha256']]);saved=self.cache.get('prepared-prompt',key)
+        key=fingerprint([qid,row['manifest_sha256'],self.prompt_spec]);saved=self.cache.get('prepared-prompt',key)
         if saved is None:
             q,assets,images,regions=pages(self.root,self.catalog,qid)
-            try:prompt=prepare_prompt(self.processor,q['question'],images)
+            try:prompt=self._prepare(q['question'],images)
             finally:
                 for im in images:im.close()
             saved={k:getattr(prompt,k) for k in ('input_ids','question_positions','image_grid_thw')}
@@ -87,6 +143,9 @@ def evaluate(model,stream,qids,*,select=True):
 
 def run(a):
     out=Path(a.output);audit=read_record(a.audit)
+    prompt_condition=getattr(a,'prompt_condition','current')
+    branches=getattr(a,'branches','all')
+    prompt=prompt_spec(prompt_condition);phases=phase_plan(branches)
     if (out/'training-complete.json').exists():
         assert read_record(out/'contract.json')['audit_sha256']==sha(a.audit)
         return
@@ -103,18 +162,21 @@ def run(a):
         stage1=Stage1Contract(answerer_revision=REVISION,selector_revision=SELECTOR_REV,epsilon=.1,margin=.05))
     processor,backbone=load_model(a.selector)
     code=[Path(__file__),Path(__file__).with_name('run.py'),Path(__file__).parents[1]/'selector_smoke/run.py',*sorted((Path(__file__).parents[2]/'src/docprune/stage2').glob('*.py'))]
-    contract=dict(schema='pilot64-trainer-v1',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
+    contract=dict(schema='pilot64-trainer-v2',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
+        prompt=prompt,branches=branches,phases=list(phases),
         retention=[.75,.5],sources={str(p.relative_to(Path(__file__).parents[2])):sha(p) for p in code},runtime=runtime_identity(backbone))
     publish(out/'contract.json',contract)
     cache=TensorCache(out/'cache',dict(selector=SELECTOR_REV,runtime=contract['runtime'],processor=processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)),sources=contract['sources'],audit=contract['audit_sha256'],gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else 'cpu'))
     model=CachedPilotSelector(build_selector(cfg,answerer_config=backbone.config,selector_model=backbone),disk_cache=cache)
     model.base.backbone.model.language_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})
-    stream=Stream(a.root,audit['rows'],processor,cache)
+    stream=Stream(a.root,audit['rows'],processor,cache,prompt_condition=prompt_condition)
     started=time.monotonic();torch.cuda.reset_peak_memory_stats();identity=fingerprint(contract)
     warmup=out/'warmup-latest.pt';updates=math.ceil(len(train)/4)
     if not (out/'cache-preflight.json').exists():
         # One largest training context: new disk path is checked before any update.
         largest=max((r for r in audit['rows'] if r['qid'] in train),key=lambda r:r.get('full_tokens',0))
+        if prompt_condition!='current':
+            publish(out/'prompt-audit.json',stream.prompt_audit(largest['qid'],backbone.config))
         model.set_phase('warmup');model.eval();batch=stream.batch(largest['qid'])
         with torch.no_grad():
             args=(batch['examples'][0],batch['proxy_prompts'][0])
@@ -126,7 +188,7 @@ def run(a):
         publish(out/'cache-preflight.json',dict(qid=largest['qid'],exact=True,resources=stats(started,torch),disk_bytes=cache.written_bytes))
         del args,batch,direct,cached,cached_prompt
 
-    for phase,epochs in (('warmup',2),('frozen',4),('lora',4)):
+    for phase,epochs in phases:
         latest=out/(phase+'-latest.pt');done=out/(phase+'-complete.json')
         if done.exists():continue
         # Restore weights BEFORE changing cache phase (LoRA -> frozen requires identity).
@@ -170,5 +232,8 @@ def run(a):
 if __name__=='__main__':
     p=argparse.ArgumentParser()
     for n in ('root','output','audit','selector'):p.add_argument('--'+n,required=True)
-    p.add_argument('--seed',type=int,default=0);a=p.parse_args()
+    p.add_argument('--seed',type=int,default=0)
+    p.add_argument('--prompt-condition',choices=('current','evidence-v1'),default='current')
+    p.add_argument('--branches',choices=('all','frozen-only'),default='all')
+    a=p.parse_args()
     with run_lock(a.output):run(a)

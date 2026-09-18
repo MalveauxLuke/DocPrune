@@ -136,17 +136,33 @@ class PackedPrompt:
         return visual
 
 
-def prepare_prompt(processor, question, images):
-    """Question-first full-page serialization; no teacher answers enter this path."""
+def prepare_prompt(processor, question, images, *, instruction=None, system=None):
+    """Question-before-document serialization; no teacher answers enter this path."""
     if not question or not images:
         raise ValueError("A question and admitted pages are required")
-    message = [
-        {
+    if (instruction is None) != (system is None):
+        raise ValueError("Instruction and system prompt must be supplied together")
+    if instruction is None:
+        message = [{
             "role": "user",
             "content": [{"type": "text", "text": question}]
             + [{"type": "image"} for _ in images],
-        }
-    ]
+        }]
+    else:
+        if not instruction.strip() or not system.strip():
+            raise ValueError("Instruction and system prompt cannot be empty")
+        message = [
+            {"role": "system", "content": [{"type": "text", "text": system}]},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "<Instruct>: " + instruction},
+                    {"type": "text", "text": "<Query>:"},
+                    {"type": "text", "text": question},
+                    {"type": "text", "text": "\n<Document>:"},
+                ] + [{"type": "image"} for _ in images],
+            },
+        ]
     text = processor.apply_chat_template(
         message, tokenize=False, add_generation_prompt=True
     )

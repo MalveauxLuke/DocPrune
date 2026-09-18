@@ -1,12 +1,14 @@
 import copy
 from dataclasses import replace
+from pathlib import Path
 import pytest
 import torch
 from test_stage2_pilot import setup
 from docprune.stage2.pilot import phase_optimizer,train_epoch,branch_scheduler
 from docprune.stage2.pilot_runtime import TensorCache,checkpoint,restore_parameters,adaptable_state
 from experiments.training_pilot.audit_banks import inspect_bank
-from experiments.training_pilot.train64 import ranking_metrics,evaluate
+from experiments.training_pilot.train64 import ranking_metrics,evaluate,phase_plan,prompt_spec
+from experiments.training_pilot.evaluate_checkpoints import checkpoint_plan
 
 
 def test_disk_cache_restart_parity_and_lora_rejection(tmp_path):
@@ -70,6 +72,20 @@ def test_dev_evaluation_does_not_update_and_emits_two_capacities():
     assert ranking_metrics(perfect,b)['accuracy']==1.
 
 
+def test_task_prompt_contract_and_frozen_only_plan():
+    current=prompt_spec('current');task=prompt_spec('evidence-v1')
+    assert current['instruction'] is None and current['system'] is None
+    assert 'Do not assume a distractor exists.' in task['instruction']
+    assert '<Instruct>' not in task['instruction']
+    assert phase_plan('frozen-only')==(('warmup',2),('frozen',4))
+    assert phase_plan('all')[-1]==('lora',4)
+    training=Path('/tmp/train')
+    assert [row[0] for row in checkpoint_plan(training,'frozen-only')]==[
+        'untrained','warmup','frozen_best','frozen_final']
+    assert [row[0] for row in checkpoint_plan(training,'all')][-2:]==['lora_best','lora_final']
+    with pytest.raises(ValueError):phase_plan('lora-only')
+
+
 def test_streaming_three_phase_runner_and_completed_resume(tmp_path,monkeypatch):
     from types import SimpleNamespace
     from docprune.stage2.storage import publish,read_record
@@ -80,7 +96,7 @@ def test_streaming_three_phase_runner_and_completed_resume(tmp_path,monkeypatch)
     audit=tmp_path/'audit.json';publish(audit,dict(status='passed',rows=rows,train_active=2,dev_active=24))
     seen=[]
     class Stream:
-        def __init__(self,*args):pass
+        def __init__(self,*args,**kwargs):pass
         def batch(self,qid):return batch
         def batches(self,qids):
             seen.append(list(qids))
