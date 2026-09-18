@@ -47,8 +47,11 @@ After its successful completion, the separately resumable fixed-checkpoint
 diagnostic is `sol/training-pilot/evaluate-task-prompt-frozen.sbatch`. It scores
 untrained, warm-up, frozen-best and frozen-final on the exact train/dev pair
 manifests, saving Head 1 and combined accuracy, logistic loss, per-mask scores,
-pair margins, cost bands and actual changed-region locality. It does not include
-or require LoRA checkpoints.
+pair margins, cost bands and actual changed-region locality. Each question and
+checkpoint also saves every stable region ID, page index, visual-token cost and
+raw Head-1 region score, plus the region indices retained by every mask. Head 2
+remains a set-level correction and is saved per mask; it has no honest standalone
+per-region score. The diagnostic does not include or require LoRA checkpoints.
 
 Requested resources match the measured minimum policy: one compatible GPU, two
 CPU cores, 24,000 MiB host RAM, and 20 minutes in `htc`. The preceding frozen

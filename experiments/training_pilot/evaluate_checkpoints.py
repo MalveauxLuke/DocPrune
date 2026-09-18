@@ -275,6 +275,7 @@ def result_from_mask_scores(saved, manifest, *, device=None):
         split=saved["split"],
         baseline_correct=saved["baseline_correct"],
         exposures_in_branch_path=saved["exposures_in_branch_path"],
+        regions=saved.get("regions"),
         masks=masks,
         head1=head1,
         head1_pairs=head1_pairs,
@@ -283,6 +284,26 @@ def result_from_mask_scores(saved, manifest, *, device=None):
         retention=retention,
         retention_pairs=retention_pairs,
     )
+
+
+def region_score_rows(encoding, layout):
+    """Persist Head-1's atomic score with the stable region identity and cost."""
+    if encoding.scores.shape != (len(layout.region_ids),):
+        raise ValueError("Region score/layout mismatch")
+    rows = []
+    for index, region_id in enumerate(layout.region_ids):
+        owned = layout.owner == index
+        pages = torch.unique(layout.page[owned])
+        if pages.numel() != 1:
+            raise ValueError("A scored region must belong to exactly one page")
+        rows.append(dict(
+            region_index=index,
+            region_id=region_id,
+            page_index=int(pages[0]),
+            token_cost=int(owned.sum()),
+            head1_score=float(encoding.scores[index]),
+        ))
+    return rows
 
 
 def aggregate(rows, key, *, correct=None):
@@ -424,9 +445,14 @@ def run(args):
                 retained = (bank.masks * example.layout.costs.cpu()).sum(1).to(scores.direct)
                 retention, retention_pairs = question_metrics(retained, manifests[qid])
                 retained = (bank.masks * example.layout.costs.cpu()).sum(1)
-                mask_rows = [dict(mask_index=index, retained_tokens=int(retained[index]), head1=float(scores.direct[index]), head2_correction=float(scores.correction[index]), combined=float(scores.total[index])) for index in range(len(bank.outcomes))]
-                result = dict(qid=qid, split=audit_row["split"], baseline_correct=bank.baseline_correct, exposures_in_branch_path=exposures,
-                              masks=mask_rows, head1=head1, head1_pairs=head1_pairs, combined=combined, combined_pairs=combined_pairs,
+                mask_rows = [dict(mask_index=index, retained_tokens=int(retained[index]),
+                    kept_region_indices=torch.nonzero(bank.masks[index],as_tuple=True)[0].tolist(),
+                    head1=float(scores.direct[index]), head2_correction=float(scores.correction[index]),
+                    combined=float(scores.total[index])) for index in range(len(bank.outcomes))]
+                regions=region_score_rows(encoding,example.layout)
+                result = dict(schema="pilot-checkpoint-question-scores-v2",qid=qid, split=audit_row["split"],
+                              baseline_correct=bank.baseline_correct, exposures_in_branch_path=exposures,
+                              regions=regions,masks=mask_rows, head1=head1, head1_pairs=head1_pairs, combined=combined, combined_pairs=combined_pairs,
                               retention=retention, retention_pairs=retention_pairs)
                 publish(score_path, result); rows.append(result)
                 del batch, example, bank, encoding, scores

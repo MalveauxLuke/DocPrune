@@ -8,6 +8,7 @@ from experiments.training_pilot.evaluate_checkpoints import (
     freeze_pairs,
     question_metrics,
     result_from_mask_scores,
+    region_score_rows,
     summarize,
     tie_credit,
 )
@@ -15,6 +16,7 @@ from experiments.training_pilot.train64 import ranking_metrics
 from docprune.stage2.experiment import ExperimentConfig
 from test_stage2_contracts import example
 from docprune.stage2.supervision import Outcome, TeacherBank
+from docprune.stage2.policy import PolicyEncoding
 
 
 def bank_fixture():
@@ -85,6 +87,16 @@ def test_result_from_mask_scores_rebuilds_metrics_without_model_output():
     assert rebuilt["head1"]["accuracy"] == 1.
     assert rebuilt["combined"] == rebuilt["head1"]
     assert rebuilt["masks"] == saved["masks"]
+
+
+def test_region_scores_preserve_identity_page_and_token_cost():
+    inputs,_=bank_fixture()
+    encoding=PolicyEncoding(torch.zeros(4,3),torch.tensor([.5,-1.,2.,.25]))
+    rows=region_score_rows(encoding,inputs.layout)
+    assert [row["region_id"] for row in rows]==list(inputs.layout.region_ids)
+    assert [row["token_cost"] for row in rows]==inputs.layout.costs.tolist()
+    assert [row["head1_score"] for row in rows]==[.5,-1.,2.,.25]
+    assert all(isinstance(row["page_index"],int) for row in rows)
 
 
 def test_summary_preserves_question_macro_and_reports_pooled_secondary():
