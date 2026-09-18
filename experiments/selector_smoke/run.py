@@ -107,8 +107,10 @@ def pages(root, catalog, qid):
     for i, p in enumerate(admitted(qs[qid])):
         page = ps[p['key']]
         lp = root/'mineru/pages'/f"{p['key']}.json"
-        asset = PageAsset(p['key']+f'#occurrence:{i}', str(root/page['image']), page['image_sha256'], str(lp), sha(lp), 'frozen-catalog')
+        asset = PageAsset(p['key'], str(root/page['image']), page['image_sha256'], str(lp), sha(lp), 'frozen-catalog')
         im, boxes = asset.read()
+        # Validate the cached pixel identity before assigning prompt-occurrence identity.
+        asset = replace(asset, page_id=asset.page_id+f'#occurrence:{i}')
         assets.append(asset); images.append(im); regions.append(boxes)
     return qs[qid], assets, images, regions
 
