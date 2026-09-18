@@ -83,7 +83,7 @@ class TeacherBank:
 
         cost = inputs.layout.costs
         target = achievable_budget(cost, inputs.budget)
-        if not (self.masks.to(cost) @ cost == target).all():
+        if not ((self.masks.to(cost) * cost[None]).sum(dim=1) == target).all():
             raise ValueError(
                 "Policy comparisons must share the achievable token budget"
             )

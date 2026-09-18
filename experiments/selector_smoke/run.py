@@ -205,7 +205,11 @@ def train(a):
     from docprune.stage2.qwen import prepare_prompt
     from docprune.stage2.training import build_selector, objective, save_checkpoint, restore_checkpoint
     root,out,catalog,pool,reviewed,spec=context(a)
-    assert read(out/'teacher-complete.json')['status']=='passed'
+    teacher_out=Path(a.teacher_source) if a.teacher_source else out
+    prior=read(teacher_out/'contract.json')
+    for key in ('qids','cohort_selection_sha256','pool_sha256','answerer_revision','selector_revision','catalog','mask_policy','teacher'):
+        assert prior[key] == json.loads(json.dumps(spec))[key], key
+    assert read(teacher_out/'teacher-complete.json')['status']=='passed'
     assert Path(a.selector).name==SELECTOR_REV
     processor,backbone=load_model(a.selector)
     assert backbone.config.text_config.hidden_size==2048 and backbone.config.vision_config.depth==24
@@ -220,11 +224,11 @@ def train(a):
     optimizer=torch.optim.AdamW(list(params.values()),lr=cfg.learning_rate,weight_decay=cfg.weight_decay)
     batches=[]
     for qid in QIDS:
-        example,bank=load_example(out/qid/'example')
+        example,bank=load_example(teacher_out/qid/'example')
         q,assets,images,regions=pages(root,catalog,qid)
         prompt=prepare_prompt(processor,q['question'],images)
         for im in images: im.close()
-        boxes=torch.tensor(read(out/qid/'design.json')['boxes'])
+        boxes=torch.tensor(read(teacher_out/qid/'design.json')['boxes'])
         native=native_action_layout(example.layout,boxes,prompt.image_grid_thw,2)
         # Reader vision cache stays on CPU; native selector ignores its feature values.
         example=replace(example,layout=layout_to(example.layout,'cuda'),question_ids=example.question_ids.cuda())
@@ -272,6 +276,7 @@ def train(a):
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--phase',choices=['teacher','train','evaluate'],required=True)
     p.add_argument('--root',required=True);p.add_argument('--output',required=True);p.add_argument('--reader',required=True);p.add_argument('--selector',required=True)
+    p.add_argument('--teacher-source',help='Verified completed teacher bank from an earlier wiring attempt')
     a=p.parse_args()
     import torch,transformers
     assert transformers.__version__=='4.57.3' and torch.cuda.is_available()

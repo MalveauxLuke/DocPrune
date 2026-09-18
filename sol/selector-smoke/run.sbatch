@@ -18,7 +18,7 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export PYTHONPATH="/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/selector-smoke-env/peft-0.18.0${PYTHONPATH:+:$PYTHONPATH}"
 DP_STAGE=/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/stage
-DP_OUT="$DP_STAGE/selector-smoke-463-v2"
+DP_OUT="$DP_STAGE/selector-smoke-463-v3"
 DP_SELECTOR=/scratch/lmalveau/hf_cache/hub/models--Qwen--Qwen3-VL-Reranker-2B/snapshots/4bd860ac4f15ad1897a214615cccc700f8f71818
 mkdir -p "$DP_OUT"
 exec 9>"$DP_OUT/run.lock"
@@ -27,6 +27,12 @@ DP_GPU_UUID=$("$DP_ENV/bin/python" -c 'import torch; u=str(torch.cuda.get_device
 nvidia-smi -i "$DP_GPU_UUID" --query-gpu=timestamp,uuid,name,utilization.gpu,memory.used,memory.total --format=csv -l 1 >"$DP_OUT/utilization-$SLURM_JOB_ID.csv" &
 DP_MONITOR=$!
 trap 'kill "$DP_MONITOR" 2>/dev/null || true' EXIT
-for DP_PHASE in teacher train evaluate; do
-  "$DP_ENV/bin/python" -u experiments/selector_smoke/run.py --phase "$DP_PHASE" --root "$DP_STAGE" --output "$DP_OUT" --reader "$DP_SNAPSHOT" --selector "$DP_SELECTOR"
+DP_PHASES=(teacher train evaluate)
+DP_EXTRA=()
+if [[ -n "${DP_TEACHER_SOURCE:-}" ]]; then
+  DP_PHASES=(train evaluate)
+  DP_EXTRA=(--teacher-source "$DP_TEACHER_SOURCE")
+fi
+for DP_PHASE in "${DP_PHASES[@]}"; do
+  "$DP_ENV/bin/python" -u experiments/selector_smoke/run.py --phase "$DP_PHASE" --root "$DP_STAGE" --output "$DP_OUT" --reader "$DP_SNAPSHOT" --selector "$DP_SELECTOR" "${DP_EXTRA[@]}"
 done
