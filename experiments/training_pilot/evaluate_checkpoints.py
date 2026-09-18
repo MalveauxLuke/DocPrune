@@ -216,33 +216,69 @@ def content_analysis(rows, manifests):
 
 def question_metrics(scores, manifest):
     strict = [row for row in manifest["pairs"] if not row["tie"]]
+    if not strict:
+        return None, []
+    plus = torch.tensor([row["plus_mask_index"] for row in strict], device=scores.device)
+    minus = torch.tensor([row["minus_mask_index"] for row in strict], device=scores.device)
+    margins = (scores[plus].float() - scores[minus].float()) / manifest["temperature"]
+    if not torch.isfinite(margins).all():
+        raise ValueError("Nonfinite checkpoint prediction")
+    losses = torch.nn.functional.softplus(-margins)
+    correct = margins > 0
     result = []
-    for row in strict:
-        margin = (scores[row["plus_mask_index"]] - scores[row["minus_mask_index"]]) / manifest["temperature"]
+    for index, row in enumerate(strict):
         result.append(dict(
             pair_id=row["pair_id"],
-            margin=float(margin),
-            logistic_loss=float(torch.nn.functional.softplus(-margin.float())),
-            correct=bool(margin > 0),
+            margin=float(margins[index]),
+            logistic_loss=float(losses[index]),
+            correct=bool(correct[index]),
             comparison_family=row["comparison_family"],
         ))
     families = {}
+    family_losses = []
+    family_accuracies = []
     for family in FAMILIES:
-        selected = [row for row in result if row["comparison_family"] == family]
-        families[family] = None if not selected else dict(
-            pairs=len(selected),
-            accuracy=sum(row["correct"] for row in selected) / len(selected),
-            loss=sum(row["logistic_loss"] for row in selected) / len(selected),
-        )
+        selected = torch.tensor([row["comparison_family"] == family for row in strict], device=scores.device)
+        if not selected.any():
+            families[family] = None
+            continue
+        family_loss = losses[selected].mean()
+        family_accuracy = correct[selected].float().mean()
+        family_losses.append(family_loss)
+        family_accuracies.append(family_accuracy)
+        families[family] = dict(pairs=int(selected.sum()), accuracy=float(family_accuracy), loss=float(family_loss))
     present = [value for value in families.values() if value is not None]
     if not present:
         return None, result
     return dict(
         pairs=len(result),
-        accuracy=sum(value["accuracy"] for value in present) / len(present),
-        loss=sum(value["loss"] for value in present) / len(present),
+        accuracy=float(torch.stack(family_accuracies).mean()),
+        loss=float(torch.stack(family_losses).mean()),
         families=families,
     ), result
+
+
+def result_from_mask_scores(saved, manifest):
+    """Rebuild metrics from immutable per-mask scores without another selector forward."""
+    masks = saved["masks"]
+    head1, head1_pairs = question_metrics(torch.tensor([row["head1"] for row in masks], dtype=torch.float32), manifest)
+    combined, combined_pairs = question_metrics(torch.tensor([row["combined"] for row in masks], dtype=torch.float32), manifest)
+    retention, retention_pairs = question_metrics(
+        torch.tensor([row["retained_tokens"] for row in masks], dtype=torch.float32), manifest
+    )
+    return dict(
+        qid=saved["qid"],
+        split=saved["split"],
+        baseline_correct=saved["baseline_correct"],
+        exposures_in_branch_path=saved["exposures_in_branch_path"],
+        masks=masks,
+        head1=head1,
+        head1_pairs=head1_pairs,
+        combined=combined,
+        combined_pairs=combined_pairs,
+        retention=retention,
+        retention_pairs=retention_pairs,
+    )
 
 
 def aggregate(rows, key, *, correct=None):
@@ -341,9 +377,13 @@ def run(args):
     ]
     manifests = {}
     for row in audit["rows"]:
+        manifest_path = output / "pairs" / f'{row["qid"]}.json'
+        if manifest_path.exists():
+            manifests[row["qid"]] = read_record(manifest_path)
+            continue
         batch = stream.batch(row["qid"]); bank = batch["banks"][0]; example = batch["examples"][0]
         manifest = freeze_pairs(row["qid"], row["split"], example, bank, proposals(row["directory"], len(bank.outcomes)), epsilon=.1, margin=.05, temperature=1.)
-        publish(output / "pairs" / f'{row["qid"]}.json', manifest); manifests[row["qid"]] = manifest
+        publish(manifest_path, manifest); manifests[row["qid"]] = manifest
         del batch, bank, example
     started = time.monotonic(); torch.cuda.reset_peak_memory_stats(); summaries = {}; content = {}; gates = {}
     for name, path, phase, saved, exposures in checkpoints:
@@ -353,8 +393,13 @@ def run(args):
                 raise ValueError("Checkpoint phase mismatch")
         model.set_phase(phase); model.eval(); rows = []
         with torch.inference_mode():
-            for audit_row, batch in zip(audit["rows"], stream.batches([row["qid"] for row in audit["rows"]])):
-                qid = audit_row["qid"]; example, bank = batch["examples"][0], batch["banks"][0]
+            for audit_row in audit["rows"]:
+                qid = audit_row["qid"]
+                score_path = output / "scores" / name / f"{qid}.json"
+                if score_path.exists():
+                    rows.append(result_from_mask_scores(read_record(score_path), manifests[qid]))
+                    continue
+                batch = stream.batch(qid); example, bank = batch["examples"][0], batch["banks"][0]
                 encoding = model(example, batch["proxy_prompts"][0], native_layout=batch["native_layouts"][0], return_encoding=True)
                 scores = score_candidate_masks(encoding, bank.masks, model.correction)
                 head1, head1_pairs = question_metrics(scores.direct, manifests[qid])
@@ -366,7 +411,7 @@ def run(args):
                 result = dict(qid=qid, split=audit_row["split"], baseline_correct=bank.baseline_correct, exposures_in_branch_path=exposures,
                               masks=mask_rows, head1=head1, head1_pairs=head1_pairs, combined=combined, combined_pairs=combined_pairs,
                               retention=retention, retention_pairs=retention_pairs)
-                publish(output / "scores" / name / f"{qid}.json", result); rows.append(result)
+                publish(score_path, result); rows.append(result)
                 del batch, example, bank, encoding, scores
         summaries[name] = {split: summarize([row for row in rows if row["split"] == split]) for split in ("train", "dev")}
         content[name] = {split: content_analysis([row for row in rows if row["split"] == split], manifests) for split in ("train", "dev")}

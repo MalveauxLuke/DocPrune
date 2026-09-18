@@ -7,9 +7,11 @@ from experiments.training_pilot.evaluate_checkpoints import (
     content_analysis,
     freeze_pairs,
     question_metrics,
+    result_from_mask_scores,
     summarize,
     tie_credit,
 )
+from experiments.training_pilot.train64 import ranking_metrics
 from docprune.stage2.experiment import ExperimentConfig
 from test_stage2_contracts import example
 from docprune.stage2.supervision import Outcome, TeacherBank
@@ -53,6 +55,36 @@ def test_pair_manifest_freezes_ties_weights_and_metric_contract():
     metrics, pairs = question_metrics(scores, manifest)
     assert metrics["accuracy"] == 1. and len(pairs) == manifest["strict_pair_count"]
     assert set(metrics["families"]) == {"single_flip", "two_flip", "broad"}
+
+
+def test_question_metrics_exactly_reproduces_training_float32_reduction():
+    example, bank = bank_fixture()
+    manifest = freeze_pairs("q", "dev", example, bank, [{}] * len(bank.outcomes), epsilon=.1, margin=.05, temperature=1.)
+    scores = torch.tensor([1234.125, -81.5, 0.03125, 999.75], dtype=torch.float32)
+    expected = ranking_metrics(scores, bank)
+    actual, _ = question_metrics(scores, manifest)
+    assert actual["accuracy"] == expected["accuracy"]
+    assert actual["loss"] == expected["loss"]
+    assert actual["pairs"] == expected["pairs"]
+
+
+def test_result_from_mask_scores_rebuilds_metrics_without_model_output():
+    example, bank = bank_fixture()
+    manifest = freeze_pairs("q", "train", example, bank, [{}] * len(bank.outcomes), epsilon=.1, margin=.05, temperature=1.)
+    saved = dict(
+        qid="q",
+        split="train",
+        baseline_correct=True,
+        exposures_in_branch_path=0,
+        masks=[
+            dict(mask_index=i, retained_tokens=int((bank.masks[i] * example.layout.costs).sum()), head1=value, head2_correction=0., combined=value)
+            for i, value in enumerate((-4., -2., -1., 0.))
+        ],
+    )
+    rebuilt = result_from_mask_scores(saved, manifest)
+    assert rebuilt["head1"]["accuracy"] == 1.
+    assert rebuilt["combined"] == rebuilt["head1"]
+    assert rebuilt["masks"] == saved["masks"]
 
 
 def test_summary_preserves_question_macro_and_reports_pooled_secondary():
