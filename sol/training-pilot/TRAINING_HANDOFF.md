@@ -77,3 +77,43 @@ measurements. S-only for correct cases; G/S for incorrect. Optional `--decode`
 stores full new answers and checks all-keep regeneration; those answers require
 fresh grading, not reuse of original baseline labels. This launcher submits
 training only. Ranking improvements are not decoded-answer improvements.
+
+## Approved fixed-checkpoint training-fit diagnosis — 2026-09-18
+
+The owner approved one selector-only diagnostic answering whether fixed
+checkpoints rank the preferences used for training. Run
+`sol/training-pilot/evaluate-checkpoints.sbatch` after the completed training
+receipt. Do not train, collect new masks, fit OMP, tune temperature, change the
+architecture, or call the 8B reader.
+
+Evaluate exactly six states: fresh deterministic untrained initialization,
+warm-up best, frozen best/final, and LoRA best/final. Score all audited train64
+and dev24 banks. The two zero-pair training questions remain in the manifest and
+report N/A metrics. The training loop used every strict `bank.pairs(...)` pair
+for every active question in every epoch; it did not sample pairs. Therefore the
+frozen strict train pair manifest is an exact reconstruction of exposed pair
+identities, while all candidate pairs and ties are also retained separately.
+
+Before checkpoint scoring, freeze pair IDs, ordered teacher preferences, ties,
+epsilon0.1, margin0.05, temperature1.0, full-capacity input, Hamming family, and
+the effective family-balanced within-question weights. Preserve the prior
+within-question family mean followed by across-question mean as the headline
+metric. Store pooled-pair and family slices as secondary diagnostics. Save every
+mask's Head1/correction/combined score and every strict pair's normalized margin,
+loss and ordering. Include retained-token/region differences and acquisition
+kind/reason where available. Missing strata are JSON null/N/A, never zero.
+
+Gate the run by reproducing the existing saved dev Head1, combined and retention
+metrics for untrained, warm-up, frozen-best and LoRA-best within2e-5 absolute
+tolerance. Use both `model.eval()` and `torch.inference_mode()`. Native frozen
+vision output may be reused under the original cache identity. Identity decoder
+states may be reused only for checkpoints with zero LoRA; LoRA checkpoints must
+recompute decoder outputs. Readout representations and scores are always
+recomputed per checkpoint. Encode each question once per checkpoint and score
+all its masks from that encoding.
+
+Use the existing offline environment and snapshots, one generic GPU,2CPU,
+24000M host RAM and30minutes. No installs/downloads or fresh retrieval. Output:
+`stage/training-pilot-quality-v1-checkpoint-eval-seed0`, protected by an exclusive
+writer lock and immutable records. This is diagnosis only and must not silently
+select a new deployment checkpoint.

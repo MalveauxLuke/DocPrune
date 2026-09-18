@@ -5,6 +5,14 @@ Owner resumed and authorized final audit/checks then training submission. Bindin
 submit one minimal, resumable training job only after it passes. Collection
 63544061 completed; no further acquisition authorized by this handoff.
 
+# Active — fixed-checkpoint training-fit diagnosis
+
+Training jobs63555629/63558108 are complete. The owner approved one bounded,
+selector-only evaluation of six saved states on the exact frozen train/dev pair
+contract. Binding scope and launcher are in
+[training handoff](training-pilot/TRAINING_HANDOFF.md), final section. No new
+training, reader calls, mask acquisition, OMP, architecture changes or tuning.
+
 # Active — frozen train64/dev24 collection
 
 Owner approved quality-first splits and next collection/training launch; stop after
