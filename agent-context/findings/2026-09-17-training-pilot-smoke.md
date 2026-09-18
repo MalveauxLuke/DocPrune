@@ -89,3 +89,6 @@ freshfrozen/LoRAoptimizers, identicalquestionorder/updatebudget, devHead1 contro
 Selector6.97GBreserved suggests20GBMIGcouldsuffice, subjecttofive-pagenativefootprints;
 no needtoreservea reader-sizedGPU fortraining automatically. Gradclippingfrequency
 anddevselectiondamage mustbereported, nothiddenbycombined-headtrainingfit.
+
+Owner subsequently approved75%retention asprimarydevelopment operatingpoint;
+50%secondary stresstest. Frozen variable-size acquisition/splits unchanged.

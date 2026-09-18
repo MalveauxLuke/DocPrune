@@ -36,3 +36,7 @@ wholejob4m41s includesmultiple model loads/training/eval. Training35.89s,6.97GB.
 Production includesfive-page andtwo-channelcases, so45min is a bounded estimate;
 do not silentlyextend resources or addmanyshards. If terminated, inspectprogress
 before deciding another minimal continuation. Newattempts preservefrozenproposals.
+
+Owner-approved operating-point update: primary development retention0.75,
+secondary stress-test0.50. Acquisition remains Bernoulli0.5 and its existing
+follow-up policy. This collection does not deploy a selector or impose a token cap.
