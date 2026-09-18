@@ -1,3 +1,9 @@
+# Active — frozen train64/dev24 collection
+
+Owner approved quality-first splits and next collection/training launch; stop after
+submission. Binding [collection handoff](training-pilot/COLLECTION_HANDOFF.md).
+This submission is collection only; no production training queued yet.
+
 # Active — API-correct variable-retention pilot smoke
 
 Owner approved the revised plan and two-correct-case smoke. Binding handoff:

@@ -72,3 +72,17 @@ def test_frozen_cache_parity_then_lora_invalidation_and_gradients():
     train_epoch(m,[batch,batch],cfg,opt)
     assert any(not torch.equal(initial[n],v) for n,v in m.named_parameters() if n in initial)
     assert m.calls['language']==3 and m.calls['vision']==1
+
+
+def test_wrong_case_acquisition_uses_two_channels_and_dev_ignores_outcomes():
+    rows=[];costs=list(range(1,10))
+    for i in range(32):
+        p=next_probe(rows,costs,'wrong',False,dict(g=-1.,s=-.1))
+        assert p is not None
+        z=np.asarray(p['mask'])
+        rows.append(dict(mask=p['mask'],g=float(-3+z[0]+z[1]),s=float(-2+z[2]-.7*z[0])))
+        if i==22:assert p['omp']['channels']==2
+    assert len({tuple(r['mask']) for r in rows})==32
+    a=next_probe(rows[:5],costs,'dev',False,dict(g=-1.,s=0.),count=8,random_only=True)
+    changed=[dict(r,g=100.,s=-100.) for r in rows[:5]]
+    assert a==next_probe(changed,costs,'dev',False,dict(g=999.,s=999.),count=8,random_only=True)

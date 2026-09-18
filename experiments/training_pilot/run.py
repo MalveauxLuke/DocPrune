@@ -62,7 +62,7 @@ def retrieval(root,q,layout,boxes,catalog):
     return features,dict(contract=contract['sha256'],records=records,mapping=fingerprint([layout.owner.tolist(),boxes.tolist(),records]),shape=list(features.values.shape))
 
 
-def teacher(a):
+def teacher(a, context_fn=context):
     import torch
     from transformers import GenerationConfig
     from types import SimpleNamespace
@@ -73,12 +73,23 @@ def teacher(a):
     from docprune.stage2.qwen import prepare_prompt
     from docprune.stage2.supervision import Outcome,TeacherBank
     from docprune.stage2.pilot import next_probe
-    root,out,catalog,pool,labels,smoke,contract=context(a)
+    root,out,catalog,pool,labels,smoke,contract=context_fn(a)
     assert Path(a.reader).name==REVISION
     processor,model=load_model(a.reader);reader=FrozenAnswerer(model)
     started=time.monotonic();torch.cuda.reset_peak_memory_stats();receipts=[]
     for qid in smoke['qids']:
         folder=out/qid;label=labels[qid]
+        if (folder/'question-complete.json').exists():
+            receipt=read(folder/'question-complete.json')
+            from docprune.stage2.data import load_example
+            loaded,loaded_bank=load_example(folder/'example')
+            assert loaded.identity.question_id==qid and loaded_bank.adjudication_identity==label['manifest_identity']
+            receipts.append(receipt);del loaded,loaded_bank
+            continue
+        correct=label['verdict']=='correct'
+        if label['verdict'] not in ('correct','incorrect'):raise ValueError('Unresolved label')
+        mask_count=smoke.get('mask_counts',{}).get(qid,smoke['mask_count'])
+        dev=qid in smoke.get('dev_qids',[])
         q,assets,images,regions=pages(root,catalog,qid)
         assert label['question']==q['question'] and label['gold']==[x['answer'] for x in pool[qid]['answers']]
         b=read(root/'baseline-qwen3-8b-admitted-v2/answers'/f'{fingerprint(qid)}.json')
@@ -107,16 +118,20 @@ def teacher(a):
         while own and own[-1] in eos:own.pop()
         assert own
         memory=reader.vision(prompt,fingerprint(contract))
+        targets=label['gold']
+        gold=None if correct else processor.tokenizer.encode(str(targets[0]) if len(targets)==1 else json.dumps(targets,ensure_ascii=False),add_special_tokens=False)
+        if not correct and not gold:raise ValueError('Empty gold continuation')
         def score(mask):
-            return dict(g=None,s=reader.likelihood(prompt,memory,layout.retained_tokens(mask).cuda(),own)['mean'])
+            tokens=layout.retained_tokens(mask).cuda()
+            return dict(g=None if correct else reader.likelihood(prompt,memory,tokens,gold)['mean'],s=reader.likelihood(prompt,memory,tokens,own)['mean'])
         refpath=folder/'reference.json'
         if not refpath.exists():publish(refpath,score(torch.ones(len(layout.region_ids),dtype=torch.bool)))
         reference=read(refpath)
         empty=folder/'empty-interface.json'
-        if not empty.exists():publish(empty,score(torch.zeros(len(layout.region_ids),dtype=torch.bool)))
+        if smoke.get('test_empty_interface',True) and not empty.exists():publish(empty,score(torch.zeros(len(layout.region_ids),dtype=torch.bool)))
         rows=[]
         while True:
-            proposal=next_probe(rows,layout.costs.tolist(),qid,True,reference,count=smoke['mask_count'])
+            proposal=next_probe(rows,layout.costs.tolist(),qid+(':independent-dev-v1' if dev else ''),correct,reference,count=mask_count,random_only=dev)
             if proposal is None:break
             i=len(rows);publish(folder/'proposals'/f'{i:02d}.json',proposal)
             path=folder/'measurements'/f'{i:02d}.json'
@@ -125,19 +140,21 @@ def teacher(a):
                 vals=score(mask)
                 publish(path,dict(mask=proposal['mask'],retained_tokens=int((mask*layout.costs).sum()),**vals))
             row=read(path);assert row['mask']==proposal['mask'];rows.append(row)
-        assert len(rows)==32
+        assert len(rows)==min(mask_count,2**len(layout.region_ids))
         matrix=torch.tensor([r['mask'] for r in rows],dtype=torch.bool)
         repeat=score(matrix[0]);assert abs(repeat['s']-rows[0]['s'])<1e-5
-        identity=InstanceIdentity('m3docvqa',fingerprint(b['ordered_pages']),qid,fingerprint(q['question']),tuple(b['ordered_pages']),fingerprint(b['image_grid_thw']),fingerprint([layout.region_ids,layout.owner.tolist()]),REVISION,mapping['mapping'],fingerprint([PROMPT,own,'S-only-full-prefix',label['manifest_identity']]))
+        if not correct:assert abs(repeat['g']-rows[0]['g'])<1e-5
+        identity=InstanceIdentity('m3docvqa',fingerprint(b['ordered_pages']),qid,fingerprint(q['question']),tuple(b['ordered_pages']),fingerprint(b['image_grid_thw']),fingerprint([layout.region_ids,layout.owner.tolist()]),REVISION,mapping['mapping'],fingerprint([PROMPT,own,gold,'S-only-full-prefix' if correct else 'GS-full-prefix',label['manifest_identity']]))
         example=SelectorInputs(identity,layout,memory,prompt.input_ids[0,prompt.question_positions].cpu(),n,features)
-        bank=TeacherBank(identity.key,matrix,tuple(Outcome(r['g'],r['s']) for r in rows),Outcome(**reference),True,True,identity.document_family,'s',label['manifest_identity'],'variable_pilot_v1','hamming_families_v1')
+        bank=TeacherBank(identity.key,matrix,tuple(Outcome(r['g'],r['s']) for r in rows),Outcome(**reference),correct,not dev,identity.document_family,'s',label['manifest_identity'],'variable_pilot_v1','hamming_families_v1')
         bank.validate(example)
         publish(folder/'design.json',dict(boxes=boxes.tolist(),audit=audit,mapping=mapping,region_ids=layout.region_ids,costs=layout.costs.tolist()))
         if not (folder/'example').exists():save_example(folder/'example',example,bank)
         pairs=bank.pairs('gold_aware',.1,.05)
-        if not pairs:raise ValueError('No strict pairs; retain case but smoke cannot establish training path')
+        if not pairs and smoke.get('require_pairs',True):raise ValueError('No strict pairs; retain case but smoke cannot establish training path')
         distances=[int((matrix[i]!=matrix[j]).sum()) for i,j in pairs]
         receipts.append(dict(qid=qid,label_source=label['label_source'],masks=len(rows),pairs=len(pairs),pair_families=[sum(d==1 for d in distances),sum(d==2 for d in distances),sum(d>2 for d in distances)],retained_min=min(r['retained_tokens'] for r in rows),retained_max=max(r['retained_tokens'] for r in rows),full_tokens=n,retrieval=mapping,repeat_delta=repeat['s']-rows[0]['s']))
+        publish(folder/'question-complete.json',receipts[-1])
         print(json.dumps(receipts[-1]),flush=True)
         del memory,example,bank,prompt;gc.collect();torch.cuda.empty_cache()
     publish(out/'teacher-complete.json',dict(status='passed',questions=receipts,resources=stats(started,torch)))
