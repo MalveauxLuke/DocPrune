@@ -1,3 +1,9 @@
+# Active — API-correct variable-retention pilot smoke
+
+Owner approved the revised plan and two-correct-case smoke. Binding handoff:
+[training-pilot/HANDOFF.md](training-pilot/HANDOFF.md). Exact tested revision and
+submission receipt must be recorded. Full64 collection/training is not launched.
+
 # Completed — native 2B selector end-to-end smoke
 
 Owner approved two verified-incorrect questions from filtered training463,32 masks

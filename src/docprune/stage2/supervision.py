@@ -11,19 +11,21 @@ from .policy import mask_scores
 
 @dataclass(frozen=True)
 class Outcome:
-    g: float
+    g: float | None
     s: float
 
     def __post_init__(self):
-        if not math.isfinite(self.g) or not math.isfinite(self.s):
+        if (self.g is not None and not math.isfinite(self.g)) or not math.isfinite(self.s):
             raise ValueError("Teacher outcomes must be finite")
 
     @property
     def c(self):
+        if self.g is None:
+            raise ValueError("G was not measured in this S-only outcome")
         return self.g - self.s
 
 
-def preference(a, b, reference, *, baseline_correct, mode, epsilon, margin):
+def preference(a, b, reference, *, baseline_correct, mode, epsilon, margin, correct_preservation="g"):
     """+1 favors a, -1 favors b, 0 is unordered. No hash tie-break training labels."""
     if mode not in ("g_only", "gold_aware", "pure_contrast"):
         raise ValueError("Unknown supervision mode")
@@ -33,6 +35,12 @@ def preference(a, b, reference, *, baseline_correct, mode, epsilon, margin):
     def direction(delta):
         return int(delta > margin) - int(delta < -margin)
 
+    if correct_preservation not in ("g", "s"):
+        raise ValueError("Unknown correct preservation channel")
+    if baseline_correct and correct_preservation == "s":
+        return direction(a.s - b.s)
+    if any(o.g is None for o in (a, b, reference)):
+        raise ValueError("This preference requires measured G")
     if baseline_correct or mode == "g_only":
         return direction(a.g - b.g)
     if mode == "pure_contrast":
@@ -55,6 +63,10 @@ class TeacherBank:
     baseline_correct: bool
     proposal_uses_s: bool
     family: str
+    correct_preservation: str = "g"
+    adjudication_identity: str | None = None
+    retention_mode: str = "exact"
+    pair_weighting: str = "all_pairs"
 
     def validate(self, inputs, *, require_s_free=True):
         if not isinstance(self.baseline_correct, bool) or not isinstance(
@@ -68,10 +80,22 @@ class TeacherBank:
             or self.family != inputs.identity.document_family
         ):
             raise ValueError("Teacher/input identity mismatch")
-        if require_s_free and self.proposal_uses_s:
+        if self.retention_mode not in ("exact", "variable_pilot_v1"):
+            raise ValueError("Unknown retention contract")
+        if self.pair_weighting not in ("all_pairs", "hamming_families_v1"):
+            raise ValueError("Unknown pair weighting")
+        if require_s_free and self.proposal_uses_s and self.retention_mode == "exact":
             raise ValueError(
                 "Central Stage 2 comparison requires proposals independent of S"
             )
+        if self.correct_preservation not in ("g", "s"):
+            raise ValueError("Unknown correct preservation channel")
+        if self.correct_preservation == "s" and not self.adjudication_identity:
+            raise ValueError("API preservation needs frozen adjudication provenance")
+        if not (self.baseline_correct and self.correct_preservation == "s") and any(
+            o.g is None for o in (*self.outcomes, self.reference)
+        ):
+            raise ValueError("G is required outside API correct-case preservation")
         n = len(inputs.layout.region_ids)
         if self.masks.ndim != 2 or self.masks.shape != (len(self.outcomes), n):
             raise ValueError("Teacher masks/outcomes mismatch")
@@ -83,7 +107,10 @@ class TeacherBank:
 
         cost = inputs.layout.costs
         target = achievable_budget(cost, inputs.budget)
-        if not ((self.masks.to(cost) * cost[None]).sum(dim=1) == target).all():
+        if self.retention_mode == "variable_pilot_v1":
+            if inputs.budget != inputs.layout.owner.numel():
+                raise ValueError("Variable pilot requires fixed full-capacity conditioning")
+        elif not ((self.masks.to(cost) * cost[None]).sum(dim=1) == target).all():
             raise ValueError(
                 "Policy comparisons must share the achievable token budget"
             )
@@ -97,6 +124,7 @@ class TeacherBank:
                     self.outcomes[j],
                     self.reference,
                     baseline_correct=self.baseline_correct,
+                    correct_preservation=self.correct_preservation,
                     mode=mode,
                     epsilon=epsilon,
                     margin=margin,
@@ -132,7 +160,13 @@ def question_loss(
     plus, minus = torch.tensor(pairs, device=values.device).T
 
     def rank(scores):
-        return F.softplus(-(scores[plus] - scores[minus]) / temperature).mean()
+        losses = F.softplus(-(scores[plus].float() - scores[minus].float()) / temperature)
+        if bank.pair_weighting == "all_pairs":
+            return losses.mean()
+        masks = bank.masks.to(plus.device)
+        distance = (masks[plus] != masks[minus]).sum(1)
+        families = (distance == 1, distance == 2, distance > 2)
+        return torch.stack([losses[f].mean() for f in families if f.any()]).mean()
 
     direct = rank(values)
     if correction_scores is None or auxiliary_weight == 0:

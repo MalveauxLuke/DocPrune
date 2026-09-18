@@ -125,6 +125,10 @@ def load_example(directory, *, device="cpu"):
             b["baseline_correct"],
             b["proposal_uses_s"],
             b["family"],
+            b.get("correct_preservation", "g"),
+            b.get("adjudication_identity"),
+            b.get("retention_mode", "exact"),
+            b.get("pair_weighting", "all_pairs"),
         )
         bank.validate(example)
     return example, bank
