@@ -1,4 +1,4 @@
-# Task-prompt frozen-2B comparison (prepared; not submitted)
+# Task-prompt frozen-2B comparison (approved; pending submission)
 
 ## Question
 
@@ -57,7 +57,8 @@ Requested resources match the measured minimum policy: one compatible GPU, two
 CPU cores, 24,000 MiB host RAM, and 20 minutes in `htc`. The preceding frozen
 path reached its third epoch at about 11 minutes and used about 4.6 GB peak GPU
 memory; its overall preflight peak was about 6.3 GB. This launcher remains
-unsubmitted until the owner approves the exact prompt and contract. The
+approved by the owner on September 18; submission remains pending the live
+scheduler estimate. The
 evaluation requests one compatible GPU, one CPU, 24,000 MiB host RAM and 25
 minutes. The prior six-checkpoint evaluation used 24.3 minutes and peaked at
 5.2 GB reserved device memory. A proportional four-checkpoint estimate is about

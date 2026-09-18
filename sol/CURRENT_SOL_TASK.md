@@ -1,3 +1,14 @@
+# Active — frozen task-prompt 2B comparison
+
+Owner approved the bounded task-specific-prompt experiment on the existing 2B
+Rich selector: fresh prompt-specific warm-up followed by the frozen-backbone
+branch only, then fixed-checkpoint evaluation on both train and development
+pairs. No LoRA prompt arm and no 8B reader calls. Binding scope, exact prompt,
+launchers, resource limits and recovery behavior are in
+[the task-prompt handoff](training-pilot/TASK_PROMPT_FROZEN_HANDOFF.md). Check the
+real training launcher's estimated start first; use its built-in largest-context
+preflight rather than a separate smoke when the real job can start promptly.
+
 # Active — audited64-question selector training
 
 Owner resumed and authorized final audit/checks then training submission. Binding
