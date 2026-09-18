@@ -1,3 +1,6 @@
+import json
+from dataclasses import asdict
+
 import torch
 
 from experiments.training_pilot.evaluate_checkpoints import (
@@ -7,6 +10,7 @@ from experiments.training_pilot.evaluate_checkpoints import (
     summarize,
     tie_credit,
 )
+from docprune.stage2.experiment import ExperimentConfig
 from test_stage2_contracts import example
 from docprune.stage2.supervision import Outcome, TeacherBank
 
@@ -29,6 +33,13 @@ def bank_fixture():
         "hamming_families_v1",
     )
     return inputs, bank
+
+
+def test_json_contract_normalizes_tuple_fields_to_lists():
+    config = ExperimentConfig()
+    sealed = json.loads(json.dumps(asdict(config)))
+    assert sealed["lora_targets"] == list(config.lora_targets)
+    assert sealed["stream_map"] == list(config.stream_map)
 
 
 def test_pair_manifest_freezes_ties_weights_and_metric_contract():

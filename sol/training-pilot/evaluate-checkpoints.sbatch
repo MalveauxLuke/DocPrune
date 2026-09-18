@@ -3,7 +3,7 @@
 #SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=1
 #SBATCH --mem=24000M
 #SBATCH --time=00:30:00
 set -euo pipefail

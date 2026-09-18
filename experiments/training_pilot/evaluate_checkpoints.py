@@ -1,6 +1,7 @@
 """Fixed-checkpoint evaluation on the exact audited train/dev preference pairs."""
 import argparse
 from dataclasses import asdict
+import json
 import math
 from pathlib import Path
 import random
@@ -313,7 +314,8 @@ def run(args):
         retrieval_dim=129, retrieval_schema=contract["config"]["retrieval_schema"],
         stage1=Stage1Contract(answerer_revision=contract["config"]["stage1"]["answerer_revision"], selector_revision=SELECTOR_REV, epsilon=.1, margin=.05),
     )
-    if asdict(config) != contract["config"]:
+    # Training contracts are JSON-sealed, which normalizes tuple fields to lists.
+    if json.loads(json.dumps(asdict(config))) != contract["config"]:
         raise ValueError("Evaluation config differs from training contract")
     torch.manual_seed(args.seed); random.seed(args.seed)
     processor, backbone = load_model(args.selector)
