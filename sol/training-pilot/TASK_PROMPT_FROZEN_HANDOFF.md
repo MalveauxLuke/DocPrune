@@ -58,7 +58,8 @@ CPU cores, 24,000 MiB host RAM, and 20 minutes in `htc`. The preceding frozen
 path reached its third epoch at about 11 minutes and used about 4.6 GB peak GPU
 memory; its overall preflight peak was about 6.3 GB. This launcher remains
 unsubmitted until the owner approves the exact prompt and contract. The
-evaluation requests one compatible GPU, one CPU, 24,000 MiB host RAM and 15
+evaluation requests one compatible GPU, one CPU, 24,000 MiB host RAM and 25
 minutes. The prior six-checkpoint evaluation used 24.3 minutes and peaked at
-5.2 GB reserved device memory; this four-checkpoint frozen-only version is
-resumable if the shorter reservation expires.
+5.2 GB reserved device memory. A proportional four-checkpoint estimate is about
+16 minutes; the 25-minute request leaves headroom for model loading and cache
+variation while retaining per-question recovery if it still times out.

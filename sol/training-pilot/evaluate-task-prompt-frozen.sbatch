@@ -5,7 +5,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=24000M
-#SBATCH --time=00:15:00
+#SBATCH --time=00:25:00
 set -euo pipefail
 : "${SLURM_JOB_ID:?}" "${DP_PILOT_COMMIT:?}" "${DP_BANK_AUDIT:?}"
 case "$(hostname -s)" in *login*) exit 2;; esac
