@@ -55,6 +55,22 @@ def verify_raw_artifacts(folder,ex,bank):
         require(measured.get('retained_tokens')==expected_tokens,f'Raw measurement {i} token cost differs from sealed bank')
     return sha(folder/'design.json')
 
+def legacy_reuse_receipt(folder,qid,current):
+    """Resolve a declared pre-per-question-receipt smoke bank from its sealed parent."""
+    parent=Path(folder).parent
+    old=read(parent/'contract.json');teacher=read(parent/'teacher-complete.json');complete=read(parent/'complete.json')
+    require(old.get('schema')=='correct-preservation-pilot-smoke-v1','Unexpected legacy reuse contract schema')
+    smoke=old.get('smoke',{});require(qid in smoke.get('qids',[]),'Reused QID absent from legacy smoke contract')
+    require(smoke.get('labels_sha256')==current.get('labels_sha256'),'Legacy reuse frozen-label hash mismatch')
+    for key in ('catalog','reader','selector','acquisition','retrieval_schema'):
+        require(old.get(key)==current.get(key),f'Legacy reuse {key} identity mismatch')
+    require(teacher.get('status')=='passed','Legacy teacher completion status is not passed')
+    require(complete.get('status')=='passed','Legacy parent completion status is not passed')
+    receipts=[row for row in teacher.get('questions',[]) if row.get('qid')==qid]
+    require(len(receipts)==1,'Legacy teacher receipt must contain reused QID exactly once')
+    require([row.get('qid') for row in teacher.get('questions',[])]==smoke.get('qids'),'Legacy teacher receipt order differs from smoke contract')
+    return receipts[0],dict(receipt_source='legacy_parent_teacher_complete',legacy_contract_sha256=sha(parent/'contract.json'),legacy_teacher_receipt_sha256=sha(parent/'teacher-complete.json'),legacy_complete_sha256=sha(parent/'complete.json'))
+
 def summarize(rows,split):
     selected=[r for r in rows if r['split']==split]
     sensitivity={k:dict(pairs=sum(r['sensitivity'][k] for r in selected),active_questions=sum(r['sensitivity'][k]>0 for r in selected)) for k in (selected[0]['sensitivity'] if selected else ())}
@@ -106,7 +122,10 @@ def audit(root,collection,output):
         for qid in train+dev:
             reused=qid in contract.get('reuse',{});folder=Path(contract['reuse'][qid]['directory']) if reused else collection/qid
             try:
-                receipt=read(folder/'question-complete.json');require(receipt.get('qid')==qid,'Question receipt QID mismatch')
+                legacy={}
+                if reused and not (folder/'question-complete.json').exists():receipt,legacy=legacy_reuse_receipt(folder,qid,contract)
+                else:receipt=read(folder/'question-complete.json')
+                require(receipt.get('qid')==qid,'Question receipt QID mismatch')
                 if reused:
                     require(sha(folder/'example/manifest.json')==contract['reuse'][qid].get('example_manifest_sha256'),'Reused example provenance mismatch')
                     require(sha(folder/'anchor.json')==contract['reuse'][qid].get('anchor_sha256'),'Reused anchor provenance mismatch')
@@ -124,7 +143,8 @@ def audit(root,collection,output):
                 require(receipt.get('pair_families')==list(row['families'].values()),'Question receipt pair families mismatch')
                 require(receipt.get('retained_min')==row['retained_min'] and receipt.get('retained_max')==row['retained_max'],'Question receipt retained-token range mismatch')
                 require(receipt.get('full_tokens')==row['full_tokens'],'Question receipt full-token count mismatch')
-                rows.append(dict(**row,split='dev' if qid in dev else 'train',reused=reused,directory=str(folder),manifest_sha256=sha(folder/'example/manifest.json'),design_sha256=design_sha,question_receipt_sha256=sha(folder/'question-complete.json')))
+                receipt_hash=legacy.get('legacy_teacher_receipt_sha256') if legacy else sha(folder/'question-complete.json')
+                rows.append(dict(**row,split='dev' if qid in dev else 'train',reused=reused,directory=str(folder),manifest_sha256=sha(folder/'example/manifest.json'),design_sha256=design_sha,question_receipt_sha256=receipt_hash,**legacy))
                 del ex,bank
             except (AssertionError,ValueError,OSError,KeyError,TypeError) as error:
                 failures.append(dict(scope='question',qid=qid,error=f'{type(error).__name__}: {error}'))

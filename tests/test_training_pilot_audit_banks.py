@@ -2,7 +2,7 @@ from dataclasses import replace
 from pathlib import Path
 import pytest
 import torch
-from experiments.training_pilot.audit_banks import inspect_bank,summarize,verify_raw_artifacts
+from experiments.training_pilot.audit_banks import inspect_bank,legacy_reuse_receipt,summarize,verify_raw_artifacts
 from test_stage2_contracts import example
 from docprune.stage2.supervision import Outcome,TeacherBank
 
@@ -49,6 +49,18 @@ def test_raw_artifacts_match_sealed_bank_and_design(tmp_path):
     assert len(verify_raw_artifacts(folder,x,b))==64
     bad=folder/'measurements/01.json';row=__import__('json').loads(bad.read_text());row['retained_tokens']+=1;bad.write_text(__import__('json').dumps(row))
     with pytest.raises(ValueError,match='token cost'):verify_raw_artifacts(folder,x,b)
+
+def test_legacy_reuse_requires_matching_parent_receipts_and_identities(tmp_path):
+    parent=tmp_path/'smoke';folder=parent/'reuse-q';folder.mkdir(parents=True)
+    current=dict(labels_sha256='labels',catalog='catalog',reader='reader',selector='selector',acquisition='acquisition',retrieval_schema='retrieval')
+    old=dict(schema='correct-preservation-pilot-smoke-v1',smoke=dict(qids=['reuse-q'],labels_sha256='labels'),**{k:current[k] for k in ('catalog','reader','selector','acquisition','retrieval_schema')})
+    teacher=dict(status='passed',questions=[dict(qid='reuse-q',masks=32,pairs=1)])
+    for name,value in [('contract.json',old),('teacher-complete.json',teacher),('complete.json',dict(status='passed'))]:
+        (parent/name).write_text(__import__('json').dumps(value))
+    receipt,provenance=legacy_reuse_receipt(folder,'reuse-q',current)
+    assert receipt['qid']=='reuse-q' and provenance['receipt_source']=='legacy_parent_teacher_complete'
+    old['reader']='changed';(parent/'contract.json').write_text(__import__('json').dumps(old))
+    with pytest.raises(ValueError,match='reader identity'):legacy_reuse_receipt(folder,'reuse-q',current)
 
 def test_full_audit_completion_route_and_missing_receipt_fail_closed(tmp_path,monkeypatch):
     import experiments.training_pilot.audit_banks as module

@@ -3,8 +3,8 @@
 #SBATCH --partition=htc
 #SBATCH --qos=public
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=4000M
-#SBATCH --time=00:05:00
+#SBATCH --mem=6000M
+#SBATCH --time=00:08:00
 set -euo pipefail
 : "${SLURM_JOB_ID:?}" "${DP_PILOT_COMMIT:?}"
 case "$(hostname -s)" in *login*) exit 2;; esac

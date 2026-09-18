@@ -9,7 +9,8 @@ collection or API calls. Stop after successful training submission.
 Completed collection63544061 (38m38s, exit0) in
 `/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/stage/training-pilot-quality-v1`.
 64training/24dev,86new banks plus2immutable smoke banks. Run
-`sol/training-pilot/audit.sbatch` first: CPU2,4000M,5min,htc/public, no GPU.
+`sol/training-pilot/audit.sbatch` first: CPU2,6000M,8min,htc/public, no GPU. First audit took5m02s and
+peaked4093684KiB at the4000M limit; this is a measured adjustment.
 Its immutable report is `stage/training-pilot-v1/bank-audit-<job>.json`.
 Require passed complete identity/channel/mask validation and usable strict pairs.
 Do not decrease margins because yield is low. Epsilon0.1/margin0.05 remain fixed.

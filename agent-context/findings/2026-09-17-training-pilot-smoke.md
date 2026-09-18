@@ -187,3 +187,21 @@ CPU audit2CPU/4000M/5min is accepted; training planned genericGPU1/2CPU/24000M,
 No GPU model restriction. Existing models/environments reused. Binding handoff:
 `sol/training-pilot/TRAINING_HANDOFF.md`. Exact code/job pins recorded below
 once submission is verified.
+
+Preparation verification:40focused CPU tests passed in6.33s; shell syntax passed.
+Code committed/pushed asf3c22d3763c7e12a0b2d100be057345aa0ea3b29 and pulled onSOL.
+Independent CPU audit submitted63554823,2CPU/4000M/5min, running onsc069.
+20min and15min training test-only requests both estimated22:27:30 onsg049;
+retain20min because the shorter request offered no scheduling advantage.
+
+Audit63554823 completed FAILED1:0 in5m02s, peak4093684KiB. All86new banks passed;
+only failures were the2legacy smoke banks lacking newer per-question receipt
+files. Their original parent teacher-complete/complete receipts exist and passed.
+The Sol audit subagent added an explicit declared-reuse-only compatibility path,
+verifying matching reader/selector/acquisition/catalog/labels and pinning parent
+receipt hashes. Fresh banks still require per-question receipts. No data changes
+or remeasurement. Rerun CPU audit6GB/8min after observed4GB memory pressure and
+5-minute runtime; retain2CPU. Primary thresholds remain0.1/0.05. First pass found
+60/62new training banks with strict pairs (24969pairs); all24dev banks active
+(575pairs). Zero-pair training QIDs:6261fd4db8c28467508fc8601498a479 and
+f2ded8bedf9b48787f1e64bc52287d0e; retain them without ranking updates.
