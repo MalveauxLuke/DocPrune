@@ -1,5 +1,7 @@
 # Agent context index
 
+- [Native 2B selector smoke](findings/2026-09-17-selector-smoke.md) — two verified errors ×32 masks, LoRA, rich readout and both heads; bounded SOL execution and receipts.
+
 - [SOL fairshare, queue-time and adaptive batching](modules/sol-fairshare-batching.md) — measured billing, bounded batch tuning and resumable one-load execution.
 
 - [Current task](CURRENT_TASK.md)

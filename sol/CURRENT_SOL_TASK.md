@@ -1,10 +1,11 @@
-# Active — native 2B selector end-to-end smoke
+# Completed — native 2B selector end-to-end smoke
 
 Owner approved two verified-incorrect questions from filtered training463,32 masks
 each, native selector vision, language LoRA, rich readout, Head1 and Head2.
 Binding handoff: [selector-smoke/HANDOFF.md](selector-smoke/HANDOFF.md).
 This supersedes earlier prohibitions on training only for this bounded smoke.
 No full-cohort training. Browser shell; Git code and rsync inputs; minimum resources.
+Passed via teacher63539268 and train/evaluate63539612; see the handoff receipt.
 
 # Completed — ten-error Qwen3 masking and OMP audit
 

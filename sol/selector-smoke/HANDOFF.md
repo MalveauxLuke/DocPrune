@@ -45,3 +45,13 @@ failed training attempts use fresh attempt outputs. Queue estimates before submi
 CPU setup uses lightwork allocation. Code Git; cohort rsync; no data in Git.
 Launcher sol/selector-smoke/run.sbatch; implementation experiments/selector_smoke/run.py.
 Exact tested commit and job receipt will be recorded in findings after submission.
+
+## Verified receipt
+
+Bounded smoke passed via teacher63539268 + train/evaluate63539612. Successful
+training code ae8260339ccf5fa0ee91b3f392c661e25f78fd3d. Source teacher directory
+selector-smoke-463-v2; training/evaluation selector-smoke-463-v3. Recovery used
+DP_TEACHER_SOURCE pointing to v2 and a5min time override; other resources unchanged.
+The source contract and hashed examples were verified before reuse.
+See agent-context/findings/2026-09-17-selector-smoke.md for failures, measurements
+and limits. Existing v3 output is immutable; do not rerun into it.
