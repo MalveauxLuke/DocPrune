@@ -1,0 +1,345 @@
+{
+  "scope": "Nine supported correct cases; inspected evidence bundle removal and real no-image question-only; not exhaustive evidence erasure",
+  "records": [
+    {
+      "number": 9,
+      "qid": "9cd2be00cf2d49b35a2271d842e37470",
+      "question": "In the 2014 season, did Bjornar Holmvik play for the club Kalmar FF?",
+      "gold": [
+        "No"
+      ],
+      "ordered_pages": [
+        "fea42f12eecaedf5e96821a12ccfb3a9:2",
+        "fea42f12eecaedf5e96821a12ccfb3a9:0",
+        "e99a3a235e71783f61b6b2f9ba260a3d:1",
+        "d6446b44b5882b117f85ebfcdef1477b:0"
+      ],
+      "remove_indices": [
+        47
+      ],
+      "remove_region_ids": [
+        "cdb1e7c1aae79db56e6b2e848cdfff7259e6a66031a78f0c4a629754b93c0df9#occurrence:1:r0028"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.29726356267929077
+      },
+      "anchor": {
+        "answer": "No",
+        "continuation_ids": [
+          2753,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 17,
+      "qid": "cb9dcb9e2d4bd3c510832f2cb09a49f4",
+      "question": "who plays alex cahill on walker texas ranger",
+      "gold": [
+        "Sheree Julienne Wilson"
+      ],
+      "ordered_pages": [
+        "aa4d0eea9eb4fdfd2bac5a7b74754e92:0",
+        "b014b8ca3c8ee543b655c29747cc6090:11",
+        "aa4d0eea9eb4fdfd2bac5a7b74754e92:4",
+        "2786c7d2bbd8625ed25cb3f49ce0585a:3",
+        "aa4d0eea9eb4fdfd2bac5a7b74754e92:2"
+      ],
+      "remove_indices": [
+        8
+      ],
+      "remove_region_ids": [
+        "13e380dc165da046ce6ae9a5be5fab82dfc84c8369ec3019d79890e768925924#occurrence:0:r0008"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.0021556136198341846
+      },
+      "anchor": {
+        "answer": "Sheree J. Wilson",
+        "continuation_ids": [
+          2016,
+          74960,
+          619,
+          13,
+          17426,
+          151645
+        ],
+        "label_source": "api",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 22,
+      "qid": "3c5ea34b03a95fb09b8a945321765516",
+      "question": "who was england manager in last world cup",
+      "gold": [
+        "Gareth Southgate"
+      ],
+      "ordered_pages": [
+        "8cf1057b33ad31dda92145e8b11ddb11:6",
+        "fce9a7bf27d6f24a2dce88d571ada52c:6",
+        "fce9a7bf27d6f24a2dce88d571ada52c:8",
+        "177c8c9ff4170e2332fd4125dea9ecd8:8",
+        "fce9a7bf27d6f24a2dce88d571ada52c:16"
+      ],
+      "remove_indices": [
+        35,
+        36,
+        38
+      ],
+      "remove_region_ids": [
+        "8d7f39a516c91e654c32517b92fc5c3bd392c843731cc30bf5dc370e3382d3c4#occurrence:2:r0006",
+        "8d7f39a516c91e654c32517b92fc5c3bd392c843731cc30bf5dc370e3382d3c4#occurrence:2:r0007",
+        "8d7f39a516c91e654c32517b92fc5c3bd392c843731cc30bf5dc370e3382d3c4#occurrence:2:r0009"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.007950768806040287
+      },
+      "anchor": {
+        "answer": "Gareth Southgate",
+        "continuation_ids": [
+          38,
+          56265,
+          4882,
+          24601,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 24,
+      "qid": "5c64713ada28ceb2f04a1a75a9225b1d",
+      "question": "who sings the song dude looks like a lady",
+      "gold": [
+        "Aerosmith"
+      ],
+      "ordered_pages": [
+        "13c15210003cd670c5c42ea2668c2b4d:0",
+        "7493029fb4e7cde46873d7c1a0c5c09f:7",
+        "13c15210003cd670c5c42ea2668c2b4d:4",
+        "13c15210003cd670c5c42ea2668c2b4d:2"
+      ],
+      "remove_indices": [
+        8,
+        15
+      ],
+      "remove_region_ids": [
+        "2046ad9a2e172f05d06556952da926fb621e142e30625fcb3e48c1db7429754d#occurrence:0:r0008",
+        "2046ad9a2e172f05d06556952da926fb621e142e30625fcb3e48c1db7429754d#occurrence:0:r0015"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.014639358967542648
+      },
+      "anchor": {
+        "answer": "Aerosmith",
+        "continuation_ids": [
+          32,
+          6264,
+          43674,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 26,
+      "qid": "d773cd8663f29f3b37171de9f2229574",
+      "question": "when did the cubs win the world series",
+      "gold": [
+        "2016"
+      ],
+      "ordered_pages": [
+        "7418adf39a2e7877c4fcdfd4c44909e9:1",
+        "79a80be05a9f849a0b4ed92af1c59775:33",
+        "b414fd316c6d2a317b0d6955bcbd964a:7",
+        "b414fd316c6d2a317b0d6955bcbd964a:1",
+        "9bcc71893796a385e51b64ef95d04300:42"
+      ],
+      "remove_indices": [
+        1,
+        3,
+        38,
+        40
+      ],
+      "remove_region_ids": [
+        "776c5916cdcd7725d8022498e9e5fe0f54f013f26cae25474aab2a1c679549cf#occurrence:0:r0001",
+        "776c5916cdcd7725d8022498e9e5fe0f54f013f26cae25474aab2a1c679549cf#occurrence:0:r0003",
+        "776c5916cdcd7725d8022498e9e5fe0f54f013f26cae25474aab2a1c679549cf#occurrence:3:r0001",
+        "776c5916cdcd7725d8022498e9e5fe0f54f013f26cae25474aab2a1c679549cf#occurrence:3:r0003"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.017449358478188515
+      },
+      "anchor": {
+        "answer": "2016",
+        "continuation_ids": [
+          17,
+          15,
+          16,
+          21,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 32,
+      "qid": "6261fd4db8c28467508fc8601498a479",
+      "question": "who wrote saare jahan se achchca hindustan hamara",
+      "gold": [
+        "poet Muhammad Iqbal"
+      ],
+      "ordered_pages": [
+        "cfb722d83690133affe18d3059879039:0",
+        "cfb722d83690133affe18d3059879039:4",
+        "cfb722d83690133affe18d3059879039:1",
+        "cfb722d83690133affe18d3059879039:6",
+        "cfb722d83690133affe18d3059879039:2"
+      ],
+      "remove_indices": [
+        9,
+        14
+      ],
+      "remove_region_ids": [
+        "2a92c76ee52c785335da02479b7351b58a9ea4b399aa50ec44f36e8cf27ba7ae#occurrence:0:r0009",
+        "2a92c76ee52c785335da02479b7351b58a9ea4b399aa50ec44f36e8cf27ba7ae#occurrence:0:r0014"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.0009886249899864197
+      },
+      "anchor": {
+        "answer": "Muhammad Iqbal",
+        "continuation_ids": [
+          39120,
+          33057,
+          358,
+          80,
+          13313,
+          151645
+        ],
+        "label_source": "api",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 38,
+      "qid": "4bc044bf29e695892954cc68f947359b",
+      "question": "how many species of snakes are in alabama",
+      "gold": [
+        "49"
+      ],
+      "ordered_pages": [
+        "5bd6fdb8c0a6c1c7f2c8a3583d3a2123:2",
+        "5bd6fdb8c0a6c1c7f2c8a3583d3a2123:0",
+        "4fb78aebf108057f0d2a712edb379d50:4",
+        "5bd6fdb8c0a6c1c7f2c8a3583d3a2123:15"
+      ],
+      "remove_indices": [
+        12
+      ],
+      "remove_region_ids": [
+        "d4b62be9ca4df24ab1610bc0abd481948025c151e4228f237ff38fadd22f2e5a#occurrence:1:r0008"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.06267564743757248
+      },
+      "anchor": {
+        "answer": "49",
+        "continuation_ids": [
+          19,
+          24,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 40,
+      "qid": "811f1f4190d4bdde6f69b27a4893a53f",
+      "question": "who sang i was made for loving you",
+      "gold": [
+        "Kiss"
+      ],
+      "ordered_pages": [
+        "b019834c8bdc9fe0c6f8ad09a08cd867:4",
+        "b019834c8bdc9fe0c6f8ad09a08cd867:0",
+        "a7cf2a4c6e555e55fc3afa830d298096:4",
+        "b019834c8bdc9fe0c6f8ad09a08cd867:1"
+      ],
+      "remove_indices": [
+        25,
+        31
+      ],
+      "remove_region_ids": [
+        "cb97efe0074a49abaebfb225b90e24f14930e67800da0904f97e62483bfba59c#occurrence:1:r0012",
+        "cb97efe0074a49abaebfb225b90e24f14930e67800da0904f97e62483bfba59c#occurrence:1:r0018"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.4023418724536896
+      },
+      "anchor": {
+        "answer": "Kiss",
+        "continuation_ids": [
+          42,
+          1038,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    },
+    {
+      "number": 55,
+      "qid": "f2ded8bedf9b48787f1e64bc52287d0e",
+      "question": "Do rhinos live in Kaziranga National Park ?",
+      "gold": [
+        "yes"
+      ],
+      "ordered_pages": [
+        "ea5dc8587fdbc88fd245a6cc261bc128:12",
+        "83bc96a3c13662f1ead189eabaeb675f:12",
+        "ea5dc8587fdbc88fd245a6cc261bc128:13",
+        "83bc96a3c13662f1ead189eabaeb675f:13",
+        "ea5dc8587fdbc88fd245a6cc261bc128:0"
+      ],
+      "remove_indices": [
+        13,
+        20,
+        21
+      ],
+      "remove_region_ids": [
+        "d018a1563552aa33793ad8e947fad851b65e64154e3bb94d1e17b749a74af308#occurrence:4:r0009",
+        "d018a1563552aa33793ad8e947fad851b65e64154e3bb94d1e17b749a74af308#occurrence:4:r0016",
+        "d018a1563552aa33793ad8e947fad851b65e64154e3bb94d1e17b749a74af308#occurrence:4:r0017"
+      ],
+      "reference": {
+        "g": null,
+        "s": -0.0001770101225702092
+      },
+      "anchor": {
+        "answer": "Yes",
+        "continuation_ids": [
+          9454,
+          151645
+        ],
+        "label_source": "normalized_exact",
+        "adjudication": "ecd905c767c050f29a782c2b97ec41aea3f1c0e38c32255181a24aa1a9f33a39"
+      }
+    }
+  ]
+}

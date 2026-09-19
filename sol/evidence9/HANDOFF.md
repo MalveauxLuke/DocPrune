@@ -1,0 +1,9 @@
+# Approved nine-question evidence/prior-knowledge diagnostic
+
+Owner authorized submission after agreeing to reuse full-context results. Nine correct cases with visually supported evidence; Arsenal excluded. Run exactly two new conditions per case: remove inspected semantic evidence regions and identical-page copies, and true question-only without images. Both save S for the fixed baseline continuation and greedy decoded answer (256 token cap). Same reader/instruction; no-image abstention does not prove absence of model knowledge. Region bundle is the inspected evidence, not a claim of exhaustive clue erasure. No new retrieval, OMP, training or baseline rerun.
+
+Checkout /home/lmalveau/DocPrune, exact commit in DP_BASELINE_COMMIT and submission receipt. Runtime source sol/initial300-baseline/environment.sh: /scratch/lmalveau/docprune-initial300/20260915-v1/envs/qwen3-baseline. Reader Qwen3-VL-8B-Instruct 0c351dd01ed87e9c1b53cbc748cba10e6187ff3b, bf16 SDPA. Frozen spec experiments/evidence9/spec.json. Stage /scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/stage, bank paths from training-pilot-v1/bank-audit-63555309.json. Validate exact ordered pages, region IDs, baseline prompt token IDs/grid, reference and fixed answer before masked scoring.
+
+Submit sol/evidence9/run.sbatch: generic GPU1, CPU2, RAM24000M,10min htc/public; known20GBMIG nodes excluded following previous reader memory measurements. Host RAM matches established scheduler minimum/reader recipe. One load, sequential conditions. No new installation. Output stage/evidence9-20260919-v1, per-condition files resumable, complete.json only after18conditions. Device monitor may include co-tenant devices; not process-specific utilization.
+
+Recovery: bounded code/runtime repair and resumption of missing conditions only; preserve completed outputs and original banks. Stop on input-contract mismatch, do not silently substitute data or model.
