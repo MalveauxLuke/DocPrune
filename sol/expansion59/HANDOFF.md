@@ -9,3 +9,7 @@ Scratch stage `/scratch/lmalveau/docprune-m3doc600/20260915-v2/admitted471-v2/st
 Manifest transfers use rsync on an allocated compute node. Login nodes only for light Git and scheduler operations. A CPU-only preparation allocation may validate the manifest and transfer small artifacts. User explicitly accepts memory risk without another GPU smoke.
 
 Owner-approved continuation policy: use the saved baseline answer/token IDs for S without regeneration. Question/gold representation and repeat-score discrepancies are nonfatal, persisted under each question's flags/ and repeat-diagnostic.json. Frozen file hashes, admitted pages, prompt/grid identity and bank validity remain enforced. Existing contract/cache identity and completed banks remain unchanged; continuation code provenance is appended separately. Numeric1420.0 versus string1420.0 is flagged as text-equivalent, not relabeled.
+
+## Owner-approved random8 completion
+
+Collect eight new outcome-independent Bernoulli(.5) masks for each59question,472new masks. Use sealed example visual memory/DeepStack, layout and saved baseline tokens; no visual encoder, retrieval or MinerU calls. Original24random plus8new random forms32random; original8targeted stays separately labeled. New output stage/expansion59-random8-v1. Launcher random8.sbatch;15min/one anyGPU/2CPU/24000M, compare10min estimate. Per-mask resume; preserve existing banks. Exact pinned code and same environment as collection.
