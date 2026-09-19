@@ -181,8 +181,15 @@ def run(a):
     contract=dict(schema='pilot64-trainer-v2',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
         zero_regional_token_count=zero_token_count,prompt=prompt,branches=branches,phases=list(phases),preflight_only=preflight_only,
         retention=[.75,.5],sources={str(p.relative_to(Path(__file__).parents[2])):sha(p) for p in code},runtime=runtime_identity(backbone))
+    shared_control=getattr(a,'shared_control_cache',None)
+    if shared_control:
+        contract['shared_control_cache']=str(Path(shared_control).resolve())
+        contract['shared_control_contract_sha256']=sha(Path(shared_control)/'contract.json')
     publish(out/'contract.json',contract)
     cache=TensorCache(out/'cache',dict(selector=SELECTOR_REV,runtime=contract['runtime'],processor=processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)),sources=contract['sources'],audit=contract['audit_sha256'],gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else 'cpu'))
+    if shared_control:
+        from experiments.training_pilot.shared_cache import attach_control_cache
+        attach_control_cache(cache,shared_control,contract,processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)))
     model=CachedPilotSelector(build_selector(cfg,answerer_config=backbone.config,selector_model=backbone),disk_cache=cache)
     model.base.backbone.model.language_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})
     stream=Stream(a.root,audit['rows'],processor,cache,prompt_condition=prompt_condition,zero_token_count=zero_token_count)
@@ -245,7 +252,7 @@ def run(a):
         lora_nonzero=any(torch.count_nonzero(p).item() for n,p in model.named_parameters() if 'lora_B' in n)
         if lora_nonzero != (phase=='lora'):raise ValueError('LoRA phase failed identity/update check')
         publish(done,dict(phase=phase,lora_nonzero=lora_nonzero,history=history,metrics=metrics,masks=masks,epochs=len(history),latest_sha256=sha(latest)))
-    publish(out/'training-complete.json',dict(status='passed',contract=identity,resources=stats(started,torch),cache_calls=model.calls,
+    publish(out/'training-complete.json',dict(status='passed',contract=identity,resources=stats(started,torch),cache_calls=model.calls,shared_cache_hits=getattr(cache,'control_hits',0),
         disk_written_bytes=cache.written_bytes,disk_read_bytes=cache.read_bytes,resident_cache_bytes=model.cache_bytes(),
         bank_shapes=[{k:r[k] for k in ('qid','pages','full_tokens') if k in r} for r in audit['rows']],
         evaluation='Fixed bank ranking and selected masks only; reader evaluation is a separate process'))
@@ -258,5 +265,6 @@ if __name__=='__main__':
     p.add_argument('--branches',choices=('all','frozen-only'),default='all')
     p.add_argument('--preflight-only',action='store_true')
     p.add_argument('--zero-regional-token-count',action='store_true')
+    p.add_argument('--shared-control-cache')
     a=p.parse_args()
     with run_lock(a.output):run(a)

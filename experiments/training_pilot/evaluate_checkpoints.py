@@ -406,6 +406,9 @@ def run(args):
         gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else "cpu",
     )
     cache = TensorCache(training / "cache", cache_identity)
+    if contract.get('shared_control_cache'):
+        from experiments.training_pilot.shared_cache import attach_control_cache
+        attach_control_cache(cache, contract['shared_control_cache'], contract, cache_identity['processor'])
     model = CachedPilotSelector(build_selector(config, answerer_config=backbone.config, selector_model=backbone), disk_cache=cache)
     evaluation_device = next(model.parameters()).device
     prompt_condition = contract.get("prompt", {}).get("condition", "current")
