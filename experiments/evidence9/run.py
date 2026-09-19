@@ -60,7 +60,52 @@ def main(a):
    del memory,prompt;gc.collect();torch.cuda.empty_cache()
   publish(dest/'record.json',record);del ex,bank;gc.collect();torch.cuda.empty_cache()
   print(json.dumps(dict(qid=qid,status='two_conditions_complete')),flush=True)
- publish(out/'complete.json',dict(status='passed',questions=9,new_conditions=18,spec=spec,resources=stats(started,torch)))
+ # Final capacity smoke: largest full prefix plus target in this admitted nine-case scope.
+ smoke_path=out/'largest-context-smoke.json'
+ if not smoke_path.exists():
+  candidates=[]
+  for r in spec['records']:
+   b=read(root/'baseline-qwen3-8b-admitted-v2/answers'/f"{fingerprint(r['qid'])}.json")
+   candidates.append((len(b['input_token_ids'])+len(r['anchor']['continuation_ids']),r))
+  r=max(candidates,key=lambda x:x[0])[1];qid=r['qid'];ex,bank=load_example(folders[qid]/'example')
+  q,assets,images,regions=pages(root,catalog,qid)
+  prompt=to_prompt(prepare_prompt(processor,PROMPT+q['question'],images),'cuda')
+  for im in images:im.close()
+  own=list(r['anchor']['continuation_ids'])
+  while own and own[-1] in eos:own.pop()
+  baseline=read(root/'baseline-qwen3-8b-admitted-v2/answers'/f'{fingerprint(qid)}.json')
+  assert prompt.input_ids[0].tolist()==baseline['input_token_ids']
+  assert prompt.image_grid_thw.tolist()==baseline['image_grid_thw']
+  gc.collect();torch.cuda.empty_cache();torch.cuda.reset_peak_memory_stats()
+  device=torch.cuda.get_device_properties(0)
+  smoke=dict(qid=qid,scope='largest full-prefix-plus-target of nine diagnostic questions; not whole corpus',gpu=device.name,total_vram_bytes=device.total_memory,actual_20gb_class=device.total_memory<=21*1024**3,stages=[])
+  try:
+   memory=reader.vision(prompt,'evidence9-capacity-'+qid)
+   smoke['stages'].append('vision_encoded')
+   full=torch.arange(len(ex.layout.owner),device='cuda')
+   result=reader.likelihood(prompt,memory,full,own)
+   smoke.update(full_visual_tokens=len(full),full_prefix_tokens=prompt.input_ids.shape[1],full_S=result['mean'],saved_full_S=r['reference']['s'],full_S_delta=result['mean']-r['reference']['s'])
+   smoke['stages'].append('full_context_scored')
+   # All32 saved masks sequentially: validates allocator behavior as well as one-mask peak.
+   sequential=[]
+   for i in range(32):
+    row=read(folders[qid]/'measurements'/f'{i:02}.json')
+    ix=ex.layout.retained_tokens(torch.tensor(row['mask'],dtype=torch.bool)).cuda()
+    v=reader.likelihood(prompt,memory,ix,own)['mean']
+    sequential.append(dict(index=i,retained_tokens=len(ix),S=v,saved_S=row['s'],delta=v-row['s']))
+   smoke['sequential_masks']=sequential;smoke['stages'].append('32_masks_scored_sequentially')
+   generated=reader.generate(prompt,memory,full,max_new_tokens=256,eos_ids=eos,repetition_penalty=1.)
+   smoke['generation']=generated;smoke['answer']=processor.tokenizer.decode(generated['token_ids'],skip_special_tokens=True).strip()
+   smoke['stages'].append('full_context_generated');smoke['status']='passed'
+  except torch.cuda.OutOfMemoryError:
+   smoke['status']='out_of_memory'
+   raise
+  finally:
+   smoke['peak_allocated_bytes']=torch.cuda.max_memory_allocated();smoke['peak_reserved_bytes']=torch.cuda.max_memory_reserved()
+   publish(smoke_path,smoke)
+  del memory,prompt,ex,bank;gc.collect();torch.cuda.empty_cache()
+ assert read(smoke_path)['status']=='passed'
+ publish(out/'complete.json',dict(status='passed',questions=9,new_conditions=18,capacity_smoke=str(smoke_path),spec=spec,resources=stats(started,torch)))
 if __name__=='__main__':
  p=argparse.ArgumentParser()
  for n in ['root','output','reader']:p.add_argument('--'+n,required=True)

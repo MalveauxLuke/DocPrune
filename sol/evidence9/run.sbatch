@@ -6,7 +6,6 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=24000M
 #SBATCH --time=00:10:00
-#SBATCH --exclude=sg048,sg049,sg050
 set -euo pipefail
 : "${SLURM_JOB_ID:?}" "${DP_BASELINE_COMMIT:?}"
 case "$(hostname -s)" in *login*) exit 2;; esac

@@ -7,3 +7,7 @@ Checkout /home/lmalveau/DocPrune, exact commit in DP_BASELINE_COMMIT and submiss
 Submit sol/evidence9/run.sbatch: generic GPU1, CPU2, RAM24000M,10min htc/public; known20GBMIG nodes excluded following previous reader memory measurements. Host RAM matches established scheduler minimum/reader recipe. One load, sequential conditions. No new installation. Output stage/evidence9-20260919-v1, per-condition files resumable, complete.json only after18conditions. Device monitor may include co-tenant devices; not process-specific utilization.
 
 Recovery: bounded code/runtime repair and resumption of missing conditions only; preserve completed outputs and original banks. Stop on input-contract mismatch, do not silently substitute data or model.
+
+## Owner-approved resubmission
+
+Job63670906 cancelled pending at owner request; no GPU runtime. Owner now explicitly allows20GB slices and requests a capacity smoke at the end. Remove node exclusions, retain genericGPU1/CPU2/24000M/10min. After18conditions choose the largest original prefix plus fixed answer among these nine, re-encode vision, score full context, score its32existing masks sequentially, and generate full-context answer. These smoke replays are separately labeled; original baseline remains authoritative. Record device capacity, peak allocated/reserved bytes and score deltas; save failed smoke on OOM, never silently truncate or quantize. A pass on a larger GPU does not establish20GBcompatibility; scope does not cover larger inputs elsewhere in the corpus.
