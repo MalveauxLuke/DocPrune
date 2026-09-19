@@ -406,9 +406,9 @@ def run(args):
         gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else "cpu",
     )
     cache = TensorCache(training / "cache", cache_identity)
-    if contract.get('shared_control_cache'):
+    if contract.get('shared_control_cache') or contract.get('branches') == 'frozen-only':
         from experiments.training_pilot.shared_cache import attach_control_cache
-        attach_control_cache(cache, contract['shared_control_cache'], contract, cache_identity['processor'])
+        attach_control_cache(cache, contract.get('shared_control_cache', str(training)), contract, cache_identity['processor'])
     model = CachedPilotSelector(build_selector(config, answerer_config=backbone.config, selector_model=backbone), disk_cache=cache)
     evaluation_device = next(model.parameters()).device
     prompt_condition = contract.get("prompt", {}).get("condition", "current")
@@ -471,6 +471,7 @@ def run(args):
         checkpoints=[name for name, *_ in checkpoints], summaries=summaries, content_analysis=content, reproduction=gates))
     publish(output / "complete.json", dict(status="passed", summary_sha256=sha(output / "summary.json"), audit_sha256=sha(args.audit),
         training_contract_sha256=sha(training / "contract.json"), pair_manifest_files=len(manifests), resources=stats(started, torch),
+        cache_calls=model.calls, shared_cache_hits=getattr(cache,'control_hits',0),
         scope="Selector-only fixed checkpoint diagnosis; no reader calls, training, temperature fitting, or checkpoint reselection."))
 
 
