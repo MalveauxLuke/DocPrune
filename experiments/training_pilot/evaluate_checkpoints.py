@@ -379,6 +379,17 @@ def checkpoint_plan(training, branches):
     return plan
 
 
+def evaluation_rows_for_contract(audit, contract):
+    admitted = set(contract['train']) | set(contract['dev'])
+    rows = [r for r in audit['rows'] if r['qid'] in admitted]
+    excluded = [r for r in audit['rows'] if r['qid'] not in admitted]
+    if {r['qid'] for r in rows} != admitted:
+        raise ValueError('Evaluation audit is missing contract questions')
+    if any(r['split'] != 'train' or r['pairs'] for r in excluded):
+        raise ValueError('Only training questions without preference pairs may be excluded')
+    return rows, [dict(qid=r['qid'], reason='No training preference pairs') for r in excluded]
+
+
 def run(args):
     root, training, output = Path(args.root), Path(args.training), Path(args.output)
     audit = read_record(args.audit)
@@ -415,10 +426,11 @@ def run(args):
     branches = contract.get("branches", "all")
     stream = Stream(root, audit["rows"], processor, cache, prompt_condition=prompt_condition,
                     zero_token_count=contract.get("zero_regional_token_count", False))
+    evaluation_rows, excluded_rows = evaluation_rows_for_contract(audit, contract)
     identity = fingerprint(contract)
     checkpoints = checkpoint_plan(training, branches)
     manifests = {}
-    for row in audit["rows"]:
+    for row in evaluation_rows:
         manifest_path = output / "pairs" / f'{row["qid"]}.json'
         if manifest_path.exists():
             manifests[row["qid"]] = read_record(manifest_path)
@@ -435,7 +447,7 @@ def run(args):
                 raise ValueError("Checkpoint phase mismatch")
         model.set_phase(phase); model.eval(); rows = []
         with torch.inference_mode():
-            for audit_row in audit["rows"]:
+            for audit_row in evaluation_rows:
                 qid = audit_row["qid"]
                 score_path = output / "scores" / name / f"{qid}.json"
                 if score_path.exists():
@@ -466,7 +478,7 @@ def run(args):
             gates[name] = reproduction([row for row in rows if row["split"] == "dev"], saved_rows(saved), args.tolerance)
         publish(output / "checkpoint-summaries" / f"{name}.json", dict(checkpoint=name, phase=phase, path=None if path is None else str(path), exposures_in_branch_path=exposures, summary=summaries[name], content_analysis=content[name], reproduction=gates.get(name)))
     publish(output / "summary.json", dict(schema="pilot-fixed-checkpoint-evaluation-v2", exact_seen_training_pairs=True,
-        prompt_condition=prompt_condition,branches=branches,
+        prompt_condition=prompt_condition,branches=branches,excluded_questions=excluded_rows,
         note="All strict training-bank pairs were consumed once per active question per epoch; no pair subsampling occurred.",
         checkpoints=[name for name, *_ in checkpoints], summaries=summaries, content_analysis=content, reproduction=gates))
     publish(output / "complete.json", dict(status="passed", summary_sha256=sha(output / "summary.json"), audit_sha256=sha(args.audit),
