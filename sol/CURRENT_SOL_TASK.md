@@ -1,3 +1,10 @@
+# Active — regional token-count ablation
+
+Owner explicitly approved one matched evidence-v1 frozen run that zeros only
+regional token-count metadata. Binding scope and launcher are in the
+[task-prompt handoff](training-pilot/TASK_PROMPT_FROZEN_HANDOFF.md), final section.
+Same banks, prompt, seed, training schedule and metrics; separate output directory.
+
 # Active — frozen task-prompt 2B comparison
 
 Owner approved the bounded task-specific-prompt experiment on the existing 2B

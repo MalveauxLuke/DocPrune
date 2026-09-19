@@ -70,3 +70,18 @@ minutes. The prior six-checkpoint evaluation used 24.3 minutes and peaked at
 5.2 GB reserved device memory. A proportional four-checkpoint estimate is about
 16 minutes; the 25-minute request leaves headroom for model loading and cache
 variation while retaining per-question recovery if it still times out.
+
+
+## Owner-approved regional token-count ablation — September 18
+
+Run `train-task-prompt-nosize.sbatch` with the same evidence-v1 prompt, seed 0,
+initialization, teacher banks, warm-up/frozen schedules, losses and evaluation.
+Only the final (raw regional token-count) column of the eight-column metadata
+is cloned and zeroed before the readout. Real layout costs remain available for
+allocation and reporting. Geometry, retrieval features, Head 2 retained-region
+fraction and additive scoring remain unchanged. The training contract records
+`zero_regional_token_count`; checkpoint evaluation restores that setting.
+Outputs are isolated under `training-pilot-quality-v1-task-prompt-frozen-nosize-seed0`.
+No LoRA or reader runs. Request one compatible GPU, two CPUs, 24000M RAM,
+35 minutes: the control completed two warm-up epochs near its 20-minute limit.
+The existing control must retain its original commit/contract for any resumption.

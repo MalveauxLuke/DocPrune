@@ -63,10 +63,24 @@ def ranking_metrics(values,bank):
         accuracy=float(torch.stack([(delta[f]>0).float().mean() for f in groups]).mean()),pairs=len(pairs))
 
 
+def regional_metadata_ablation(layout, zero_token_count=False):
+    if not zero_token_count:
+        return layout
+    # Frozen region schema: six coordinate extrema, page index, raw token count.
+    if layout.metadata.shape[1] != 8 or not torch.equal(
+        layout.metadata[:, -1].cpu(), layout.costs.to(layout.metadata).cpu()
+    ):
+        raise ValueError('Regional token-count metadata schema mismatch')
+    metadata = layout.metadata.clone()
+    metadata[:, -1] = 0
+    return replace(layout, metadata=metadata)
+
+
 class Stream:
-    def __init__(self,root,rows,processor,cache,device='cuda',prompt_condition='current'):
+    def __init__(self,root,rows,processor,cache,device='cuda',prompt_condition='current',zero_token_count=False):
         self.root=Path(root);self.rows={r['qid']:r for r in rows};self.processor=processor;self.cache=cache;self.device=device
         self.prompt_spec=prompt_spec(prompt_condition)
+        self.zero_token_count=zero_token_count
         self.catalog,_=load_catalog(self.root)
     def _prepare(self,question,images,spec=None):
         spec=self.prompt_spec if spec is None else spec
@@ -111,7 +125,7 @@ class Stream:
         native=native_action_layout(ex.layout,torch.tensor(read(folder/'design.json')['boxes']),prompt.image_grid_thw,2)
         if not self.cache.contains('native-vision',encoding_cache_key(ex,prompt,native)):
             prompt.pixel_values=self.cache.get('prepared-pixels',key)['pixel_values']
-        ex=replace(ex,layout=layout_to(ex.layout,self.device),question_ids=ex.question_ids.to(self.device),
+        ex=replace(ex,layout=layout_to(regional_metadata_ablation(ex.layout,self.zero_token_count),self.device),question_ids=ex.question_ids.to(self.device),
             retrieval=RetrievalFeatures(ex.retrieval.values.to(self.device),ex.retrieval.schema))
         return dict(examples=[ex],banks=[bank],proxy_prompts=[PackedPrompt(**{k:None if v is None else v.to(self.device) for k,v in vars(prompt).items()})],native_layouts=[layout_to(native,self.device)])
     def batches(self,qids):
@@ -145,6 +159,7 @@ def run(a):
     out=Path(a.output);audit=read_record(a.audit)
     prompt_condition=getattr(a,'prompt_condition','current')
     branches=getattr(a,'branches','all')
+    zero_token_count=getattr(a,'zero_regional_token_count',False)
     preflight_only=getattr(a,'preflight_only',False)
     prompt=prompt_spec(prompt_condition);phases=phase_plan(branches)
     if (out/'training-complete.json').exists():
@@ -164,13 +179,13 @@ def run(a):
     processor,backbone=load_model(a.selector)
     code=[Path(__file__),Path(__file__).with_name('run.py'),Path(__file__).parents[1]/'selector_smoke/run.py',*sorted((Path(__file__).parents[2]/'src/docprune/stage2').glob('*.py'))]
     contract=dict(schema='pilot64-trainer-v2',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
-        prompt=prompt,branches=branches,phases=list(phases),preflight_only=preflight_only,
+        zero_regional_token_count=zero_token_count,prompt=prompt,branches=branches,phases=list(phases),preflight_only=preflight_only,
         retention=[.75,.5],sources={str(p.relative_to(Path(__file__).parents[2])):sha(p) for p in code},runtime=runtime_identity(backbone))
     publish(out/'contract.json',contract)
     cache=TensorCache(out/'cache',dict(selector=SELECTOR_REV,runtime=contract['runtime'],processor=processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)),sources=contract['sources'],audit=contract['audit_sha256'],gpu=torch.cuda.get_device_name() if torch.cuda.is_available() else 'cpu'))
     model=CachedPilotSelector(build_selector(cfg,answerer_config=backbone.config,selector_model=backbone),disk_cache=cache)
     model.base.backbone.model.language_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})
-    stream=Stream(a.root,audit['rows'],processor,cache,prompt_condition=prompt_condition)
+    stream=Stream(a.root,audit['rows'],processor,cache,prompt_condition=prompt_condition,zero_token_count=zero_token_count)
     started=time.monotonic();torch.cuda.reset_peak_memory_stats();identity=fingerprint(contract)
     warmup=out/'warmup-latest.pt';updates=math.ceil(len(train)/4)
     if not (out/'cache-preflight.json').exists():
@@ -242,5 +257,6 @@ if __name__=='__main__':
     p.add_argument('--prompt-condition',choices=('current','evidence-v1'),default='current')
     p.add_argument('--branches',choices=('all','frozen-only'),default='all')
     p.add_argument('--preflight-only',action='store_true')
+    p.add_argument('--zero-regional-token-count',action='store_true')
     a=p.parse_args()
     with run_lock(a.output):run(a)

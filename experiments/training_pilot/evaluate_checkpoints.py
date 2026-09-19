@@ -410,7 +410,8 @@ def run(args):
     evaluation_device = next(model.parameters()).device
     prompt_condition = contract.get("prompt", {}).get("condition", "current")
     branches = contract.get("branches", "all")
-    stream = Stream(root, audit["rows"], processor, cache, prompt_condition=prompt_condition)
+    stream = Stream(root, audit["rows"], processor, cache, prompt_condition=prompt_condition,
+                    zero_token_count=contract.get("zero_regional_token_count", False))
     identity = fingerprint(contract)
     checkpoints = checkpoint_plan(training, branches)
     manifests = {}
