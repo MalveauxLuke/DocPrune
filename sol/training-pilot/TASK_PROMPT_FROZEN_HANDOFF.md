@@ -85,3 +85,29 @@ Outputs are isolated under `training-pilot-quality-v1-task-prompt-frozen-nosize-
 No LoRA or reader runs. Request one compatible GPU, two CPUs, 24000M RAM,
 35 minutes: the control completed two warm-up epochs near its 20-minute limit.
 The existing control must retain its original commit/contract for any resumption.
+
+
+## Owner-approved hidden-state-only frozen ablation — September 19
+
+Run `train-hidden-only.sbatch` using the existing evidence-v1 prompt, seed 0,
+fresh matched initialization, banks, loss, readout dimensions and warm-up/frozen
+schedule. At the regional readout boundary, zero all explicit coordinate and
+metadata inputs and omit retrieval fusion. At Head 2's final readout boundary,
+zero only its retained-region fraction. Keep module shapes and seeded parameter
+initialization unchanged. Constant projection biases remain learned parameters;
+no varying geometry/count data enters those projections. Preserve contextual
+question/visual hidden states, region ownership, full-capacity conditioning and
+true allocator costs. Persist `hidden_state_only` and the ablation code hash;
+checkpoint evaluation restores and verifies this contract.
+
+Reuse the validated control's frozen cache; missing hidden states fail rather
+than trigger recomputation. Output: `training-pilot-quality-v1-task-prompt-frozen-hidden-only-seed0`.
+Resources: one compatible GPU, two CPUs, 24000M RAM, 25 minutes (the cached
+count-only arm took 19:53; up to four frozen epochs remain possible).
+No LoRA arm is submitted now.
+
+Remaining size cues, not established causes: additive Head 1 score offsets
+can favor region cardinality; pretrained contextual states retain positional
+information; ragged region membership and kept/dropped pooling can retain
+cardinality-related information. No attempt is made to remove these structural
+paths in this input-only ablation. The fixed budget input is 1.0 throughout.

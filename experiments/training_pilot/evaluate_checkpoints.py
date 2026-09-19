@@ -421,6 +421,10 @@ def run(args):
         from experiments.training_pilot.shared_cache import attach_control_cache
         attach_control_cache(cache, contract.get('shared_control_cache', str(training)), contract, cache_identity['processor'])
     model = CachedPilotSelector(build_selector(config, answerer_config=backbone.config, selector_model=backbone), disk_cache=cache)
+    from experiments.training_pilot.scorer_inputs import configure_scorer_inputs
+    if contract.get('hidden_state_only') and sha(Path(__file__).with_name('scorer_inputs.py')) != contract['scorer_input_code_sha256']:
+        raise ValueError('Scorer input ablation implementation changed')
+    configure_scorer_inputs(model,contract.get('hidden_state_only',False))
     evaluation_device = next(model.parameters()).device
     prompt_condition = contract.get("prompt", {}).get("condition", "current")
     branches = contract.get("branches", "all")

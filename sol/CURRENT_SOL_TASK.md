@@ -1,3 +1,10 @@
+# Active — hidden-state-only frozen ablation
+
+Owner approved the September 19 input-only ablation and submission, per the
+[task-prompt handoff](training-pilot/TASK_PROMPT_FROZEN_HANDOFF.md), final section.
+Use the frozen control cache and fresh matched heads. Preserve costs, membership,
+conditioning and the training recipe. LoRA comparison follows later.
+
 # Active — regional token-count ablation
 
 Owner explicitly approved one matched evidence-v1 frozen run that zeros only

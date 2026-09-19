@@ -160,6 +160,7 @@ def run(a):
     prompt_condition=getattr(a,'prompt_condition','current')
     branches=getattr(a,'branches','all')
     zero_token_count=getattr(a,'zero_regional_token_count',False)
+    hidden_state_only=getattr(a,'hidden_state_only',False)
     preflight_only=getattr(a,'preflight_only',False)
     prompt=prompt_spec(prompt_condition);phases=phase_plan(branches)
     if (out/'training-complete.json').exists():
@@ -181,6 +182,9 @@ def run(a):
     contract=dict(schema='pilot64-trainer-v2',audit_sha256=sha(a.audit),config=asdict(cfg),seed=a.seed,train=train,dev=dev,
         zero_regional_token_count=zero_token_count,prompt=prompt,branches=branches,phases=list(phases),preflight_only=preflight_only,
         retention=[.75,.5],sources={str(p.relative_to(Path(__file__).parents[2])):sha(p) for p in code},runtime=runtime_identity(backbone))
+    if hidden_state_only:
+        contract['hidden_state_only']=True
+        contract['scorer_input_code_sha256']=sha(Path(__file__).with_name('scorer_inputs.py'))
     shared_control=getattr(a,'shared_control_cache',None)
     if shared_control:
         contract['shared_control_cache']=str(Path(shared_control).resolve())
@@ -191,6 +195,8 @@ def run(a):
         from experiments.training_pilot.shared_cache import attach_control_cache
         attach_control_cache(cache,shared_control,contract,processor.to_dict() if hasattr(processor,'to_dict') else str(type(processor)))
     model=CachedPilotSelector(build_selector(cfg,answerer_config=backbone.config,selector_model=backbone),disk_cache=cache)
+    from experiments.training_pilot.scorer_inputs import configure_scorer_inputs
+    configure_scorer_inputs(model,hidden_state_only)
     model.base.backbone.model.language_model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={'use_reentrant':False})
     stream=Stream(a.root,audit['rows'],processor,cache,prompt_condition=prompt_condition,zero_token_count=zero_token_count)
     started=time.monotonic();torch.cuda.reset_peak_memory_stats();identity=fingerprint(contract)
@@ -266,5 +272,6 @@ if __name__=='__main__':
     p.add_argument('--preflight-only',action='store_true')
     p.add_argument('--zero-regional-token-count',action='store_true')
     p.add_argument('--shared-control-cache')
+    p.add_argument('--hidden-state-only',action='store_true')
     a=p.parse_args()
     with run_lock(a.output):run(a)
