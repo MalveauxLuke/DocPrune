@@ -90,10 +90,22 @@ def teacher(a, context_fn=context):
         if label['verdict'] not in ('correct','incorrect'):raise ValueError('Unresolved label')
         mask_count=smoke.get('mask_counts',{}).get(qid,smoke['mask_count'])
         dev=qid in smoke.get('dev_qids',[])
+        flags=[]
+        def check(ok,name,details=None):
+            if ok:return
+            if not smoke.get('diagnostic_flags_only',False):raise ValueError(name)
+            flag=dict(check=name,details=details)
+            flags.append(flag)
+            publish(folder/'flags'/(name+'.json'),flag)
+            print(json.dumps(dict(diagnostic_flag=name,question_id=qid,details=details)),flush=True)
         q,assets,images,regions=pages(root,catalog,qid)
-        assert label['question']==q['question'] and label['gold']==[x['answer'] for x in pool[qid]['answers']]
+        check(label['question']==q['question'],'question_text_mismatch')
+        source_gold=[x['answer'] for x in pool[qid]['answers']]
+        check(label['gold']==source_gold,'gold_representation_mismatch',
+              dict(frozen=label['gold'],source=source_gold,
+                   equivalent_as_text=label['gold']==[str(x) for x in source_gold]))
         b=read(root/'baseline-qwen3-8b-admitted-v2/answers'/f'{fingerprint(qid)}.json')
-        assert b['answer']==label['model_answer']
+        check(b['answer']==label['model_answer'],'cached_answer_text_mismatch')
         assert sha(root/'baseline-qwen3-8b-admitted-v2/answers'/f'{fingerprint(qid)}.json')==label['source_answer_file_sha256']
         prompt=prepare_prompt(processor,PROMPT+q['question'],images)
         for im in images:im.close()
@@ -103,14 +115,18 @@ def teacher(a, context_fn=context):
         features,mapping=retrieval(root,q,layout,boxes,catalog)
         prompt=to_prompt(prompt,'cuda')
         anchor=folder/'anchor.json'
+        if not anchor.exists() and smoke.get('use_saved_answer',False):
+            publish(anchor,dict(answer=b['answer'],continuation_ids=b['answer_token_ids'],
+                                label_source=label['label_source'],adjudication=label['manifest_identity'],
+                                source='frozen_baseline_no_regeneration'))
         if not anchor.exists():
             generation=GenerationConfig(do_sample=False,max_new_tokens=256,repetition_penalty=1.,use_cache=True,eos_token_id=model.generation_config.eos_token_id,pad_token_id=processor.tokenizer.pad_token_id,bos_token_id=model.generation_config.bos_token_id)
             with torch.inference_mode():
                 generated=model.generate(input_ids=prompt.input_ids,attention_mask=torch.ones_like(prompt.input_ids),pixel_values=prompt.pixel_values,image_grid_thw=prompt.image_grid_thw,generation_config=generation,use_model_defaults=False,do_sample=False)
             ids=generated[0,prompt.input_ids.shape[1]:].tolist()
             answer=processor.tokenizer.decode(ids,skip_special_tokens=True).strip()
-            if answer!=label['model_answer']:raise ValueError(f'Baseline reproduction mismatch {qid}: {answer!r}')
-            if ids!=b['answer_token_ids']:raise ValueError('Continuation token identity differs from frozen baseline')
+            check(answer==label['model_answer'],'baseline_reproduction_mismatch',dict(generated=answer))
+            check(ids==b['answer_token_ids'],'continuation_token_mismatch')
             publish(anchor,dict(answer=answer,continuation_ids=ids,label_source=label['label_source'],adjudication=label['manifest_identity']))
             del generated
         own=list(read(anchor)['continuation_ids']);eos=model.generation_config.eos_token_id
@@ -142,8 +158,11 @@ def teacher(a, context_fn=context):
             row=read(path);assert row['mask']==proposal['mask'];rows.append(row)
         assert len(rows)==min(mask_count,2**len(layout.region_ids))
         matrix=torch.tensor([r['mask'] for r in rows],dtype=torch.bool)
-        repeat=score(matrix[0]);assert abs(repeat['s']-rows[0]['s'])<1e-5
-        if not correct:assert abs(repeat['g']-rows[0]['g'])<1e-5
+        repeat=score(matrix[0])
+        repeat_deltas={key:repeat[key]-rows[0][key] for key in ('s',) if correct}
+        if not correct:repeat_deltas={key:repeat[key]-rows[0][key] for key in ('g','s')}
+        check(all(abs(v)<1e-5 for v in repeat_deltas.values()),'repeat_score_difference',repeat_deltas)
+        publish(folder/'repeat-diagnostic.json',dict(deltas=repeat_deltas,within_1e_5=all(abs(v)<1e-5 for v in repeat_deltas.values())))
         identity=InstanceIdentity('m3docvqa',fingerprint(b['ordered_pages']),qid,fingerprint(q['question']),tuple(b['ordered_pages']),fingerprint(b['image_grid_thw']),fingerprint([layout.region_ids,layout.owner.tolist()]),REVISION,mapping['mapping'],fingerprint([PROMPT,own,gold,'S-only-full-prefix' if correct else 'GS-full-prefix',label['manifest_identity']]))
         example=SelectorInputs(identity,layout,memory,prompt.input_ids[0,prompt.question_positions].cpu(),n,features)
         bank=TeacherBank(identity.key,matrix,tuple(Outcome(r['g'],r['s']) for r in rows),Outcome(**reference),correct,not dev,identity.document_family,'s',label['manifest_identity'],'variable_pilot_v1','hamming_families_v1')

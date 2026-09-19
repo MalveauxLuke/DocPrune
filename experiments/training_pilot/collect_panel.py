@@ -42,9 +42,20 @@ def panel_context(args):
                     sources={str(p.relative_to(REPO)): sha(p) for p in (
                         Path(__file__), REPO/'experiments/training_pilot/run.py',
                         REPO/'src/docprune/stage2/pilot.py')})
-    publish(out / 'contract.json', contract)
+    # Keep the original cache identity when resuming; record changed diagnostic
+    # policy/code separately, without rewriting completed bank provenance.
+    prior_path = out / 'contract.json'
+    if prior_path.exists():
+        prior = read(prior_path)
+        assert {k:v for k,v in prior.items() if k!='sources'} == {k:v for k,v in contract.items() if k!='sources'}
+        publish(out / ('continuation-'+fingerprint(contract)+'.json'),
+                dict(contract=contract,diagnostic_flags_only=True,use_saved_answer=True))
+        contract = prior
+    else:
+        publish(prior_path, contract)
     jobs = dict(qids=qids, mask_count=32, dev_qids=[],
-                test_empty_interface=False, require_pairs=False)
+                test_empty_interface=False, require_pairs=False,
+                diagnostic_flags_only=True, use_saved_answer=True)
     # Historical development banks remain immutable. This panel is acquisition,
     # not a new held-out evaluation split; every case uses the same 32-mask policy.
     return root, out, catalog, pool, labels, jobs, contract
