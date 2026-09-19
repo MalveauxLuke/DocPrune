@@ -157,7 +157,7 @@ def prepare_prompt(processor, question, images, *, instruction=None, system=None
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "<Instruct>: " + instruction},
-                    {"type": "text", "text": "<Query>:"},
+                    {"type": "text", "text": "<Query>:\n"},
                     {"type": "text", "text": question},
                     {"type": "text", "text": "\n<Document>:"},
                 ] + [{"type": "image"} for _ in images],
@@ -167,18 +167,72 @@ def prepare_prompt(processor, question, images, *, instruction=None, system=None
         message, tokenize=False, add_generation_prompt=True
     )
     encoded = processor(text=[text], images=images, return_tensors="pt", padding=False)
-    query = processor.tokenizer.encode(question, add_special_tokens=False)
     ids = encoded["input_ids"][0].tolist()
-    starts = [
-        i for i in range(len(ids) - len(query) + 1) if ids[i : i + len(query)] == query
-    ]
-    if len(starts) != 1:
-        raise ValueError(
-            "Cannot identify a unique exact question span; do not guess token positions"
+    if instruction is None:
+        query = processor.tokenizer.encode(question, add_special_tokens=False)
+        starts = [
+            i
+            for i in range(len(ids) - len(query) + 1)
+            if ids[i : i + len(query)] == query
+        ]
+        if len(starts) != 1:
+            raise ValueError(
+                "Cannot identify a unique exact question span; do not guess token positions"
+            )
+        positions = torch.arange(starts[0], starts[0] + len(query))
+    else:
+        query_marker = "<Query>:\n"
+        document_marker = "\n<Document>:"
+        if text.count(query_marker) != 1 or text.count(document_marker) != 1:
+            raise ValueError("Structured prompt markers must each occur exactly once")
+        question_start = text.index(query_marker) + len(query_marker)
+        question_end = text.index(document_marker, question_start)
+        if text[question_start:question_end] != question:
+            raise ValueError("Structured prompt query field does not match the question")
+
+        tokenized = processor.tokenizer(
+            text, add_special_tokens=False, return_offsets_mapping=True
         )
+        text_ids = tokenized["input_ids"]
+        offsets = tokenized["offset_mapping"]
+        if text_ids and isinstance(text_ids[0], list):
+            text_ids, offsets = text_ids[0], offsets[0]
+        query_indices = [
+            i
+            for i, (start, end) in enumerate(offsets)
+            if end > question_start and start < question_end
+        ]
+        if not query_indices or query_indices != list(
+            range(query_indices[0], query_indices[-1] + 1)
+        ):
+            raise ValueError("Cannot map the structured query to contiguous tokens")
+
+        # Images occur after the query. Their placeholders may expand during
+        # multimodal processing, so align only the rendered prefix through the
+        # query instead of assuming identical full text/image tokenization.
+        prefix = text_ids[: query_indices[-1] + 1]
+        prefix_starts = [
+            i
+            for i in range(len(ids) - len(prefix) + 1)
+            if ids[i : i + len(prefix)] == prefix
+        ]
+        if len(prefix_starts) != 1:
+            raise ValueError(
+                "Cannot align the structured prompt prefix with processed input tokens"
+            )
+        positions = torch.tensor(
+            [prefix_starts[0] + i for i in query_indices], dtype=torch.long
+        )
+        extracted = processor.tokenizer.decode(
+            [ids[i] for i in positions.tolist()],
+            skip_special_tokens=False,
+            clean_up_tokenization_spaces=False,
+        )
+        if extracted.strip() != question.strip():
+            raise ValueError("Structured query tokens do not decode to the question")
     return PackedPrompt(
         encoded["input_ids"],
-        torch.arange(starts[0], starts[0] + len(query)),
+        positions,
         encoded["image_grid_thw"],
         encoded["pixel_values"],
     )

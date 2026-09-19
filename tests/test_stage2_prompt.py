@@ -7,6 +7,13 @@ class Tokenizer:
     def encode(self,text,add_special_tokens=False):
         assert not add_special_tokens
         return [ord(c) for c in text]
+    def __call__(self,text,add_special_tokens=False,return_offsets_mapping=False):
+        assert not add_special_tokens and return_offsets_mapping
+        return dict(input_ids=[ord(c) for c in text],
+            offset_mapping=[(i,i+1) for i in range(len(text))])
+    def decode(self,ids,skip_special_tokens=False,clean_up_tokenization_spaces=False):
+        assert not skip_special_tokens and not clean_up_tokenization_spaces
+        return ''.join(chr(i) for i in ids)
 
 
 class Processor:
@@ -35,7 +42,22 @@ def test_task_prompt_uses_official_roles_but_tracks_only_query_tokens():
         system='System frame.',instruction='Find answer evidence.')
     assert [turn['role'] for turn in p.message]==['system','user']
     texts=[x['text'] for x in p.message[1]['content'] if x['type']=='text']
-    assert texts==['<Instruct>: Find answer evidence.','<Query>:','Where?','\n<Document>:']
+    assert texts==['<Instruct>: Find answer evidence.','<Query>:\n','Where?','\n<Document>:']
     ids=result.input_ids[0].tolist();positions=result.question_positions.tolist()
     assert [ids[i] for i in positions]==[ord(c) for c in 'Where?']
     assert len(positions)==len('Where?')
+
+
+def test_task_prompt_does_not_require_standalone_query_tokens_to_match_context():
+    class BoundarySensitiveTokenizer(Tokenizer):
+        def encode(self,text,add_special_tokens=False):
+            # Simulate a tokenizer whose first standalone token changes when
+            # the same text is encoded inside the rendered prompt.
+            result=super().encode(text,add_special_tokens=add_special_tokens)
+            return [result[0]+1000,*result[1:]]
+
+    p=Processor();p.tokenizer=BoundarySensitiveTokenizer()
+    result=prepare_prompt(p,'Where?',[object()],system='System frame.',
+        instruction='Find answer evidence.')
+    ids=result.input_ids[0].tolist();positions=result.question_positions.tolist()
+    assert ''.join(chr(ids[i]) for i in positions)=='Where?'
